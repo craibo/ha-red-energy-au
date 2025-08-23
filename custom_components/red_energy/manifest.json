@@ -1,0 +1,12 @@
+{
+  "domain": "red_energy",
+  "name": "Red Energy",
+  "codeowners": ["@craibo"],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://github.com/craibo/ha-red-energy-au",
+  "integration_type": "hub",
+  "iot_class": "cloud_polling",
+  "requirements": ["aiohttp"],
+  "version": "0.1.0"
+}
