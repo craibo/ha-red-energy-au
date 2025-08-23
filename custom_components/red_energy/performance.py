@@ -51,6 +51,31 @@ class PerformanceMonitor:
                     raise err
             return wrapper
         return decorator
+
+    @staticmethod
+    def create_timer_decorator(operation_name: str):
+        """Create a standalone timer decorator for use without instance."""
+        def decorator(func):
+            @wraps(func)
+            async def wrapper(*args, **kwargs):
+                start_time = time.time()
+                try:
+                    result = await func(*args, **kwargs)
+                    execution_time = time.time() - start_time
+                    
+                    if execution_time > 5.0:  # Log slow operations
+                        _LOGGER.warning(
+                            "Slow operation detected: %s took %.2fs",
+                            operation_name, execution_time
+                        )
+                    
+                    return result
+                except Exception as err:
+                    execution_time = time.time() - start_time
+                    _LOGGER.debug("Operation %s failed after %.2fs", operation_name, execution_time)
+                    raise err
+            return wrapper
+        return decorator
     
     def get_performance_stats(self) -> Dict[str, Any]:
         """Get comprehensive performance statistics."""
@@ -327,7 +352,7 @@ class BulkOperationManager:
         
         return results
     
-    @PerformanceMonitor.time_operation("coordinator_refresh")
+    @PerformanceMonitor.create_timer_decorator("coordinator_refresh")
     async def _refresh_single_coordinator(self, coordinator) -> bool:
         """Refresh a single coordinator with error handling."""
         try:
