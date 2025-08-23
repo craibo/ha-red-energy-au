@@ -99,10 +99,38 @@ class RedEnergyAPI:
         code_challenge: str
     ) -> str:
         """Get authorization code through login flow."""
-        # This is a simplified implementation
-        # The actual implementation would need to handle the full OAuth flow
-        # including form submissions and redirects
-        raise NotImplementedError("Authorization code flow needs full implementation")
+        # Simplified implementation - in production this would handle the full OAuth flow
+        # including form submissions, redirects, and parsing the authorization code from the callback
+        
+        auth_params = {
+            'client_id': client_id,
+            'response_type': 'code',
+            'redirect_uri': self.REDIRECT_URI,
+            'scope': 'openid profile email',
+            'code_challenge': code_challenge,
+            'code_challenge_method': 'S256',
+            'state': secrets.token_urlsafe(32),
+        }
+        
+        auth_url = f"{auth_endpoint}?{urlencode(auth_params)}"
+        
+        # For now, return a placeholder that will be replaced with real implementation
+        # In a real implementation, this would:
+        # 1. Submit the login form with username/password
+        # 2. Handle any MFA challenges
+        # 3. Follow redirects to capture the authorization code
+        # 4. Parse the code from the callback URL
+        
+        _LOGGER.warning(
+            "Red Energy API authentication requires manual implementation of OAuth flow. "
+            "Using mock mode for now. To use real API, implement the full OAuth2 PKCE flow."
+        )
+        
+        raise RedEnergyAuthError(
+            "Real Red Energy API authentication not yet implemented. "
+            "The integration currently uses mock data for testing. "
+            "To connect to the real API, the OAuth2 PKCE flow needs to be completed."
+        )
     
     async def _exchange_code_for_tokens(
         self,

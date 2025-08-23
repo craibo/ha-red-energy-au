@@ -15,6 +15,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import RedEnergyAPI, RedEnergyAPIError, RedEnergyAuthError
 from .mock_api import MockRedEnergyAPI
+from .data_validation import validate_config_data, DataValidationError
 from .const import (
     CONF_CLIENT_ID,
     DATA_ACCOUNTS,
@@ -46,6 +47,13 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
 
 async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str, Any]:
     """Validate the user input allows us to connect."""
+    # First validate configuration data format
+    try:
+        validate_config_data(data)
+    except DataValidationError as err:
+        _LOGGER.error("Configuration validation failed: %s", err)
+        raise InvalidAuth from err
+    
     session = async_get_clientsession(hass)
     # Use mock API for testing - replace with RedEnergyAPI for production
     api = MockRedEnergyAPI(session)
