@@ -86,8 +86,41 @@ See `STAGE3_TESTING.md` for detailed testing with expected sensor values and tro
 - ❌ Real Red Energy API OAuth flow (requires manual implementation)
 - ❌ Historical data visualization (future stage)
 
-## Next Steps - Stage 4: Advanced Features
-- Real-time usage monitoring enhancements
-- Historical data and trends
-- Energy optimization recommendations  
-- Enhanced device management
+## Stage 4 Complete: Advanced Features & Enhancements ✅
+
+### What's New:
+- **Configurable Polling**: 1min, 5min, 15min, 30min, 1hour intervals via options
+- **Advanced Sensors**: 4 calculated sensors per service (averages, peaks, efficiency)
+- **Service Calls**: Manual refresh, credential updates, data export capabilities
+- **Energy Dashboard**: Native Home Assistant Energy dashboard integration
+- **Automation Library**: 11 comprehensive automation examples for cost monitoring, optimization
+- **Enhanced Options**: Advanced sensor toggle, polling configuration
+
+### Advanced Sensor Types:
+When enabled in options, adds per service:
+1. **Daily Average**: Mean daily usage over data period
+2. **Monthly Average**: Projected monthly usage (30.44 days)  
+3. **Peak Usage**: Highest daily usage with date/cost attribution
+4. **Efficiency Rating**: 0-100% based on usage consistency (CV algorithm)
+
+### Service Calls Available:
+- `red_energy.refresh_data` - Manual data refresh for all coordinators
+- `red_energy.update_credentials` - Update login credentials dynamically  
+- `red_energy.export_data` - Export usage data (JSON/CSV format)
+
+### Current Status:
+- ✅ Complete UI-based configuration with advanced options
+- ✅ DataUpdateCoordinator with configurable polling (1min-1hour)
+- ✅ Up to 7 sensors per service (3 core + 4 advanced)
+- ✅ Energy Dashboard integration for comprehensive monitoring
+- ✅ Service calls for automation and maintenance
+- ✅ Comprehensive automation examples and templates
+- ✅ All tests passing (33/33)
+- ❌ Real Red Energy API OAuth flow (requires manual implementation)
+- ❌ Long-term historical data storage (future stage)
+
+## Next Steps - Stage 5: Enhanced Device Management
+- Device registry enhancements
+- Performance optimizations for large datasets
+- Advanced notification and alerting systems
+- Integration with other energy platforms

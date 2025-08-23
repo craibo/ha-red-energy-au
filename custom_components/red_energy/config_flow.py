@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import timedelta
 from typing import Any, Dict, Optional
 
 import aiohttp
@@ -18,15 +19,19 @@ from .mock_api import MockRedEnergyAPI
 from .data_validation import validate_config_data, DataValidationError
 from .const import (
     CONF_CLIENT_ID,
+    CONF_ENABLE_ADVANCED_SENSORS,
+    CONF_SCAN_INTERVAL,
     DATA_ACCOUNTS,
     DATA_CUSTOMER_DATA,
     DATA_SELECTED_ACCOUNTS,
+    DEFAULT_SCAN_INTERVAL,
     DOMAIN,
     ERROR_AUTH_FAILED,
     ERROR_CANNOT_CONNECT,
     ERROR_INVALID_CLIENT_ID,
     ERROR_NO_ACCOUNTS,
     ERROR_UNKNOWN,
+    SCAN_INTERVAL_OPTIONS,
     SERVICE_TYPE_ELECTRICITY,
     SERVICE_TYPE_GAS,
     STEP_ACCOUNT_SELECT,
@@ -251,24 +256,56 @@ class RedEnergyOptionsFlowHandler(config_entries.OptionsFlow):
     ) -> FlowResult:
         """Manage the options."""
         if user_input is not None:
+            # Update coordinator polling interval if changed
+            entry_data = self.hass.data[DOMAIN][self.config_entry.entry_id]
+            coordinator = entry_data["coordinator"]
+            
+            new_interval = user_input.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
+            if new_interval != coordinator.update_interval.total_seconds():
+                coordinator.update_interval = timedelta(seconds=new_interval)
+                _LOGGER.info("Updated polling interval to %d seconds", new_interval)
+            
             return self.async_create_entry(title="", data=user_input)
 
+        # Get current configuration
         current_services = self.config_entry.data.get("services", [SERVICE_TYPE_ELECTRICITY])
+        current_options = self.config_entry.options
+        current_scan_interval = current_options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
+        current_advanced_sensors = current_options.get(CONF_ENABLE_ADVANCED_SENSORS, False)
         
         service_options = {
             SERVICE_TYPE_ELECTRICITY: "Electricity",
             SERVICE_TYPE_GAS: "Gas",
         }
         
+        # Create interval display options
+        interval_options = {}
+        for key, seconds in SCAN_INTERVAL_OPTIONS.items():
+            if seconds == 60:
+                interval_options[seconds] = "1 minute"
+            elif seconds == 300:
+                interval_options[seconds] = "5 minutes (default)"
+            elif seconds == 900:
+                interval_options[seconds] = "15 minutes"
+            elif seconds == 1800:
+                interval_options[seconds] = "30 minutes"  
+            elif seconds == 3600:
+                interval_options[seconds] = "1 hour"
+        
         schema = vol.Schema({
             vol.Required("services", default=current_services): vol.All(
                 vol.Ensure_list, [vol.In(service_options)]
             ),
+            vol.Required(CONF_SCAN_INTERVAL, default=current_scan_interval): vol.In(interval_options),
+            vol.Required(CONF_ENABLE_ADVANCED_SENSORS, default=current_advanced_sensors): bool,
         })
 
         return self.async_show_form(
             step_id="init",
             data_schema=schema,
+            description_placeholders={
+                "current_interval": f"{current_scan_interval // 60} minutes",
+            }
         )
 
 

@@ -17,6 +17,7 @@ from .const import (
     SERVICE_TYPE_ELECTRICITY,
 )
 from .coordinator import RedEnergyDataCoordinator
+from .services import async_setup_services, async_unload_services
 
 if TYPE_CHECKING:
     pass
@@ -68,6 +69,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Set up platforms
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     
+    # Set up services (only once for the first entry)
+    if len(hass.data[DOMAIN]) == 1:
+        await async_setup_services(hass)
+    
     _LOGGER.info(
         "Red Energy integration setup complete for %s accounts with %s services",
         len(selected_accounts),
@@ -95,6 +100,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         # Remove domain data if empty
         if not hass.data[DOMAIN]:
             hass.data.pop(DOMAIN)
+            # Unload services when last integration is removed
+            await async_unload_services(hass)
         
         _LOGGER.debug("Red Energy integration unloaded successfully")
     
