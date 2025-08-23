@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Home Assistant Community Discussion
+    url: https://community.home-assistant.io/
+    about: Ask questions and discuss Home Assistant integrations with the community
+  - name: Red Energy Official Support
+    url: https://www.redenergy.com.au/contact-us
+    about: For account-specific issues, contact Red Energy directly
+  - name: Integration Documentation
+    url: https://github.com/craibo/ha-red-energy-au/blob/main/README.md
+    about: Complete documentation, setup guide, and troubleshooting information

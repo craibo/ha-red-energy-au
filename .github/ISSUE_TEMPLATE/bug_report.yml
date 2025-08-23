@@ -1,0 +1,155 @@
+name: Bug Report
+description: File a bug report to help us improve the Red Energy integration
+title: "[BUG] "
+labels: ["bug", "triage"]
+assignees:
+  - craibo
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to fill out this bug report! Please provide as much detail as possible to help us diagnose and fix the issue.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear and concise description of what the bug is.
+      placeholder: Tell us what you see happening
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected-behavior
+    attributes:
+      label: Expected behavior
+      description: A clear and concise description of what you expected to happen.
+      placeholder: Tell us what you expected to see
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps-to-reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Steps to reproduce the behavior
+      placeholder: |
+        1. Go to '...'
+        2. Click on '....'
+        3. Scroll down to '....'
+        4. See error
+    validations:
+      required: true
+
+  - type: input
+    id: integration-version
+    attributes:
+      label: Red Energy Integration Version
+      description: What version of the Red Energy integration are you running?
+      placeholder: "e.g., 1.5.0"
+    validations:
+      required: true
+
+  - type: input
+    id: ha-version
+    attributes:
+      label: Home Assistant Version
+      description: What version of Home Assistant are you running?
+      placeholder: "e.g., 2024.8.3"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: installation-method
+    attributes:
+      label: Installation Method
+      description: How did you install the integration?
+      options:
+        - HACS
+        - Manual Installation
+        - Other (please specify in additional context)
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: affected-features
+    attributes:
+      label: Which features are affected?
+      description: Select all that apply
+      options:
+        - label: Authentication/Login
+        - label: Configuration Flow
+        - label: Data Collection/Sensors
+        - label: Advanced Sensors (averages, peaks, efficiency)
+        - label: Service Calls
+        - label: Energy Dashboard Integration
+        - label: Performance/Memory Issues
+        - label: Error Recovery
+        - label: State Restoration
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: |
+        Please copy and paste any relevant log entries. To enable debug logging, add this to your configuration.yaml:
+        
+        ```yaml
+        logger:
+          logs:
+            custom_components.red_energy: debug
+        ```
+      render: yaml
+
+  - type: textarea
+    id: configuration
+    attributes:
+      label: Configuration Details
+      description: |
+        Please provide relevant configuration details (remove sensitive information like passwords):
+        - Number of properties configured
+        - Services enabled (electricity/gas/both)
+        - Polling interval setting
+        - Advanced sensors enabled?
+      placeholder: |
+        - Properties: 1
+        - Services: Electricity only
+        - Polling: 5 minutes
+        - Advanced sensors: Yes
+
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics Information
+      description: |
+        If possible, download diagnostics data from the integration:
+        Settings → Devices & Services → Red Energy → [Device] → Download Diagnostics
+        
+        Please attach the diagnostics file or paste relevant sections here (remove sensitive data).
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional context
+      description: |
+        Add any other context about the problem here, such as:
+        - Screenshots
+        - Network environment details
+        - Recent changes to your setup
+        - Workarounds you've tried
+
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Checklist
+      description: Please confirm the following
+      options:
+        - label: I have searched existing issues to ensure this is not a duplicate
+          required: true
+        - label: I have enabled debug logging and included relevant logs
+          required: false
+        - label: I have removed sensitive information from logs and configuration
+          required: true
+        - label: I am using a supported version of Home Assistant (2024.1+)
+          required: true

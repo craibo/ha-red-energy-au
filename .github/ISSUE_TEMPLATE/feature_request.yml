@@ -1,0 +1,164 @@
+name: Feature Request
+description: Suggest a new feature or enhancement for the Red Energy integration
+title: "[FEATURE] "
+labels: ["enhancement", "triage"]
+assignees:
+  - craibo
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting a new feature! Please provide as much detail as possible to help us understand your request.
+
+  - type: textarea
+    id: feature-description
+    attributes:
+      label: Feature Description
+      description: A clear and concise description of the feature you'd like to see added.
+      placeholder: Describe the feature you want
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem-statement
+    attributes:
+      label: Problem Statement
+      description: What problem does this feature solve? Is your feature request related to a problem?
+      placeholder: "I'm always frustrated when..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed-solution
+    attributes:
+      label: Proposed Solution
+      description: How would you like this feature to work? Describe your ideal solution.
+      placeholder: Describe how you envision this feature working
+    validations:
+      required: true
+
+  - type: dropdown
+    id: feature-category
+    attributes:
+      label: Feature Category
+      description: What category does this feature fall into?
+      options:
+        - New Sensor Type
+        - Configuration/Setup Enhancement
+        - Performance Improvement
+        - Automation/Service Call
+        - Energy Dashboard Enhancement
+        - UI/UX Improvement
+        - Data Export/Import
+        - Integration with Other Systems
+        - Advanced Analytics
+        - Other (please specify in additional context)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority Level
+      description: How important is this feature to you?
+      options:
+        - Low - Nice to have
+        - Medium - Would be helpful
+        - High - Needed for my use case
+        - Critical - Blocking my usage
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: user-types
+    attributes:
+      label: Who would benefit from this feature?
+      description: Select all that apply
+      options:
+        - label: Homeowners with single properties
+        - label: Property managers with multiple properties
+        - label: Energy enthusiasts wanting detailed analytics
+        - label: Automation power users
+        - label: Users with complex energy setups
+        - label: All users would benefit
+
+  - type: textarea
+    id: use-cases
+    attributes:
+      label: Use Cases
+      description: |
+        Provide specific use cases or scenarios where this feature would be valuable.
+        Include examples of how you or others would use this feature.
+      placeholder: |
+        Example use cases:
+        1. As a property manager, I want to...
+        2. When monitoring energy usage, I need to...
+        3. For automation purposes, it would help if...
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternative Solutions
+      description: |
+        Describe any alternative solutions or workarounds you've considered.
+        Are there other integrations or methods that provide similar functionality?
+      placeholder: Describe alternatives you've considered
+
+  - type: textarea
+    id: implementation-ideas
+    attributes:
+      label: Implementation Ideas (Optional)
+      description: |
+        If you have ideas about how this could be implemented, share them here.
+        This could include UI mockups, configuration examples, or technical approaches.
+      placeholder: |
+        - New configuration option in integration setup
+        - Additional sensor with specific attributes
+        - New service call with parameters
+        - Integration with Home Assistant feature X
+
+  - type: textarea
+    id: examples
+    attributes:
+      label: Examples from Other Integrations
+      description: |
+        Are there other Home Assistant integrations that implement similar functionality?
+        Provide examples if you know of any.
+      placeholder: |
+        - Integration X has a similar feature that...
+        - The Y integration does something like this by...
+
+  - type: checkboxes
+    id: compatibility
+    attributes:
+      label: Compatibility Considerations
+      description: Please consider the following
+      options:
+        - label: This feature should work with existing configurations
+        - label: This feature may require breaking changes (acceptable)
+        - label: This feature should be optional/configurable
+        - label: This feature should be enabled by default
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional Context
+      description: |
+        Add any other context, screenshots, mockups, or examples that would help explain your request.
+        You can attach images by dragging and dropping them here.
+
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Checklist
+      description: Please confirm the following
+      options:
+        - label: I have searched existing issues to ensure this is not a duplicate
+          required: true
+        - label: I have provided enough detail to understand the request
+          required: true
+        - label: I understand this is a community project and features take time to implement
+          required: true
+        - label: I am willing to test this feature when it becomes available
+          required: false

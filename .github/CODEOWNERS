@@ -1,0 +1,11 @@
+# Global code owner for all files in the repository
+* @craibo
+
+# Specific ownership for integration files
+/custom_components/red_energy/ @craibo
+
+# Documentation ownership
+*.md @craibo
+
+# Test files ownership
+/tests/ @craibo
