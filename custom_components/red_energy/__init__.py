@@ -18,6 +18,9 @@ from .const import (
 )
 from .coordinator import RedEnergyDataCoordinator
 from .services import async_setup_services, async_unload_services
+from .device_manager import RedEnergyDeviceManager
+from .state_manager import RedEnergyStateManager
+from .config_migration import RedEnergyConfigMigrator
 
 if TYPE_CHECKING:
     pass
@@ -45,6 +48,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         services
     )
     
+    # Check for config migration needs
+    migrator = RedEnergyConfigMigrator(hass)
+    migration_success = await migrator.async_migrate_config_entry(entry)
+    if not migration_success:
+        _LOGGER.error("Failed to migrate config entry %s", entry.entry_id)
+        # Continue anyway - migration failure shouldn't block setup
+    
+    # Initialize Stage 5 components
+    state_manager = RedEnergyStateManager(hass)
+    await state_manager.async_load_states()
+    
+    device_manager = RedEnergyDeviceManager(hass, entry)
+    
     # Create data coordinator
     coordinator = RedEnergyDataCoordinator(
         hass, username, password, client_id, selected_accounts, services
@@ -57,13 +73,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         _LOGGER.error("Failed to set up Red Energy integration: %s", err)
         raise ConfigEntryNotReady(f"Failed to connect to Red Energy: {err}") from err
     
-    # Store coordinator
+    # Set up devices
+    devices = await device_manager.async_setup_devices(
+        coordinator.data, selected_accounts, services
+    )
+    
+    # Store coordinator and Stage 5 components
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN][entry.entry_id] = {
         "coordinator": coordinator,
         "username": username,
         "selected_accounts": selected_accounts,
         "services": services,
+        "state_manager": state_manager,
+        "device_manager": device_manager,
+        "devices": devices,
     }
     
     # Set up platforms
@@ -91,6 +115,15 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if unload_ok:
         # Clean up stored data
         entry_data = hass.data[DOMAIN].pop(entry.entry_id)
+        
+        # Clean up Stage 5 components
+        if "state_manager" in entry_data:
+            state_manager = entry_data["state_manager"]
+            await state_manager.async_save_states()
+        
+        if "device_manager" in entry_data:
+            device_manager = entry_data["device_manager"]
+            await device_manager.async_cleanup_orphaned_entities()
         
         # Stop coordinator
         if "coordinator" in entry_data:
