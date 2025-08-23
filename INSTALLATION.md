@@ -33,29 +33,40 @@ This is Stage 1 - the integration currently:
 - ❌ Does not connect to Red Energy API yet
 - ❌ Does not retrieve real usage data
 
-## Next Steps - Stage 2: UI Configuration Flow
+## Stage 2 Complete: UI Configuration Flow ✅
 
-Stage 2 will implement a comprehensive Home Assistant UI configuration flow:
+### What's New:
+- **Complete UI-based configuration** - no manual file editing required
+- **Multi-step configuration flow** with credential validation
+- **Account discovery and selection** 
+- **Service type selection** (electricity, gas, or both)
+- **Comprehensive error handling** with user-friendly messages
+- **Mock API for testing** with sample credentials
+- **Options flow** for post-setup changes
 
-### Configuration Flow Features:
-- **Initial Setup UI**: Username, password, and client_id input fields
-- **Credential Validation**: Real-time validation against Red Energy API
-- **Account Discovery**: Automatic detection of available Red Energy accounts
-- **Service Selection**: Choose electricity, gas, or both services per account
-- **Multi-Account Support**: Configure multiple Red Energy accounts
-- **Error Handling**: Clear error messages for invalid credentials or API issues
+### Testing Stage 2:
+See `STAGE2_TESTING.md` for detailed testing instructions with mock credentials:
+- Username: `test@example.com` / Password: `testpass` / Client ID: `test-client-id-123`
 
-### Options Flow Features (post-setup):
-- Modify account selections
-- Change service types (electricity/gas)
-- Update polling intervals
-- Change credentials
+### Configuration Flow:
+1. **Settings** → **Devices & Services** → **Add Integration**
+2. Search for "Red Energy"
+3. Enter credentials (use mock credentials for testing)
+4. Select accounts to monitor
+5. Choose services (electricity/gas/both)
+6. Integration created with configured sensors
 
-### User Experience:
-1. Go to Settings → Devices & Services → Add Integration
-2. Search for "Red Energy" 
-3. Enter Red Energy login credentials
-4. Select which accounts and services to monitor
-5. Integration automatically creates sensors for usage and cost data
+### Current Status:
+- ✅ Full UI-based configuration implemented
+- ✅ Mock API for testing without real credentials
+- ✅ Multi-account support
+- ✅ Service selection per account
+- ✅ All tests passing (10/10)
+- ❌ Real Red Energy API not connected yet (Stage 3)
+- ❌ No actual usage data sensors yet (Stage 3)
 
-**All configuration will be handled through the Home Assistant UI - no manual file editing required.**
+## Next Steps - Stage 3: Core API Integration
+- Connect to real Red Energy API
+- Implement data coordinators for polling
+- Create actual usage and cost sensors
+- Add proper error recovery and logging

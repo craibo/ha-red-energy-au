@@ -7,6 +7,6 @@
   "documentation": "https://github.com/craibo/ha-red-energy-au",
   "integration_type": "hub",
   "iot_class": "cloud_polling",
-  "requirements": ["aiohttp"],
+  "requirements": ["aiohttp", "voluptuous"],
   "version": "0.1.0"
 }

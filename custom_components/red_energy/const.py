@@ -21,3 +21,20 @@ SERVICE_TYPE_ELECTRICITY: Final = "electricity"
 SERVICE_TYPE_GAS: Final = "gas"
 
 API_TIMEOUT: Final = 30
+
+# Configuration flow
+STEP_USER: Final = "user"
+STEP_ACCOUNT_SELECT: Final = "account_select"
+STEP_SERVICE_SELECT: Final = "service_select"
+
+# Error messages
+ERROR_AUTH_FAILED: Final = "auth_failed"
+ERROR_CANNOT_CONNECT: Final = "cannot_connect"
+ERROR_INVALID_CLIENT_ID: Final = "invalid_client_id"
+ERROR_UNKNOWN: Final = "unknown"
+ERROR_NO_ACCOUNTS: Final = "no_accounts"
+
+# Data keys
+DATA_ACCOUNTS: Final = "accounts"
+DATA_SELECTED_ACCOUNTS: Final = "selected_accounts"
+DATA_CUSTOMER_DATA: Final = "customer_data"
