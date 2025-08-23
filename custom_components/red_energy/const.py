@@ -12,6 +12,9 @@ CONF_CLIENT_ID: Final = "client_id"
 DEFAULT_NAME: Final = "Red Energy"
 DEFAULT_SCAN_INTERVAL: Final = 300
 
+# Device information
+MANUFACTURER: Final = "Red Energy"
+
 # Polling intervals (seconds)
 SCAN_INTERVAL_OPTIONS: Final = {
     "1min": 60,
