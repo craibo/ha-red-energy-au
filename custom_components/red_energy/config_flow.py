@@ -56,7 +56,11 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
     try:
         validate_config_data(data)
     except DataValidationError as err:
-        _LOGGER.error("Configuration validation failed: %s", err)
+        _LOGGER.error(
+            "Configuration validation failed: %s. "
+            "For testing, use: test@example.com / testpass / test-client-id-123",
+            err
+        )
         raise InvalidAuth from err
     
     session = async_get_clientsession(hass)
@@ -72,6 +76,12 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
         )
         
         if not auth_success:
+            _LOGGER.warning(
+                "Authentication failed for user %s - using mock API, "
+                "valid test credentials are: test@example.com / testpass / test-client-id-123 "
+                "or demo@redenergy.com.au / demo123 / demo-client-abc",
+                data[CONF_USERNAME]
+            )
             raise InvalidAuth
         
         # Get customer data and properties
@@ -282,15 +292,15 @@ class RedEnergyOptionsFlowHandler(config_entries.OptionsFlow):
         interval_options = {}
         for key, seconds in SCAN_INTERVAL_OPTIONS.items():
             if seconds == 60:
-                interval_options[seconds] = "1 minute"
+                interval_options[key] = "1 minute"
             elif seconds == 300:
-                interval_options[seconds] = "5 minutes (default)"
+                interval_options[key] = "5 minutes (default)"
             elif seconds == 900:
-                interval_options[seconds] = "15 minutes"
+                interval_options[key] = "15 minutes"
             elif seconds == 1800:
-                interval_options[seconds] = "30 minutes"  
+                interval_options[key] = "30 minutes"  
             elif seconds == 3600:
-                interval_options[seconds] = "1 hour"
+                interval_options[key] = "1 hour"
         
         schema = vol.Schema({
             vol.Required("services", default=current_services): vol.All(

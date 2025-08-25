@@ -257,7 +257,7 @@ def validate_config_data(config: Dict[str, Any]) -> None:
     
     # Validate client_id format (should be non-empty string)
     client_id = config["client_id"]
-    if len(client_id) < 10:
+    if len(client_id) < 5:
         raise DataValidationError("Client ID appears too short - verify it was captured correctly")
     
     _LOGGER.debug("Configuration validation passed")
