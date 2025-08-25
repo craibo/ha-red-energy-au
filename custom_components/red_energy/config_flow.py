@@ -75,8 +75,9 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
         )
         
         if not auth_success:
-            _LOGGER.warning(
-                "Authentication failed for user %s - please verify credentials are correct",
+            _LOGGER.error(
+                "Authentication failed for user %s - credentials rejected by Red Energy API. "
+                "Please verify: 1) Username/password are correct, 2) Client ID is valid and captured correctly from mobile app",
                 data[CONF_USERNAME]
             )
             raise InvalidAuth
@@ -94,12 +95,27 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
             DATA_ACCOUNTS: properties,
             "title": customer_data.get("name", "Red Energy Account")
         }
-    except RedEnergyAuthError:
-        raise InvalidAuth
-    except RedEnergyAPIError:
-        raise CannotConnect
+    except RedEnergyAuthError as err:
+        _LOGGER.error(
+            "Red Energy authentication error for user %s: %s. "
+            "This typically indicates invalid credentials or client_id. "
+            "Verify username/password work in Red Energy app and client_id is correctly captured.",
+            data[CONF_USERNAME], err
+        )
+        raise InvalidAuth from err
+    except RedEnergyAPIError as err:
+        _LOGGER.error(
+            "Red Energy API error for user %s: %s. "
+            "This may indicate network issues, API unavailability, or invalid API responses.",
+            data[CONF_USERNAME], err
+        )
+        raise CannotConnect from err
     except Exception as err:
-        _LOGGER.exception("Unexpected exception")
+        _LOGGER.exception(
+            "Unexpected error during Red Energy validation for user %s: %s. "
+            "This may indicate a bug in the integration or unexpected API behavior.",
+            data[CONF_USERNAME], err
+        )
         raise UnknownError from err
 
 

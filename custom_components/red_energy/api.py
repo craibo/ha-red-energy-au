@@ -73,9 +73,12 @@ class RedEnergyAPI:
             _LOGGER.debug("Red Energy authentication successful")
             return True
             
+        except RedEnergyAuthError:
+            # Re-raise RedEnergyAuthError as-is (already logged above)
+            raise
         except Exception as err:
-            _LOGGER.error("Authentication failed: %s", err)
-            raise RedEnergyAuthError(f"Authentication failed: {err}") from err
+            _LOGGER.error("Unexpected error during authentication: %s", err, exc_info=True)
+            raise RedEnergyAuthError(f"Authentication failed due to unexpected error: {err}") from err
     
     async def _get_discovery_data(self) -> Dict[str, Any]:
         """Get OAuth2 discovery data."""
@@ -109,13 +112,33 @@ class RedEnergyAPI:
         async with async_timeout.timeout(API_TIMEOUT):
             async with self._session.post(self.OKTA_AUTH_URL, json=payload) as response:
                 if response.status != 200:
-                    error_data = await response.json()
-                    error_msg = error_data.get("errorSummary", "Authentication failed")
-                    raise RedEnergyAuthError(f"Okta authentication failed: {error_msg}")
+                    try:
+                        error_data = await response.json()
+                        error_msg = error_data.get("errorSummary", "Authentication failed")
+                        error_code = error_data.get("errorCode", "Unknown")
+                        _LOGGER.error(
+                            "Okta authentication failed - HTTP %s: %s (Code: %s). "
+                            "This usually means invalid username/password. Full error: %s",
+                            response.status, error_msg, error_code, error_data
+                        )
+                        raise RedEnergyAuthError(f"Okta authentication failed: {error_msg} (Code: {error_code})")
+                    except Exception as parse_err:
+                        response_text = await response.text()
+                        _LOGGER.error(
+                            "Okta authentication failed - HTTP %s. Unable to parse error response: %s. Raw response: %s",
+                            response.status, parse_err, response_text[:500]
+                        )
+                        raise RedEnergyAuthError(f"Okta authentication failed with HTTP {response.status}")
                 
                 data = await response.json()
-                if data.get("status") != "SUCCESS":
-                    raise RedEnergyAuthError(f"Authentication failed: {data.get('status', 'Unknown error')}")
+                status = data.get("status")
+                if status != "SUCCESS":
+                    _LOGGER.error(
+                        "Okta authentication failed - Status: %s. Full response: %s. "
+                        "This may indicate MFA required, account locked, or other Okta-specific issues.",
+                        status, data
+                    )
+                    raise RedEnergyAuthError(f"Authentication failed - Status: {status}")
                 
                 return data["sessionToken"], data["expiresAt"]
     
@@ -149,9 +172,19 @@ class RedEnergyAPI:
         # Make request to authorization endpoint - this should redirect
         async with async_timeout.timeout(API_TIMEOUT):
             async with self._session.get(auth_url, allow_redirects=False) as response:
+                _LOGGER.debug("Authorization response status: %s, headers: %s", response.status, dict(response.headers))
+                
                 location = response.headers.get("Location", "")
                 if not location:
+                    response_text = await response.text()
+                    _LOGGER.error(
+                        "No redirect location found in authorization response. "
+                        "Status: %s, Response: %s. This may indicate invalid client_id or session_token.",
+                        response.status, response_text[:500]
+                    )
                     raise RedEnergyAuthError("No redirect location found in authorization response")
+                
+                _LOGGER.debug("Authorization redirect location: %s", location)
                 
                 # Parse authorization code from redirect URL
                 parsed_url = urlparse(location)
@@ -161,6 +194,11 @@ class RedEnergyAPI:
                 if not auth_code:
                     error = query_params.get("error", ["Unknown error"])[0]
                     error_description = query_params.get("error_description", [""])[0]
+                    _LOGGER.error(
+                        "Authorization failed - Error: %s, Description: %s, Full params: %s. "
+                        "This may indicate invalid client_id, expired session_token, or OAuth2 configuration issues.",
+                        error, error_description, query_params
+                    )
                     raise RedEnergyAuthError(f"Authorization failed: {error} - {error_description}")
                 
                 return auth_code
@@ -187,8 +225,24 @@ class RedEnergyAPI:
                 data=token_data,
                 headers={'Content-Type': 'application/x-www-form-urlencoded'}
             ) as response:
-                response.raise_for_status()
+                if response.status != 200:
+                    try:
+                        error_data = await response.json()
+                        _LOGGER.error(
+                            "Token exchange failed - HTTP %s: %s. Full error: %s. "
+                            "This may indicate invalid authorization code, client_id, or code_verifier.",
+                            response.status, error_data.get('error_description', 'Unknown error'), error_data
+                        )
+                    except Exception:
+                        response_text = await response.text()
+                        _LOGGER.error(
+                            "Token exchange failed - HTTP %s. Raw response: %s",
+                            response.status, response_text[:500]
+                        )
+                    response.raise_for_status()
+                
                 tokens = await response.json()
+                _LOGGER.debug("Token exchange successful, received tokens with expires_in: %s", tokens.get('expires_in'))
                 
                 self._access_token = tokens['access_token']
                 self._refresh_token = tokens.get('refresh_token')
@@ -198,14 +252,16 @@ class RedEnergyAPI:
     async def test_credentials(self, username: str, password: str, client_id: str) -> bool:
         """Test if credentials are valid by attempting authentication."""
         try:
+            _LOGGER.debug("Testing credentials for user: %s with client_id: %s", username, client_id[:10] + "..." if len(client_id) > 10 else client_id)
             # Just test getting session token without full OAuth flow
-            await self._get_session_token(username, password)
+            session_token, expires_at = await self._get_session_token(username, password)
+            _LOGGER.debug("Credential test successful - session token obtained, expires: %s", expires_at)
             return True
         except RedEnergyAuthError as err:
-            _LOGGER.debug("Credential test failed: %s", err)
+            _LOGGER.debug("Credential test failed with RedEnergyAuthError: %s", err)
             return False
         except Exception as err:
-            _LOGGER.error("Unexpected error during credential test: %s", err)
+            _LOGGER.error("Unexpected error during credential test for user %s: %s", username, err, exc_info=True)
             return False
     
     async def get_customer_data(self) -> Dict[str, Any]:
