@@ -18,9 +18,6 @@ from .const import (
 )
 from .coordinator import RedEnergyDataCoordinator
 from .services import async_setup_services, async_unload_services
-from .device_manager import RedEnergyDeviceManager
-from .state_manager import RedEnergyStateManager
-from .config_migration import RedEnergyConfigMigrator
 
 if TYPE_CHECKING:
     pass
@@ -47,6 +44,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         selected_accounts,
         services
     )
+    
+    # Import Stage 5 components dynamically to avoid circular imports
+    from .config_migration import RedEnergyConfigMigrator
+    from .state_manager import RedEnergyStateManager  
+    from .device_manager import RedEnergyDeviceManager
     
     # Check for config migration needs
     migrator = RedEnergyConfigMigrator(hass)
