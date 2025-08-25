@@ -132,7 +132,7 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
                             "Fetched %s usage data for property %s: %s total usage",
                             service_type,
                             property_id,
-                            service_usage.get("total_usage", 0)
+                            validated_usage.get("total_usage", 0)
                         )
                         
                     except (RedEnergyAPIError, DataValidationError) as err:

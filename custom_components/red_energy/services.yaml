@@ -1,0 +1,54 @@
+refresh_data:
+  name: Refresh data
+  description: Manually refresh Red Energy usage data for all configured integrations.
+  fields: {}
+
+update_credentials:
+  name: Update credentials
+  description: Update Red Energy API credentials for authentication.
+  fields:
+    username:
+      name: Username
+      description: Red Energy account email address.
+      required: true
+      example: "user@example.com"
+      selector:
+        text:
+          type: email
+    password:
+      name: Password
+      description: Red Energy account password.
+      required: true
+      selector:
+        text:
+          type: password
+    client_id:
+      name: Client ID
+      description: Client ID captured from Red Energy mobile app.
+      required: true
+      example: "0oa1a2b3c4d5e6f7g8h9"
+      selector:
+        text:
+
+export_data:
+  name: Export data
+  description: Export Red Energy usage data in JSON or CSV format.
+  fields:
+    format:
+      name: Export format
+      description: Data export format.
+      default: "json"
+      selector:
+        select:
+          options:
+            - "json"
+            - "csv"
+    days:
+      name: Days
+      description: Number of days of data to export (1-365).
+      default: 30
+      selector:
+        number:
+          min: 1
+          max: 365
+          mode: box
