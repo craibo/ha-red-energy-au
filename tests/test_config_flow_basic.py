@@ -41,13 +41,13 @@ def test_translations_exist():
     assert os.path.exists(translations_path)
 
 
-def test_mock_api_file_exists():
-    """Test that mock API file exists."""
+def test_mock_api_file_removed():
+    """Test that mock API file has been removed."""
     mock_api_path = os.path.join(
         os.path.dirname(os.path.dirname(__file__)),
         "custom_components", "red_energy", "mock_api.py"
     )
-    assert os.path.exists(mock_api_path)
+    assert not os.path.exists(mock_api_path)
 
 
 def test_api_file_exists():
