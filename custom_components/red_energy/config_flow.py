@@ -15,7 +15,6 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import RedEnergyAPI, RedEnergyAPIError, RedEnergyAuthError
-from .mock_api import MockRedEnergyAPI
 from .data_validation import validate_config_data, DataValidationError
 from .const import (
     CONF_CLIENT_ID,
@@ -58,14 +57,14 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
     except DataValidationError as err:
         _LOGGER.error(
             "Configuration validation failed: %s. "
-            "For testing, use: test@example.com / testpass / test-client-id-123",
+            "Ensure you have valid Red Energy credentials and client_id from mobile app",
             err
         )
         raise InvalidAuth from err
     
     session = async_get_clientsession(hass)
-    # Use mock API for testing - replace with RedEnergyAPI for production
-    api = MockRedEnergyAPI(session)
+    # Use real Red Energy API
+    api = RedEnergyAPI(session)
     
     try:
         # Test authentication
@@ -77,9 +76,7 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
         
         if not auth_success:
             _LOGGER.warning(
-                "Authentication failed for user %s - using mock API, "
-                "valid test credentials are: test@example.com / testpass / test-client-id-123 "
-                "or demo@redenergy.com.au / demo123 / demo-client-abc",
+                "Authentication failed for user %s - please verify credentials are correct",
                 data[CONF_USERNAME]
             )
             raise InvalidAuth

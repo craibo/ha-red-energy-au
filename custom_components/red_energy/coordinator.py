@@ -11,7 +11,6 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import RedEnergyAPI, RedEnergyAPIError, RedEnergyAuthError
-from .mock_api import MockRedEnergyAPI
 from .data_validation import (
     DataValidationError,
     validate_customer_data,
@@ -60,8 +59,8 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
         
         # Initialize API client
         session = async_get_clientsession(hass)
-        # TODO: Replace with RedEnergyAPI for production
-        self.api = MockRedEnergyAPI(session)
+        # Use real Red Energy API
+        self.api = RedEnergyAPI(session)
         
         self._customer_data: Optional[Dict[str, Any]] = None
         self._properties: List[Dict[str, Any]] = []

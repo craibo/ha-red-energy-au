@@ -65,11 +65,24 @@ A comprehensive Home Assistant custom integration for Red Energy (Australian ene
 1. Go to **Settings** → **Devices & Services**
 2. Click **Add Integration** and search for "Red Energy"
 3. Enter your Red Energy credentials:
-   - Username (email address)
-   - Password
-   - Client ID
+   - **Username**: Your Red Energy account email address
+   - **Password**: Your Red Energy account password
+   - **Client ID**: Must be captured from Red Energy mobile app using network monitoring tools
 4. Select your properties and services (electricity/gas)
 5. Configure advanced options if desired
+
+#### Getting Your Client ID
+
+The Client ID is required for OAuth2 authentication with Red Energy's API. To obtain it:
+
+1. Install a network monitoring tool like [Proxyman](https://proxyman.io/) (Mac) or [Charles Proxy](https://www.charlesproxy.com/)
+2. Configure your mobile device to use the proxy
+3. Open the Red Energy mobile app and log in
+4. Look for API requests to `redenergy.okta.com` or `login.redenergy.com.au`
+5. Find the `client_id` parameter in the OAuth2 requests
+6. Copy this value to use in the integration setup
+
+⚠️ **Important**: This integration uses the real Red Energy API. You must have valid Red Energy account credentials and a captured client_id to use this integration.
 
 ## Sensors Created
 

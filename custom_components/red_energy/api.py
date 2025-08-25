@@ -5,6 +5,7 @@ import asyncio
 import logging
 import secrets
 import string
+import uuid
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlencode, parse_qs, urlparse
@@ -32,6 +33,7 @@ class RedEnergyAPI:
     DISCOVERY_URL = "https://login.redenergy.com.au/oauth2/default/.well-known/openid-configuration"
     REDIRECT_URI = "au.com.redenergy://callback"
     BASE_API_URL = "https://selfservice.services.retail.energy/v1"
+    OKTA_AUTH_URL = "https://redenergy.okta.com/api/v1/authn"
     
     def __init__(self, session: aiohttp.ClientSession) -> None:
         """Initialize the API client."""
@@ -41,25 +43,29 @@ class RedEnergyAPI:
         self._token_expires: Optional[datetime] = None
         
     async def authenticate(self, username: str, password: str, client_id: str) -> bool:
-        """Authenticate with Red Energy using OAuth2 PKCE flow."""
+        """Authenticate with Red Energy using Okta session token and OAuth2 PKCE flow."""
         try:
             _LOGGER.debug("Starting Red Energy authentication")
             
-            # Get OAuth2 endpoints from discovery URL
+            # Step 1: Get Okta session token
+            session_token, session_expires = await self._get_session_token(username, password)
+            _LOGGER.debug("Obtained session token, expires: %s", session_expires)
+            
+            # Step 2: Get OAuth2 endpoints from discovery URL
             discovery_data = await self._get_discovery_data()
             auth_endpoint = discovery_data["authorization_endpoint"]
             token_endpoint = discovery_data["token_endpoint"]
             
-            # Generate PKCE parameters
+            # Step 3: Generate PKCE parameters
             code_verifier = self._generate_code_verifier()
             code_challenge = self._generate_code_challenge(code_verifier)
             
-            # Step 1: Get authorization code
+            # Step 4: Get authorization code using session token
             auth_code = await self._get_authorization_code(
-                auth_endpoint, username, password, client_id, code_challenge
+                auth_endpoint, session_token, client_id, code_challenge
             )
             
-            # Step 2: Exchange authorization code for tokens
+            # Step 5: Exchange authorization code for access/refresh tokens
             await self._exchange_code_for_tokens(
                 token_endpoint, auth_code, client_id, code_verifier
             )
@@ -80,57 +86,84 @@ class RedEnergyAPI:
     
     def _generate_code_verifier(self) -> str:
         """Generate PKCE code verifier."""
-        return base64.urlsafe_b64encode(
-            ''.join(secrets.choice(string.ascii_letters + string.digits) 
-                   for _ in range(128)).encode()
-        ).decode().rstrip('=')
+        # Generate 48 character random string as per reference implementation
+        return ''.join(secrets.choice(string.ascii_letters + string.digits + '-._~') 
+                      for _ in range(48))
     
     def _generate_code_challenge(self, verifier: str) -> str:
         """Generate PKCE code challenge from verifier."""
         digest = hashlib.sha256(verifier.encode()).digest()
         return base64.urlsafe_b64encode(digest).decode().rstrip('=')
     
+    async def _get_session_token(self, username: str, password: str) -> tuple[str, str]:
+        """Get Okta session token using username/password."""
+        payload = {
+            "username": username,
+            "password": password,
+            "options": {
+                "warnBeforePasswordExpired": False,
+                "multiOptionalFactorEnroll": False
+            }
+        }
+        
+        async with async_timeout.timeout(API_TIMEOUT):
+            async with self._session.post(self.OKTA_AUTH_URL, json=payload) as response:
+                if response.status != 200:
+                    error_data = await response.json()
+                    error_msg = error_data.get("errorSummary", "Authentication failed")
+                    raise RedEnergyAuthError(f"Okta authentication failed: {error_msg}")
+                
+                data = await response.json()
+                if data.get("status") != "SUCCESS":
+                    raise RedEnergyAuthError(f"Authentication failed: {data.get('status', 'Unknown error')}")
+                
+                return data["sessionToken"], data["expiresAt"]
+    
     async def _get_authorization_code(
         self, 
         auth_endpoint: str, 
-        username: str, 
-        password: str, 
+        session_token: str,
         client_id: str,
         code_challenge: str
     ) -> str:
-        """Get authorization code through login flow."""
-        # Simplified implementation - in production this would handle the full OAuth flow
-        # including form submissions, redirects, and parsing the authorization code from the callback
+        """Get authorization code using session token and PKCE challenge."""
+        # Generate state and nonce for OAuth2 security
+        state = str(uuid.uuid4())
+        nonce = str(uuid.uuid4())
         
         auth_params = {
             'client_id': client_id,
             'response_type': 'code',
             'redirect_uri': self.REDIRECT_URI,
-            'scope': 'openid profile email',
+            'scope': 'openid profile offline_access',
             'code_challenge': code_challenge,
             'code_challenge_method': 'S256',
-            'state': secrets.token_urlsafe(32),
+            'state': state,
+            'nonce': nonce,
+            'sessionToken': session_token
         }
         
         auth_url = f"{auth_endpoint}?{urlencode(auth_params)}"
+        _LOGGER.debug("Authorization URL: %s", auth_url)
         
-        # For now, return a placeholder that will be replaced with real implementation
-        # In a real implementation, this would:
-        # 1. Submit the login form with username/password
-        # 2. Handle any MFA challenges
-        # 3. Follow redirects to capture the authorization code
-        # 4. Parse the code from the callback URL
-        
-        _LOGGER.warning(
-            "Red Energy API authentication requires manual implementation of OAuth flow. "
-            "Using mock mode for now. To use real API, implement the full OAuth2 PKCE flow."
-        )
-        
-        raise RedEnergyAuthError(
-            "Real Red Energy API authentication not yet implemented. "
-            "The integration currently uses mock data for testing. "
-            "To connect to the real API, the OAuth2 PKCE flow needs to be completed."
-        )
+        # Make request to authorization endpoint - this should redirect
+        async with async_timeout.timeout(API_TIMEOUT):
+            async with self._session.get(auth_url, allow_redirects=False) as response:
+                location = response.headers.get("Location", "")
+                if not location:
+                    raise RedEnergyAuthError("No redirect location found in authorization response")
+                
+                # Parse authorization code from redirect URL
+                parsed_url = urlparse(location)
+                query_params = parse_qs(parsed_url.query)
+                auth_code = query_params.get("code", [None])[0]
+                
+                if not auth_code:
+                    error = query_params.get("error", ["Unknown error"])[0]
+                    error_description = query_params.get("error_description", [""])[0]
+                    raise RedEnergyAuthError(f"Authorization failed: {error} - {error_description}")
+                
+                return auth_code
     
     async def _exchange_code_for_tokens(
         self,
@@ -165,8 +198,14 @@ class RedEnergyAPI:
     async def test_credentials(self, username: str, password: str, client_id: str) -> bool:
         """Test if credentials are valid by attempting authentication."""
         try:
-            return await self.authenticate(username, password, client_id)
-        except RedEnergyAuthError:
+            # Just test getting session token without full OAuth flow
+            await self._get_session_token(username, password)
+            return True
+        except RedEnergyAuthError as err:
+            _LOGGER.debug("Credential test failed: %s", err)
+            return False
+        except Exception as err:
+            _LOGGER.error("Unexpected error during credential test: %s", err)
             return False
     
     async def get_customer_data(self) -> Dict[str, Any]:
@@ -229,5 +268,35 @@ class RedEnergyAPI:
     
     async def _refresh_access_token(self) -> None:
         """Refresh the access token using refresh token."""
-        # Implementation would depend on the specific OAuth2 flow
-        raise NotImplementedError("Token refresh needs implementation")
+        if not self._refresh_token:
+            raise RedEnergyAuthError("No refresh token available")
+        
+        # Get token endpoint from discovery
+        discovery_data = await self._get_discovery_data()
+        token_endpoint = discovery_data["token_endpoint"]
+        
+        token_data = {
+            'grant_type': 'refresh_token',
+            'refresh_token': self._refresh_token,
+        }
+        
+        async with async_timeout.timeout(API_TIMEOUT):
+            async with self._session.post(
+                token_endpoint,
+                data=token_data,
+                headers={'Content-Type': 'application/x-www-form-urlencoded'}
+            ) as response:
+                if response.status != 200:
+                    error_data = await response.json()
+                    raise RedEnergyAuthError(f"Token refresh failed: {error_data}")
+                
+                tokens = await response.json()
+                
+                self._access_token = tokens['access_token']
+                if 'refresh_token' in tokens:
+                    self._refresh_token = tokens['refresh_token']
+                
+                expires_in = tokens.get('expires_in', 3600)
+                self._token_expires = datetime.now() + timedelta(seconds=expires_in)
+                
+                _LOGGER.debug("Access token refreshed successfully")
