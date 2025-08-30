@@ -70,7 +70,7 @@ class RedEnergyAPI:
                 token_endpoint, auth_code, client_id, code_verifier
             )
             
-            _LOGGER.debug("Red Energy authentication successful")
+            _LOGGER.debug("Red Energy authentication successful - access token acquired, expires: %s", self._token_expires)
             return True
             
         except RedEnergyAuthError:
@@ -250,13 +250,11 @@ class RedEnergyAPI:
                 self._token_expires = datetime.now() + timedelta(seconds=expires_in)
     
     async def test_credentials(self, username: str, password: str, client_id: str) -> bool:
-        """Test if credentials are valid by attempting authentication."""
+        """Test if credentials are valid by attempting full authentication."""
         try:
             _LOGGER.debug("Testing credentials for user: %s with client_id: %s", username, client_id[:10] + "..." if len(client_id) > 10 else client_id)
-            # Just test getting session token without full OAuth flow
-            session_token, expires_at = await self._get_session_token(username, password)
-            _LOGGER.debug("Credential test successful - session token obtained, expires: %s", expires_at)
-            return True
+            # Perform full authentication to get access token
+            return await self.authenticate(username, password, client_id)
         except RedEnergyAuthError as err:
             _LOGGER.debug("Credential test failed with RedEnergyAuthError: %s", err)
             return False
@@ -314,6 +312,11 @@ class RedEnergyAPI:
     async def _ensure_valid_token(self) -> None:
         """Ensure we have a valid access token."""
         if not self._access_token:
+            _LOGGER.error(
+                "No access token available. This indicates authentication was not completed properly. "
+                "Token expires: %s, Refresh token available: %s",
+                self._token_expires, bool(self._refresh_token)
+            )
             raise RedEnergyAuthError("No access token available")
         
         if self._token_expires and datetime.now() >= self._token_expires:
