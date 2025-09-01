@@ -246,7 +246,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         
         schema = vol.Schema({
             vol.Required("services", default=[SERVICE_TYPE_ELECTRICITY]): vol.All(
-                vol.Ensure_list, [vol.In(service_options)]
+                vol.EnsureList, [vol.In(service_options)]
             ),
         })
 
@@ -317,7 +317,7 @@ class RedEnergyOptionsFlowHandler(config_entries.OptionsFlow):
         
         schema = vol.Schema({
             vol.Required("services", default=current_services): vol.All(
-                vol.Ensure_list, [vol.In(service_options)]
+                vol.EnsureList, [vol.In(service_options)]
             ),
             vol.Required(CONF_SCAN_INTERVAL, default=current_scan_interval): vol.In(interval_options),
             vol.Required(CONF_ENABLE_ADVANCED_SENSORS, default=current_advanced_sensors): bool,
