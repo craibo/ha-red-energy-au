@@ -13,6 +13,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers import config_validation as cv
 
 from .api import RedEnergyAPI, RedEnergyAPIError, RedEnergyAuthError
 from .data_validation import validate_config_data, DataValidationError
@@ -246,7 +247,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         
         schema = vol.Schema({
             vol.Required("services", default=[SERVICE_TYPE_ELECTRICITY]): vol.All(
-                vol.EnsureList, [vol.In(service_options)]
+                cv.ensure_list, [vol.In(service_options)]
             ),
         })
 
@@ -317,7 +318,7 @@ class RedEnergyOptionsFlowHandler(config_entries.OptionsFlow):
         
         schema = vol.Schema({
             vol.Required("services", default=current_services): vol.All(
-                vol.EnsureList, [vol.In(service_options)]
+                cv.ensure_list, [vol.In(service_options)]
             ),
             vol.Required(CONF_SCAN_INTERVAL, default=current_scan_interval): vol.In(interval_options),
             vol.Required(CONF_ENABLE_ADVANCED_SENSORS, default=current_advanced_sensors): bool,
