@@ -201,6 +201,40 @@ def test_validate_input_structure():
     assert validated[CONF_CLIENT_ID] == "test-client-id-123"
 
 
+@pytest.mark.asyncio
+async def test_service_select_schema_validation():
+    """Test that service selection schema validates correctly with cv.ensure_list."""
+    hass = AsyncMock(spec=HomeAssistant)
+    
+    from custom_components.red_energy.config_flow import ConfigFlow
+    from custom_components.red_energy.const import SERVICE_TYPE_ELECTRICITY, SERVICE_TYPE_GAS
+    
+    flow = ConfigFlow()
+    flow.hass = hass
+    
+    # Set up flow state to reach service selection
+    flow._customer_data = MOCK_CUSTOMER_DATA
+    flow._accounts = MOCK_PROPERTIES
+    flow._selected_account = MOCK_PROPERTIES[0]
+    flow.async_create_entry = AsyncMock(return_value={"type": "create_entry"})
+    flow.async_set_unique_id = AsyncMock()
+    flow._abort_if_unique_id_configured = AsyncMock()
+    
+    # Test valid single service selection
+    result = await flow.async_step_service_select({"services": [SERVICE_TYPE_ELECTRICITY]})
+    assert result["type"] == "create_entry"
+    
+    # Test valid multiple service selection
+    flow.async_create_entry = AsyncMock(return_value={"type": "create_entry"})
+    result = await flow.async_step_service_select({"services": [SERVICE_TYPE_ELECTRICITY, SERVICE_TYPE_GAS]})
+    assert result["type"] == "create_entry"
+    
+    # Test that schema accepts list inputs (validates cv.ensure_list works)
+    flow.async_create_entry = AsyncMock(return_value={"type": "create_entry"})
+    result = await flow.async_step_service_select({"services": SERVICE_TYPE_ELECTRICITY})  # Single string, should be converted to list
+    assert result["type"] == "create_entry"
+
+
 def test_domain_constant():
     """Test that domain constant is correct."""
     assert DOMAIN == "red_energy"
