@@ -89,9 +89,8 @@ class RedEnergyAPI:
     
     def _generate_code_verifier(self) -> str:
         """Generate PKCE code verifier."""
-        # Generate 48 character random string as per reference implementation
-        return ''.join(secrets.choice(string.ascii_letters + string.digits + '-._~') 
-                      for _ in range(48))
+        # Generate 48 character base64url-encoded random string (compatible with authlib)
+        return base64.urlsafe_b64encode(secrets.token_bytes(36)).decode().rstrip('=')
     
     def _generate_code_challenge(self, verifier: str) -> str:
         """Generate PKCE code challenge from verifier."""
