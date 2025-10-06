@@ -228,11 +228,38 @@ def validate_single_service(data: Dict[str, Any]) -> Dict[str, Any]:
     _LOGGER.debug("Validated service: type=%s, consumer=%s, active=%s", 
                  service_type, consumer_number, is_active)
     
-    return {
+    validated_service = {
         "type": service_type,
         "consumer_number": str(consumer_number),
         "active": is_active,
     }
+    
+    # Preserve additional metadata fields from the API response
+    metadata_fields = [
+        "nmi",
+        "nmiWithChecksum",
+        "meterType",
+        "solar",
+        "productName",
+        "linesCompany",
+        "balanceDollar",
+        "arrearsDollar",
+        "lastBillDate",
+        "nextBillDate",
+        "billingFrequency",
+        "chargeClass",
+        "jurisdiction",
+        "latitude",
+        "longitude",
+        "entryDate",
+        "finalDate",
+    ]
+    
+    for field in metadata_fields:
+        if field in data:
+            validated_service[field] = data[field]
+    
+    return validated_service
 
 
 def validate_usage_data(data: Dict[str, Any]) -> Dict[str, Any]:

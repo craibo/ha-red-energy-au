@@ -30,6 +30,18 @@ SENSOR_TYPE_MONTHLY_AVERAGE: Final = "monthly_average"
 SENSOR_TYPE_PEAK_USAGE: Final = "peak_usage"
 SENSOR_TYPE_EFFICIENCY: Final = "efficiency"
 
+# Service metadata sensor types
+SENSOR_TYPE_NMI: Final = "nmi"
+SENSOR_TYPE_METER_TYPE: Final = "meter_type"
+SENSOR_TYPE_SOLAR: Final = "solar"
+SENSOR_TYPE_PRODUCT_NAME: Final = "energy_plan"
+SENSOR_TYPE_DISTRIBUTOR: Final = "distributor"
+SENSOR_TYPE_BALANCE: Final = "balance"
+SENSOR_TYPE_ARREARS: Final = "arrears"
+SENSOR_TYPE_LAST_BILL_DATE: Final = "last_bill_date"
+SENSOR_TYPE_NEXT_BILL_DATE: Final = "next_bill_date"
+SENSOR_TYPE_BILLING_FREQUENCY: Final = "billing_frequency"
+
 # Configuration options
 CONF_SCAN_INTERVAL: Final = "scan_interval"
 CONF_ENABLE_ADVANCED_SENSORS: Final = "enable_advanced_sensors"

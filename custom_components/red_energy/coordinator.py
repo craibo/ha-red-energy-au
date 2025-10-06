@@ -478,3 +478,19 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
             return None
         
         return service_data["usage_data"].get("total_usage", 0.0)
+
+    def get_service_metadata(self, property_id: str, service_type: str) -> Optional[Dict[str, Any]]:
+        """Get service metadata (NMI, meter type, solar, etc.) for a property and service."""
+        property_data = self.get_property_data(property_id)
+        if not property_data:
+            return None
+        
+        property_info = property_data.get("property", {})
+        services = property_info.get("services", [])
+        
+        service_metadata = next(
+            (s for s in services if s.get("type") == service_type),
+            None
+        )
+        
+        return service_metadata
