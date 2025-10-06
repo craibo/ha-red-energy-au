@@ -81,19 +81,46 @@ async def async_setup_entry(
                 RedEnergyLastBillDateSensor(coordinator, config_entry, account_id, service_type),
                 RedEnergyNextBillDateSensor(coordinator, config_entry, account_id, service_type),
                 RedEnergyBillingFrequencySensor(coordinator, config_entry, account_id, service_type),
+                # NEW: Daily import/export breakdown (CORE)
+                RedEnergyDailyImportUsageSensor(coordinator, config_entry, account_id, service_type),
+                RedEnergyDailyExportUsageSensor(coordinator, config_entry, account_id, service_type),
+                # NEW: Total import/export breakdown (CORE)
+                RedEnergyTotalImportUsageSensor(coordinator, config_entry, account_id, service_type),
+                RedEnergyTotalExportUsageSensor(coordinator, config_entry, account_id, service_type),
+                # NEW: Cost breakdown (CORE)
+                RedEnergyTotalImportCostSensor(coordinator, config_entry, account_id, service_type),
+                RedEnergyTotalExportCreditSensor(coordinator, config_entry, account_id, service_type),
+                RedEnergyNetCostSensor(coordinator, config_entry, account_id, service_type),
             ])
             
             # Advanced sensors (optional)
             if advanced_sensors_enabled:
                 entities.extend([
+                    # Existing advanced sensors
                     RedEnergyDailyAverageSensor(coordinator, config_entry, account_id, service_type),
                     RedEnergyMonthlyAverageSensor(coordinator, config_entry, account_id, service_type),
                     RedEnergyPeakUsageSensor(coordinator, config_entry, account_id, service_type),
                     RedEnergyEfficiencySensor(coordinator, config_entry, account_id, service_type),
+                    # NEW: Time period import breakdown (ADVANCED)
+                    RedEnergyPeakImportUsageSensor(coordinator, config_entry, account_id, service_type),
+                    RedEnergyOffpeakImportUsageSensor(coordinator, config_entry, account_id, service_type),
+                    RedEnergyShoulderImportUsageSensor(coordinator, config_entry, account_id, service_type),
+                    # NEW: Time period export breakdown (ADVANCED)
+                    RedEnergyPeakExportUsageSensor(coordinator, config_entry, account_id, service_type),
+                    RedEnergyOffpeakExportUsageSensor(coordinator, config_entry, account_id, service_type),
+                    RedEnergyShoulderExportUsageSensor(coordinator, config_entry, account_id, service_type),
+                    # NEW: Demand and environmental (ADVANCED)
+                    RedEnergyMaxDemandSensor(coordinator, config_entry, account_id, service_type),
+                    RedEnergyMaxDemandTimeSensor(coordinator, config_entry, account_id, service_type),
+                    RedEnergyCarbonEmissionSensor(coordinator, config_entry, account_id, service_type),
                 ])
     
-    _LOGGER.debug("Created %d sensors (%d advanced) for Red Energy integration", 
-                 len(entities), len(entities) - (len(selected_accounts) * len(services) * 13))
+    _LOGGER.debug(
+        "Created %d sensors (%d core, %d advanced) for Red Energy integration", 
+        len(entities),
+        len(selected_accounts) * len(services) * 20,  # Core sensors
+        len(entities) - (len(selected_accounts) * len(services) * 20)  # Advanced sensors
+    )
     async_add_entities(entities)
 
 
@@ -766,3 +793,660 @@ class RedEnergyBillingFrequencySensor(RedEnergyBaseSensor):
         if frequency:
             return frequency.title()
         return None
+
+
+class RedEnergyDailyImportUsageSensor(RedEnergyBaseSensor):
+    """Red Energy daily import usage sensor (grid consumption)."""
+
+    def __init__(
+        self,
+        coordinator: RedEnergyDataCoordinator,
+        config_entry: ConfigEntry,
+        property_id: str,
+        service_type: str,
+    ) -> None:
+        """Initialize the daily import usage sensor."""
+        super().__init__(coordinator, config_entry, property_id, service_type, "daily_import_usage")
+        
+        if service_type == SERVICE_TYPE_ELECTRICITY:
+            self._attr_device_class = SensorDeviceClass.ENERGY
+            self._attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
+            self._attr_state_class = SensorStateClass.TOTAL_INCREASING
+        elif service_type == SERVICE_TYPE_GAS:
+            self._attr_device_class = SensorDeviceClass.ENERGY
+            self._attr_native_unit_of_measurement = "MJ"
+            self._attr_state_class = SensorStateClass.TOTAL_INCREASING
+
+    @property
+    def native_value(self) -> Optional[float]:
+        """Return the current daily import usage."""
+        return self.coordinator.get_latest_import_usage(self._property_id, self._service_type)
+
+    @property
+    def extra_state_attributes(self) -> Optional[dict[str, Any]]:
+        """Return extra state attributes."""
+        service_data = self.coordinator.get_service_usage(self._property_id, self._service_type)
+        if not service_data:
+            return None
+        
+        return {
+            "consumer_number": service_data.get("consumer_number"),
+            "last_updated": service_data.get("last_updated"),
+            "service_type": self._service_type,
+            "description": "Grid import (consumption)"
+        }
+
+
+class RedEnergyDailyExportUsageSensor(RedEnergyBaseSensor):
+    """Red Energy daily export usage sensor (solar generation)."""
+
+    def __init__(
+        self,
+        coordinator: RedEnergyDataCoordinator,
+        config_entry: ConfigEntry,
+        property_id: str,
+        service_type: str,
+    ) -> None:
+        """Initialize the daily export usage sensor."""
+        super().__init__(coordinator, config_entry, property_id, service_type, "daily_export_usage")
+        
+        if service_type == SERVICE_TYPE_ELECTRICITY:
+            self._attr_device_class = SensorDeviceClass.ENERGY
+            self._attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
+            self._attr_state_class = SensorStateClass.TOTAL_INCREASING
+            self._attr_icon = "mdi:solar-power"
+        elif service_type == SERVICE_TYPE_GAS:
+            self._attr_device_class = SensorDeviceClass.ENERGY
+            self._attr_native_unit_of_measurement = "MJ"
+            self._attr_state_class = SensorStateClass.TOTAL_INCREASING
+
+    @property
+    def native_value(self) -> Optional[float]:
+        """Return the current daily export usage."""
+        return self.coordinator.get_latest_export_usage(self._property_id, self._service_type)
+
+    @property
+    def extra_state_attributes(self) -> Optional[dict[str, Any]]:
+        """Return extra state attributes."""
+        service_data = self.coordinator.get_service_usage(self._property_id, self._service_type)
+        if not service_data:
+            return None
+        
+        return {
+            "consumer_number": service_data.get("consumer_number"),
+            "last_updated": service_data.get("last_updated"),
+            "service_type": self._service_type,
+            "description": "Solar export (generation)"
+        }
+
+
+class RedEnergyTotalImportUsageSensor(RedEnergyBaseSensor):
+    """Red Energy total import usage sensor (30-day period)."""
+
+    def __init__(
+        self,
+        coordinator: RedEnergyDataCoordinator,
+        config_entry: ConfigEntry,
+        property_id: str,
+        service_type: str,
+    ) -> None:
+        """Initialize the total import usage sensor."""
+        super().__init__(coordinator, config_entry, property_id, service_type, "total_import_usage")
+        
+        if service_type == SERVICE_TYPE_ELECTRICITY:
+            self._attr_device_class = SensorDeviceClass.ENERGY
+            self._attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
+        elif service_type == SERVICE_TYPE_GAS:
+            self._attr_device_class = SensorDeviceClass.ENERGY
+            self._attr_native_unit_of_measurement = "MJ"
+            
+        self._attr_state_class = SensorStateClass.TOTAL
+
+    @property
+    def native_value(self) -> Optional[float]:
+        """Return the total import usage."""
+        return self.coordinator.get_total_import_usage(self._property_id, self._service_type)
+
+    @property
+    def extra_state_attributes(self) -> Optional[dict[str, Any]]:
+        """Return extra state attributes."""
+        service_data = self.coordinator.get_service_usage(self._property_id, self._service_type)
+        if not service_data:
+            return None
+        
+        usage_data = service_data.get("usage_data", {})
+        daily_data = usage_data.get("usage_data", [])
+        
+        return {
+            "consumer_number": service_data.get("consumer_number"),
+            "last_updated": service_data.get("last_updated"),
+            "service_type": self._service_type,
+            "period": "30 days",
+            "daily_count": len(daily_data),
+            "from_date": usage_data.get("from_date"),
+            "to_date": usage_data.get("to_date"),
+            "description": "Total grid import"
+        }
+
+
+class RedEnergyTotalExportUsageSensor(RedEnergyBaseSensor):
+    """Red Energy total export usage sensor (30-day period)."""
+
+    def __init__(
+        self,
+        coordinator: RedEnergyDataCoordinator,
+        config_entry: ConfigEntry,
+        property_id: str,
+        service_type: str,
+    ) -> None:
+        """Initialize the total export usage sensor."""
+        super().__init__(coordinator, config_entry, property_id, service_type, "total_export_usage")
+        
+        if service_type == SERVICE_TYPE_ELECTRICITY:
+            self._attr_device_class = SensorDeviceClass.ENERGY
+            self._attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
+            self._attr_icon = "mdi:solar-power"
+        elif service_type == SERVICE_TYPE_GAS:
+            self._attr_device_class = SensorDeviceClass.ENERGY
+            self._attr_native_unit_of_measurement = "MJ"
+            
+        self._attr_state_class = SensorStateClass.TOTAL
+
+    @property
+    def native_value(self) -> Optional[float]:
+        """Return the total export usage."""
+        return self.coordinator.get_total_export_usage(self._property_id, self._service_type)
+
+    @property
+    def extra_state_attributes(self) -> Optional[dict[str, Any]]:
+        """Return extra state attributes."""
+        service_data = self.coordinator.get_service_usage(self._property_id, self._service_type)
+        if not service_data:
+            return None
+        
+        usage_data = service_data.get("usage_data", {})
+        daily_data = usage_data.get("usage_data", [])
+        
+        return {
+            "consumer_number": service_data.get("consumer_number"),
+            "last_updated": service_data.get("last_updated"),
+            "service_type": self._service_type,
+            "period": "30 days",
+            "daily_count": len(daily_data),
+            "from_date": usage_data.get("from_date"),
+            "to_date": usage_data.get("to_date"),
+            "description": "Total solar export"
+        }
+
+
+class RedEnergyTotalImportCostSensor(RedEnergyBaseSensor):
+    """Red Energy total import cost sensor."""
+
+    def __init__(
+        self,
+        coordinator: RedEnergyDataCoordinator,
+        config_entry: ConfigEntry,
+        property_id: str,
+        service_type: str,
+    ) -> None:
+        """Initialize the total import cost sensor."""
+        super().__init__(coordinator, config_entry, property_id, service_type, "total_import_cost")
+        
+        self._attr_device_class = SensorDeviceClass.MONETARY
+        self._attr_native_unit_of_measurement = "AUD"
+        self._attr_state_class = SensorStateClass.TOTAL
+
+    @property
+    def native_value(self) -> Optional[float]:
+        """Return the total import cost."""
+        return self.coordinator.get_total_import_cost(self._property_id, self._service_type)
+
+    @property
+    def extra_state_attributes(self) -> Optional[dict[str, Any]]:
+        """Return extra state attributes."""
+        service_data = self.coordinator.get_service_usage(self._property_id, self._service_type)
+        if not service_data:
+            return None
+        
+        return {
+            "consumer_number": service_data.get("consumer_number"),
+            "last_updated": service_data.get("last_updated"),
+            "service_type": self._service_type,
+            "period": "30 days",
+            "gst_inclusive": False,
+            "description": "Total cost of grid import"
+        }
+
+
+class RedEnergyTotalExportCreditSensor(RedEnergyBaseSensor):
+    """Red Energy total export credit sensor."""
+
+    def __init__(
+        self,
+        coordinator: RedEnergyDataCoordinator,
+        config_entry: ConfigEntry,
+        property_id: str,
+        service_type: str,
+    ) -> None:
+        """Initialize the total export credit sensor."""
+        super().__init__(coordinator, config_entry, property_id, service_type, "total_export_credit")
+        
+        self._attr_device_class = SensorDeviceClass.MONETARY
+        self._attr_native_unit_of_measurement = "AUD"
+        self._attr_state_class = SensorStateClass.TOTAL
+        self._attr_icon = "mdi:solar-power"
+
+    @property
+    def native_value(self) -> Optional[float]:
+        """Return the total export credit."""
+        return self.coordinator.get_total_export_credit(self._property_id, self._service_type)
+
+    @property
+    def extra_state_attributes(self) -> Optional[dict[str, Any]]:
+        """Return extra state attributes."""
+        service_data = self.coordinator.get_service_usage(self._property_id, self._service_type)
+        if not service_data:
+            return None
+        
+        return {
+            "consumer_number": service_data.get("consumer_number"),
+            "last_updated": service_data.get("last_updated"),
+            "service_type": self._service_type,
+            "period": "30 days",
+            "description": "Total credit from solar export"
+        }
+
+
+class RedEnergyNetCostSensor(RedEnergyBaseSensor):
+    """Red Energy net cost sensor (import cost - export credit)."""
+
+    def __init__(
+        self,
+        coordinator: RedEnergyDataCoordinator,
+        config_entry: ConfigEntry,
+        property_id: str,
+        service_type: str,
+    ) -> None:
+        """Initialize the net cost sensor."""
+        super().__init__(coordinator, config_entry, property_id, service_type, "net_cost")
+        
+        self._attr_device_class = SensorDeviceClass.MONETARY
+        self._attr_native_unit_of_measurement = "AUD"
+        self._attr_state_class = SensorStateClass.TOTAL
+
+    @property
+    def native_value(self) -> Optional[float]:
+        """Return the net cost."""
+        return self.coordinator.get_net_total_cost(self._property_id, self._service_type)
+
+    @property
+    def extra_state_attributes(self) -> Optional[dict[str, Any]]:
+        """Return extra state attributes."""
+        import_cost = self.coordinator.get_total_import_cost(self._property_id, self._service_type)
+        export_credit = self.coordinator.get_total_export_credit(self._property_id, self._service_type)
+        
+        return {
+            "import_cost": import_cost,
+            "export_credit": export_credit,
+            "calculation": "import_cost - export_credit",
+            "period": "30 days",
+            "description": "Actual cost after solar credits"
+        }
+
+
+class RedEnergyPeakImportUsageSensor(RedEnergyBaseSensor):
+    """Red Energy peak import usage sensor."""
+
+    def __init__(
+        self,
+        coordinator: RedEnergyDataCoordinator,
+        config_entry: ConfigEntry,
+        property_id: str,
+        service_type: str,
+    ) -> None:
+        """Initialize the peak import usage sensor."""
+        super().__init__(coordinator, config_entry, property_id, service_type, "peak_import_usage")
+        
+        if service_type == SERVICE_TYPE_ELECTRICITY:
+            self._attr_device_class = SensorDeviceClass.ENERGY
+            self._attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
+            self._attr_state_class = SensorStateClass.TOTAL
+
+    @property
+    def native_value(self) -> Optional[float]:
+        """Return the peak import usage."""
+        return self.coordinator.get_period_import_usage(self._property_id, self._service_type, "peak")
+
+    @property
+    def extra_state_attributes(self) -> Optional[dict[str, Any]]:
+        """Return extra state attributes."""
+        service_data = self.coordinator.get_service_usage(self._property_id, self._service_type)
+        if not service_data:
+            return None
+        
+        total_import = self.coordinator.get_total_import_usage(self._property_id, self._service_type)
+        percentage = (self.native_value / total_import * 100) if total_import and self.native_value else 0
+        
+        return {
+            "consumer_number": service_data.get("consumer_number"),
+            "time_period": "PEAK",
+            "percentage_of_total": round(percentage, 1),
+            "period": "30 days"
+        }
+
+
+class RedEnergyOffpeakImportUsageSensor(RedEnergyBaseSensor):
+    """Red Energy offpeak import usage sensor."""
+
+    def __init__(
+        self,
+        coordinator: RedEnergyDataCoordinator,
+        config_entry: ConfigEntry,
+        property_id: str,
+        service_type: str,
+    ) -> None:
+        """Initialize the offpeak import usage sensor."""
+        super().__init__(coordinator, config_entry, property_id, service_type, "offpeak_import_usage")
+        
+        if service_type == SERVICE_TYPE_ELECTRICITY:
+            self._attr_device_class = SensorDeviceClass.ENERGY
+            self._attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
+            self._attr_state_class = SensorStateClass.TOTAL
+
+    @property
+    def native_value(self) -> Optional[float]:
+        """Return the offpeak import usage."""
+        return self.coordinator.get_period_import_usage(self._property_id, self._service_type, "offpeak")
+
+    @property
+    def extra_state_attributes(self) -> Optional[dict[str, Any]]:
+        """Return extra state attributes."""
+        service_data = self.coordinator.get_service_usage(self._property_id, self._service_type)
+        if not service_data:
+            return None
+        
+        total_import = self.coordinator.get_total_import_usage(self._property_id, self._service_type)
+        percentage = (self.native_value / total_import * 100) if total_import and self.native_value else 0
+        
+        return {
+            "consumer_number": service_data.get("consumer_number"),
+            "time_period": "OFFPEAK",
+            "percentage_of_total": round(percentage, 1),
+            "period": "30 days"
+        }
+
+
+class RedEnergyShoulderImportUsageSensor(RedEnergyBaseSensor):
+    """Red Energy shoulder import usage sensor."""
+
+    def __init__(
+        self,
+        coordinator: RedEnergyDataCoordinator,
+        config_entry: ConfigEntry,
+        property_id: str,
+        service_type: str,
+    ) -> None:
+        """Initialize the shoulder import usage sensor."""
+        super().__init__(coordinator, config_entry, property_id, service_type, "shoulder_import_usage")
+        
+        if service_type == SERVICE_TYPE_ELECTRICITY:
+            self._attr_device_class = SensorDeviceClass.ENERGY
+            self._attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
+            self._attr_state_class = SensorStateClass.TOTAL
+
+    @property
+    def native_value(self) -> Optional[float]:
+        """Return the shoulder import usage."""
+        return self.coordinator.get_period_import_usage(self._property_id, self._service_type, "shoulder")
+
+    @property
+    def extra_state_attributes(self) -> Optional[dict[str, Any]]:
+        """Return extra state attributes."""
+        service_data = self.coordinator.get_service_usage(self._property_id, self._service_type)
+        if not service_data:
+            return None
+        
+        total_import = self.coordinator.get_total_import_usage(self._property_id, self._service_type)
+        percentage = (self.native_value / total_import * 100) if total_import and self.native_value else 0
+        
+        return {
+            "consumer_number": service_data.get("consumer_number"),
+            "time_period": "SHOULDER",
+            "percentage_of_total": round(percentage, 1),
+            "period": "30 days"
+        }
+
+
+class RedEnergyPeakExportUsageSensor(RedEnergyBaseSensor):
+    """Red Energy peak export usage sensor."""
+
+    def __init__(
+        self,
+        coordinator: RedEnergyDataCoordinator,
+        config_entry: ConfigEntry,
+        property_id: str,
+        service_type: str,
+    ) -> None:
+        """Initialize the peak export usage sensor."""
+        super().__init__(coordinator, config_entry, property_id, service_type, "peak_export_usage")
+        
+        if service_type == SERVICE_TYPE_ELECTRICITY:
+            self._attr_device_class = SensorDeviceClass.ENERGY
+            self._attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
+            self._attr_state_class = SensorStateClass.TOTAL
+            self._attr_icon = "mdi:solar-power"
+
+    @property
+    def native_value(self) -> Optional[float]:
+        """Return the peak export usage."""
+        return self.coordinator.get_period_export_usage(self._property_id, self._service_type, "peak")
+
+    @property
+    def extra_state_attributes(self) -> Optional[dict[str, Any]]:
+        """Return extra state attributes."""
+        service_data = self.coordinator.get_service_usage(self._property_id, self._service_type)
+        if not service_data:
+            return None
+        
+        total_export = self.coordinator.get_total_export_usage(self._property_id, self._service_type)
+        percentage = (self.native_value / total_export * 100) if total_export and self.native_value else 0
+        
+        return {
+            "consumer_number": service_data.get("consumer_number"),
+            "time_period": "PEAK",
+            "percentage_of_total": round(percentage, 1),
+            "period": "30 days",
+            "description": "Solar export during peak tariff"
+        }
+
+
+class RedEnergyOffpeakExportUsageSensor(RedEnergyBaseSensor):
+    """Red Energy offpeak export usage sensor."""
+
+    def __init__(
+        self,
+        coordinator: RedEnergyDataCoordinator,
+        config_entry: ConfigEntry,
+        property_id: str,
+        service_type: str,
+    ) -> None:
+        """Initialize the offpeak export usage sensor."""
+        super().__init__(coordinator, config_entry, property_id, service_type, "offpeak_export_usage")
+        
+        if service_type == SERVICE_TYPE_ELECTRICITY:
+            self._attr_device_class = SensorDeviceClass.ENERGY
+            self._attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
+            self._attr_state_class = SensorStateClass.TOTAL
+            self._attr_icon = "mdi:solar-power"
+
+    @property
+    def native_value(self) -> Optional[float]:
+        """Return the offpeak export usage."""
+        return self.coordinator.get_period_export_usage(self._property_id, self._service_type, "offpeak")
+
+    @property
+    def extra_state_attributes(self) -> Optional[dict[str, Any]]:
+        """Return extra state attributes."""
+        service_data = self.coordinator.get_service_usage(self._property_id, self._service_type)
+        if not service_data:
+            return None
+        
+        total_export = self.coordinator.get_total_export_usage(self._property_id, self._service_type)
+        percentage = (self.native_value / total_export * 100) if total_export and self.native_value else 0
+        
+        return {
+            "consumer_number": service_data.get("consumer_number"),
+            "time_period": "OFFPEAK",
+            "percentage_of_total": round(percentage, 1),
+            "period": "30 days",
+            "description": "Solar export during offpeak tariff"
+        }
+
+
+class RedEnergyShoulderExportUsageSensor(RedEnergyBaseSensor):
+    """Red Energy shoulder export usage sensor."""
+
+    def __init__(
+        self,
+        coordinator: RedEnergyDataCoordinator,
+        config_entry: ConfigEntry,
+        property_id: str,
+        service_type: str,
+    ) -> None:
+        """Initialize the shoulder export usage sensor."""
+        super().__init__(coordinator, config_entry, property_id, service_type, "shoulder_export_usage")
+        
+        if service_type == SERVICE_TYPE_ELECTRICITY:
+            self._attr_device_class = SensorDeviceClass.ENERGY
+            self._attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
+            self._attr_state_class = SensorStateClass.TOTAL
+            self._attr_icon = "mdi:solar-power"
+
+    @property
+    def native_value(self) -> Optional[float]:
+        """Return the shoulder export usage."""
+        return self.coordinator.get_period_export_usage(self._property_id, self._service_type, "shoulder")
+
+    @property
+    def extra_state_attributes(self) -> Optional[dict[str, Any]]:
+        """Return extra state attributes."""
+        service_data = self.coordinator.get_service_usage(self._property_id, self._service_type)
+        if not service_data:
+            return None
+        
+        total_export = self.coordinator.get_total_export_usage(self._property_id, self._service_type)
+        percentage = (self.native_value / total_export * 100) if total_export and self.native_value else 0
+        
+        return {
+            "consumer_number": service_data.get("consumer_number"),
+            "time_period": "SHOULDER",
+            "percentage_of_total": round(percentage, 1),
+            "period": "30 days",
+            "description": "Solar export during shoulder tariff"
+        }
+
+
+class RedEnergyMaxDemandSensor(RedEnergyBaseSensor):
+    """Red Energy maximum demand sensor."""
+
+    def __init__(
+        self,
+        coordinator: RedEnergyDataCoordinator,
+        config_entry: ConfigEntry,
+        property_id: str,
+        service_type: str,
+    ) -> None:
+        """Initialize the maximum demand sensor."""
+        super().__init__(coordinator, config_entry, property_id, service_type, "max_demand")
+        
+        from homeassistant.const import UnitOfPower
+        
+        self._attr_device_class = SensorDeviceClass.POWER
+        self._attr_native_unit_of_measurement = UnitOfPower.KILO_WATT
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_icon = "mdi:lightning-bolt"
+
+    @property
+    def native_value(self) -> Optional[float]:
+        """Return the maximum demand."""
+        data = self.coordinator.get_max_demand_data(self._property_id, self._service_type)
+        return data.get("max_demand_kw") if data else None
+
+    @property
+    def extra_state_attributes(self) -> Optional[dict[str, Any]]:
+        """Return extra state attributes."""
+        data = self.coordinator.get_max_demand_data(self._property_id, self._service_type)
+        if not data:
+            return None
+        
+        return {
+            "max_demand_time": data.get("max_demand_time"),
+            "max_demand_date": data.get("max_demand_date"),
+            "period": "30 days"
+        }
+
+
+class RedEnergyMaxDemandTimeSensor(RedEnergyBaseSensor):
+    """Red Energy maximum demand timestamp sensor."""
+
+    def __init__(
+        self,
+        coordinator: RedEnergyDataCoordinator,
+        config_entry: ConfigEntry,
+        property_id: str,
+        service_type: str,
+    ) -> None:
+        """Initialize the maximum demand timestamp sensor."""
+        super().__init__(coordinator, config_entry, property_id, service_type, "max_demand_interval_start")
+        
+        self._attr_device_class = SensorDeviceClass.TIMESTAMP
+        self._attr_icon = "mdi:clock-alert"
+
+    @property
+    def native_value(self) -> Optional[datetime]:
+        """Return the maximum demand timestamp."""
+        data = self.coordinator.get_max_demand_data(self._property_id, self._service_type)
+        if not data or not data.get("max_demand_time"):
+            return None
+        
+        try:
+            return datetime.fromisoformat(data["max_demand_time"])
+        except (ValueError, TypeError):
+            return None
+
+
+class RedEnergyCarbonEmissionSensor(RedEnergyBaseSensor):
+    """Red Energy carbon emission sensor."""
+
+    def __init__(
+        self,
+        coordinator: RedEnergyDataCoordinator,
+        config_entry: ConfigEntry,
+        property_id: str,
+        service_type: str,
+    ) -> None:
+        """Initialize the carbon emission sensor."""
+        super().__init__(coordinator, config_entry, property_id, service_type, "carbon_emission_tonne")
+        
+        self._attr_native_unit_of_measurement = "t CO₂"
+        self._attr_state_class = SensorStateClass.TOTAL
+        self._attr_icon = "mdi:molecule-co2"
+
+    @property
+    def native_value(self) -> Optional[float]:
+        """Return the total carbon emissions."""
+        return self.coordinator.get_total_carbon_emission(self._property_id, self._service_type)
+
+    @property
+    def extra_state_attributes(self) -> Optional[dict[str, Any]]:
+        """Return extra state attributes."""
+        total_import = self.coordinator.get_total_import_usage(self._property_id, self._service_type)
+        emission = self.native_value
+        
+        emission_factor = (emission / total_import * 1000) if total_import and emission else 0
+        
+        return {
+            "emission_factor_kg_per_kwh": round(emission_factor, 3),
+            "period": "30 days",
+            "description": "Total carbon emissions from grid consumption"
+        }
