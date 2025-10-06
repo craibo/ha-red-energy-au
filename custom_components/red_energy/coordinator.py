@@ -83,9 +83,11 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
             # Get customer and property data if not cached
             if not self._customer_data:
                 raw_customer_data = await self.api.get_customer_data()
+                _LOGGER.debug("Raw customer data from API: %s", raw_customer_data)
                 self._customer_data = validate_customer_data(raw_customer_data)
                 
                 raw_properties = await self.api.get_properties()
+                _LOGGER.debug("Raw properties data from API (count: %d): %s", len(raw_properties) if isinstance(raw_properties, list) else 0, raw_properties)
                 self._properties = validate_properties_data(raw_properties)
             
             # Fetch usage data for selected accounts and services

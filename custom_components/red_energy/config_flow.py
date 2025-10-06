@@ -268,10 +268,6 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 class RedEnergyOptionsFlowHandler(config_entries.OptionsFlow):
     """Red Energy config flow options handler."""
 
-    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
-        """Initialize options flow."""
-        self.config_entry = config_entry
-
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
@@ -318,12 +314,20 @@ class RedEnergyOptionsFlowHandler(config_entries.OptionsFlow):
             vol.Required(CONF_SCAN_INTERVAL, default=current_scan_interval): vol.In(interval_options),
             vol.Required(CONF_ENABLE_ADVANCED_SENSORS, default=current_advanced_sensors): bool,
         })
+        
+        # Convert current_scan_interval to minutes for display
+        if isinstance(current_scan_interval, str):
+            current_scan_interval_seconds = SCAN_INTERVAL_OPTIONS.get(current_scan_interval, DEFAULT_SCAN_INTERVAL)
+        else:
+            current_scan_interval_seconds = current_scan_interval
+        
+        current_interval_minutes = current_scan_interval_seconds // 60
 
         return self.async_show_form(
             step_id="init",
             data_schema=schema,
             description_placeholders={
-                "current_interval": f"{current_scan_interval // 60} minutes",
+                "current_interval": f"{current_interval_minutes} minutes",
             }
         )
 
