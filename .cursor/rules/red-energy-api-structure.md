@@ -219,7 +219,73 @@ For property names, we use in order:
 
 ## 5. Usage Data Response
 
-### Expected Structure
+### Actual API Response Structure
+
+**Status:** Confirmed (2025-10-06)
+
+The Red Energy API `/usage/interval` endpoint returns **daily summaries** with half-hourly interval data:
+
+**API Response Format:**
+```json
+[
+  {
+    "usageDate": "2025-09-06",
+    "halfHours": [
+      {
+        "intervalStart": "2025-09-06T00:00:00+10:00",
+        "primaryConsumptionTariffComponent": "OFFPEAK",
+        "consumptionKwh": 0.128,
+        "consumptionDollar": 0.03,
+        "consumptionDollarIncGst": 0.0346,
+        "generationKwh": 0.0,
+        "generationDollar": 0.0,
+        "demandDetail": { ... },
+        "isPricingReliable": true,
+        "isPricingAvailable": true
+      },
+      // ... 47 more half-hour intervals (48 total per day)
+    ],
+    "maxDemandDetail": { ... },
+    "carbonEmissionTonne": 0.0057,
+    "minTemperatureC": 0.0,
+    "maxTemperatureC": 0.0,
+    "isPricingReliable": true,
+    "unreliablePricingExplanation": null,
+    "numUnreliablyPricedIntervals": 0,
+    "quality": "Actual",
+    "isConsumptionDollarGstInclusive": false,
+    "consumptionDollar": 1.65,     // Daily total (excl GST)
+    "generationDollar": -0.3279,   // Daily solar credit
+    "hasUnpricedUsage": false,
+    "numUnpricedIntervals": 0
+  },
+  // ... more days
+]
+```
+
+**Key Structure Elements:**
+- **Array of daily summaries** (30 items for 30-day request)
+- Each day contains:
+  - `usageDate`: Date in YYYY-MM-DD format
+  - `halfHours`: Array of 48 half-hourly intervals
+  - `consumptionDollar`: Daily total consumption cost (excl GST)
+  - `generationDollar`: Daily solar generation credit (negative value)
+  - `carbonEmissionTonne`: Daily carbon emissions
+  - Various quality/reliability indicators
+
+**Half-Hour Interval Fields:**
+- `intervalStart`: ISO 8601 timestamp
+- `consumptionKwh`: Consumption in kWh for this interval
+- `consumptionDollar`: Cost for this interval (excl GST)
+- `consumptionDollarIncGst`: Cost including GST
+- `generationKwh`: Solar generation in kWh (if applicable)
+- `generationDollar`: Solar generation credit
+- `primaryConsumptionTariffComponent`: Tariff rate (OFFPEAK, SHOULDER, PEAK)
+- `demandDetail`: Demand charge information
+
+### Internal Expected Structure
+
+Our validation layer expects this normalized format:
 
 ```json
 {
@@ -242,6 +308,32 @@ For property names, we use in order:
   "total_cost": 7.20
 }
 ```
+
+### API Transformation
+
+The `api.py` module includes two transformation methods that convert Red Energy's format into our internal structure:
+
+**1. `_transform_usage_data()`** - Converts overall API structure:
+- **List format**: Wraps list in object with consumer_number and date range
+- Calls `_normalize_usage_entry()` for each daily summary
+- Returns structure with metadata (consumer_number, from_date, to_date, usage_data)
+
+**2. `_normalize_usage_entry()`** - Aggregates daily data:
+- **Date**: Extracts from `usageDate` field
+- **Usage (kWh)**: Sums `consumptionKwh` from all 48 half-hour intervals in `halfHours` array
+- **Cost**: Combines `consumptionDollar` + `generationDollar` for net daily cost
+  - `consumptionDollar`: Daily consumption cost (excl GST)
+  - `generationDollar`: Solar generation credit (negative value)
+  - Net cost accounts for solar offsets automatically
+- **Unit**: Always "kWh"
+
+**Transformation Process:**
+1. API returns 30 daily summaries, each with 48 half-hourly intervals
+2. For each day:
+   - Extract `usageDate` as the date
+   - Sum all `consumptionKwh` values from `halfHours` array (48 intervals)
+   - Calculate net cost: `consumptionDollar` + `generationDollar`
+3. Result: 30 normalized daily entries with date, total usage, net cost
 
 ### Field Requirements
 
@@ -299,13 +391,14 @@ For property names, we use in order:
 
 ## 7. Common Issues and Solutions
 
-### Issue 1: "No accounts found"
+### Issue 1: "No accounts found" or "Skipping account with invalid ID"
 
-**Cause:** Validation fails because API structure doesn't match expected format
+**Cause:** Config flow receives raw API data without validation, looking for `id` field that doesn't exist (API has `accountNumber`)
 
-**Solution:** Check that validation handles both:
-- `consumers` (Red Energy format) ✅
-- `services` (generic format)
+**Solution:** 
+- Always validate API responses in `validate_input()` before using
+- Call `validate_properties_data()` to transform `accountNumber` → `id`
+- Ensure validation handles both `consumers` (Red Energy) and `services` (generic)
 
 ### Issue 2: Property ID mismatch
 
@@ -327,6 +420,36 @@ if utility == "E":
 elif utility == "G":
     service_type = "gas"
 ```
+
+### Issue 4: "Usage data must be a dictionary" validation error
+
+**Cause:** The Red Energy API `/usage/interval` endpoint returns data in various formats (often a list, not a dict), which doesn't match the validator's expected structure.
+
+**Solution:** 
+- The `api.py` module now includes `_transform_usage_data()` to handle multiple API formats
+- Automatically wraps list responses with required metadata
+- Extracts nested data from various field name variations
+- Returns empty structure for None/empty responses
+- See Section 5 "API Transformation" for details
+
+**Fixed in:** 2025-10-06
+
+### Issue 5: "Usage entry missing date" validation error
+
+**Cause:** Red Energy API returns **daily summaries** with half-hourly intervals in a nested structure:
+- Each day has `usageDate` (not `date`)
+- Usage data is in `halfHours` array (48 half-hourly intervals)
+- Costs are aggregated at day level (`consumptionDollar`, `generationDollar`)
+
+**Solution:**
+- Updated `_normalize_usage_entry()` to handle Red Energy's actual structure:
+  - Extracts `usageDate` as the date
+  - Sums all `consumptionKwh` values from `halfHours` array
+  - Combines consumption and generation costs for net daily cost
+  - Properly handles solar generation credits (negative values)
+- See Section 5 "API Transformation" for complete details
+
+**Fixed in:** 2025-10-06
 
 ---
 

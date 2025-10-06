@@ -1,6 +1,7 @@
 """Red Energy sensor platform."""
 from __future__ import annotations
 
+from datetime import datetime
 import logging
 from typing import TYPE_CHECKING, Any, Optional
 
@@ -10,21 +11,29 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import (
-    UnitOfEnergy,
-    UnitOfVolume,
-)
+from homeassistant.const import UnitOfEnergy
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.util import dt as dt_util
 
 from .const import (
     CONF_ENABLE_ADVANCED_SENSORS,
     DOMAIN,
+    SENSOR_TYPE_ARREARS,
+    SENSOR_TYPE_BALANCE,
+    SENSOR_TYPE_BILLING_FREQUENCY,
     SENSOR_TYPE_DAILY_AVERAGE,
+    SENSOR_TYPE_DISTRIBUTOR,
     SENSOR_TYPE_EFFICIENCY,
+    SENSOR_TYPE_LAST_BILL_DATE,
+    SENSOR_TYPE_METER_TYPE,
     SENSOR_TYPE_MONTHLY_AVERAGE,
+    SENSOR_TYPE_NEXT_BILL_DATE,
+    SENSOR_TYPE_NMI,
     SENSOR_TYPE_PEAK_USAGE,
+    SENSOR_TYPE_PRODUCT_NAME,
+    SENSOR_TYPE_SOLAR,
     SERVICE_TYPE_ELECTRICITY,
     SERVICE_TYPE_GAS,
 )
@@ -62,6 +71,16 @@ async def async_setup_entry(
                 RedEnergyUsageSensor(coordinator, config_entry, account_id, service_type),
                 RedEnergyCostSensor(coordinator, config_entry, account_id, service_type),
                 RedEnergyTotalUsageSensor(coordinator, config_entry, account_id, service_type),
+                RedEnergyNmiSensor(coordinator, config_entry, account_id, service_type),
+                RedEnergyMeterTypeSensor(coordinator, config_entry, account_id, service_type),
+                RedEnergySolarSensor(coordinator, config_entry, account_id, service_type),
+                RedEnergyProductNameSensor(coordinator, config_entry, account_id, service_type),
+                RedEnergyDistributorSensor(coordinator, config_entry, account_id, service_type),
+                RedEnergyBalanceSensor(coordinator, config_entry, account_id, service_type),
+                RedEnergyArrearsSensor(coordinator, config_entry, account_id, service_type),
+                RedEnergyLastBillDateSensor(coordinator, config_entry, account_id, service_type),
+                RedEnergyNextBillDateSensor(coordinator, config_entry, account_id, service_type),
+                RedEnergyBillingFrequencySensor(coordinator, config_entry, account_id, service_type),
             ])
             
             # Advanced sensors (optional)
@@ -74,7 +93,7 @@ async def async_setup_entry(
                 ])
     
     _LOGGER.debug("Created %d sensors (%d advanced) for Red Energy integration", 
-                 len(entities), len(entities) - (len(selected_accounts) * len(services) * 3))
+                 len(entities), len(entities) - (len(selected_accounts) * len(services) * 13))
     async_add_entities(entities)
 
 
@@ -117,7 +136,6 @@ class RedEnergyBaseSensor(CoordinatorEntity, SensorEntity):
             "name": property_name,
             "manufacturer": "Red Energy",
             "model": f"{service_display} Service",
-            "via_device": (DOMAIN, config_entry.entry_id),
         }
 
     @property
@@ -472,3 +490,279 @@ class RedEnergyEfficiencySensor(RedEnergyBaseSensor):
             "calculation_days": len(usage_data),
             "service_type": self._service_type,
         }
+
+
+class RedEnergyNmiSensor(RedEnergyBaseSensor):
+    """Red Energy NMI sensor."""
+
+    def __init__(
+        self,
+        coordinator: RedEnergyDataCoordinator,
+        config_entry: ConfigEntry,
+        property_id: str,
+        service_type: str,
+    ) -> None:
+        """Initialize the NMI sensor."""
+        super().__init__(coordinator, config_entry, property_id, service_type, SENSOR_TYPE_NMI)
+        
+        self._attr_icon = "mdi:identifier"
+
+    @property
+    def native_value(self) -> Optional[str]:
+        """Return the NMI."""
+        metadata = self.coordinator.get_service_metadata(self._property_id, self._service_type)
+        if not metadata:
+            return None
+        
+        return metadata.get("nmi")
+
+
+class RedEnergyMeterTypeSensor(RedEnergyBaseSensor):
+    """Red Energy meter type sensor."""
+
+    def __init__(
+        self,
+        coordinator: RedEnergyDataCoordinator,
+        config_entry: ConfigEntry,
+        property_id: str,
+        service_type: str,
+    ) -> None:
+        """Initialize the meter type sensor."""
+        super().__init__(coordinator, config_entry, property_id, service_type, SENSOR_TYPE_METER_TYPE)
+        
+        self._attr_icon = "mdi:meter-electric"
+
+    @property
+    def native_value(self) -> Optional[str]:
+        """Return the meter type."""
+        metadata = self.coordinator.get_service_metadata(self._property_id, self._service_type)
+        if not metadata:
+            return None
+        
+        return metadata.get("meterType")
+
+
+class RedEnergySolarSensor(RedEnergyBaseSensor):
+    """Red Energy solar capability sensor."""
+
+    def __init__(
+        self,
+        coordinator: RedEnergyDataCoordinator,
+        config_entry: ConfigEntry,
+        property_id: str,
+        service_type: str,
+    ) -> None:
+        """Initialize the solar sensor."""
+        super().__init__(coordinator, config_entry, property_id, service_type, SENSOR_TYPE_SOLAR)
+        
+        self._attr_icon = "mdi:solar-power"
+
+    @property
+    def native_value(self) -> Optional[str]:
+        """Return the solar status."""
+        metadata = self.coordinator.get_service_metadata(self._property_id, self._service_type)
+        if not metadata:
+            return None
+        
+        has_solar = metadata.get("solar", False)
+        return "Yes" if has_solar else "No"
+
+
+class RedEnergyProductNameSensor(RedEnergyBaseSensor):
+    """Red Energy energy plan sensor."""
+
+    def __init__(
+        self,
+        coordinator: RedEnergyDataCoordinator,
+        config_entry: ConfigEntry,
+        property_id: str,
+        service_type: str,
+    ) -> None:
+        """Initialize the energy plan sensor."""
+        super().__init__(coordinator, config_entry, property_id, service_type, SENSOR_TYPE_PRODUCT_NAME)
+        
+        self._attr_icon = "mdi:package-variant"
+
+    @property
+    def native_value(self) -> Optional[str]:
+        """Return the product name."""
+        metadata = self.coordinator.get_service_metadata(self._property_id, self._service_type)
+        if not metadata:
+            return None
+        
+        return metadata.get("productName")
+
+
+class RedEnergyDistributorSensor(RedEnergyBaseSensor):
+    """Red Energy distributor/lines company sensor."""
+
+    def __init__(
+        self,
+        coordinator: RedEnergyDataCoordinator,
+        config_entry: ConfigEntry,
+        property_id: str,
+        service_type: str,
+    ) -> None:
+        """Initialize the distributor sensor."""
+        super().__init__(coordinator, config_entry, property_id, service_type, SENSOR_TYPE_DISTRIBUTOR)
+        
+        self._attr_icon = "mdi:transmission-tower"
+
+    @property
+    def native_value(self) -> Optional[str]:
+        """Return the distributor name."""
+        metadata = self.coordinator.get_service_metadata(self._property_id, self._service_type)
+        if not metadata:
+            return None
+        
+        return metadata.get("linesCompany")
+
+
+class RedEnergyBalanceSensor(RedEnergyBaseSensor):
+    """Red Energy account balance sensor."""
+
+    def __init__(
+        self,
+        coordinator: RedEnergyDataCoordinator,
+        config_entry: ConfigEntry,
+        property_id: str,
+        service_type: str,
+    ) -> None:
+        """Initialize the balance sensor."""
+        super().__init__(coordinator, config_entry, property_id, service_type, SENSOR_TYPE_BALANCE)
+        
+        self._attr_device_class = SensorDeviceClass.MONETARY
+        self._attr_native_unit_of_measurement = "AUD"
+        self._attr_state_class = SensorStateClass.TOTAL
+
+    @property
+    def native_value(self) -> Optional[float]:
+        """Return the account balance."""
+        metadata = self.coordinator.get_service_metadata(self._property_id, self._service_type)
+        if not metadata:
+            return None
+        
+        return metadata.get("balanceDollar")
+
+
+class RedEnergyArrearsSensor(RedEnergyBaseSensor):
+    """Red Energy arrears sensor."""
+
+    def __init__(
+        self,
+        coordinator: RedEnergyDataCoordinator,
+        config_entry: ConfigEntry,
+        property_id: str,
+        service_type: str,
+    ) -> None:
+        """Initialize the arrears sensor."""
+        super().__init__(coordinator, config_entry, property_id, service_type, SENSOR_TYPE_ARREARS)
+        
+        self._attr_device_class = SensorDeviceClass.MONETARY
+        self._attr_native_unit_of_measurement = "AUD"
+        self._attr_state_class = SensorStateClass.TOTAL
+
+    @property
+    def native_value(self) -> Optional[float]:
+        """Return the arrears amount."""
+        metadata = self.coordinator.get_service_metadata(self._property_id, self._service_type)
+        if not metadata:
+            return None
+        
+        return metadata.get("arrearsDollar")
+
+
+class RedEnergyLastBillDateSensor(RedEnergyBaseSensor):
+    """Red Energy last bill date sensor."""
+
+    def __init__(
+        self,
+        coordinator: RedEnergyDataCoordinator,
+        config_entry: ConfigEntry,
+        property_id: str,
+        service_type: str,
+    ) -> None:
+        """Initialize the last bill date sensor."""
+        super().__init__(coordinator, config_entry, property_id, service_type, SENSOR_TYPE_LAST_BILL_DATE)
+        
+        self._attr_device_class = SensorDeviceClass.TIMESTAMP
+        self._attr_icon = "mdi:calendar-check"
+
+    @property
+    def native_value(self) -> Optional[datetime]:
+        """Return the last bill date."""
+        metadata = self.coordinator.get_service_metadata(self._property_id, self._service_type)
+        if not metadata:
+            return None
+        
+        last_bill = metadata.get("lastBillDate")
+        if last_bill:
+            try:
+                naive_dt = datetime.strptime(last_bill, "%Y-%m-%d")
+                return dt_util.as_utc(naive_dt)
+            except (ValueError, TypeError):
+                _LOGGER.warning("Invalid lastBillDate format: %s", last_bill)
+                return None
+        return None
+
+
+class RedEnergyNextBillDateSensor(RedEnergyBaseSensor):
+    """Red Energy next bill date sensor."""
+
+    def __init__(
+        self,
+        coordinator: RedEnergyDataCoordinator,
+        config_entry: ConfigEntry,
+        property_id: str,
+        service_type: str,
+    ) -> None:
+        """Initialize the next bill date sensor."""
+        super().__init__(coordinator, config_entry, property_id, service_type, SENSOR_TYPE_NEXT_BILL_DATE)
+        
+        self._attr_device_class = SensorDeviceClass.TIMESTAMP
+        self._attr_icon = "mdi:calendar-clock"
+
+    @property
+    def native_value(self) -> Optional[datetime]:
+        """Return the next bill date."""
+        metadata = self.coordinator.get_service_metadata(self._property_id, self._service_type)
+        if not metadata:
+            return None
+        
+        next_bill = metadata.get("nextBillDate")
+        if next_bill:
+            try:
+                naive_dt = datetime.strptime(next_bill, "%Y-%m-%d")
+                return dt_util.as_utc(naive_dt)
+            except (ValueError, TypeError):
+                _LOGGER.warning("Invalid nextBillDate format: %s", next_bill)
+                return None
+        return None
+
+
+class RedEnergyBillingFrequencySensor(RedEnergyBaseSensor):
+    """Red Energy billing frequency sensor."""
+
+    def __init__(
+        self,
+        coordinator: RedEnergyDataCoordinator,
+        config_entry: ConfigEntry,
+        property_id: str,
+        service_type: str,
+    ) -> None:
+        """Initialize the billing frequency sensor."""
+        super().__init__(coordinator, config_entry, property_id, service_type, SENSOR_TYPE_BILLING_FREQUENCY)
+        
+        self._attr_icon = "mdi:calendar-refresh"
+
+    @property
+    def native_value(self) -> Optional[str]:
+        """Return the billing frequency."""
+        metadata = self.coordinator.get_service_metadata(self._property_id, self._service_type)
+        if not metadata:
+            return None
+        
+        frequency = metadata.get("billingFrequency")
+        if frequency:
+            return frequency.title()
+        return None

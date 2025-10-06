@@ -14,6 +14,25 @@ This directory contains project-specific rules, patterns, and documentation for 
   - Validation rules
   - Common issues and solutions
 
+### 🔐 Authentication
+
+- **[red-energy-authentication.md](./red-energy-authentication.md)** - OAuth2 PKCE authentication reference
+  - Authentication flow architecture
+  - Token lifecycle management
+  - Implementation details with code references
+  - Security considerations
+  - Error handling patterns
+  - Troubleshooting guide
+
+### 🏪 HACS Configuration
+
+- **[hacs-topics.md](./hacs-topics.md)** - HACS repository topics and validation reference
+  - Required and recommended topics
+  - HACS validation requirements
+  - hacs.json valid keys
+  - Topic verification and management
+  - Troubleshooting guide
+
 ## Quick Reference
 
 ### API Response Key Differences
@@ -39,28 +58,32 @@ The Red Energy API uses non-standard field names:
 
 When working with this integration:
 
-1. Always refer to `red-energy-api-structure.md` before modifying API response handling
-2. Test with actual API responses, not mock data
-3. Update version history when making structural changes
-4. Add new mappings to the documentation when discovered
-5. Keep transformation examples up to date
+1. **API Structure**: Always refer to `red-energy-api-structure.md` before modifying API response handling
+2. **Authentication**: Review `red-energy-authentication.md` when working with auth flows or token management
+3. **Testing**: Test with actual API responses, not mock data
+4. **Documentation**: Update version history when making structural changes
+5. **Validation**: Add new mappings/patterns to documentation when discovered
+6. **Code References**: Keep implementation references accurate when refactoring
 
 ## File Organization
 
 ```
 .cursor/rules/
-├── README.md                      # This file
-└── red-energy-api-structure.md   # API structure reference
+├── README.md                       # This file
+├── hacs-topics.md                  # HACS configuration reference
+├── red-energy-api-structure.md     # API structure reference
+└── red-energy-authentication.md    # OAuth2 authentication reference
 ```
 
 ## Related Files
 
-- `custom_components/red_energy/data_validation.py` - Implements validation and transformation
-- `custom_components/red_energy/api.py` - API client implementation
-- `custom_components/red_energy/config_flow.py` - Setup flow
+- `custom_components/red_energy/api.py` - API client and authentication implementation
+- `custom_components/red_energy/config_flow.py` - Setup flow and credential validation
+- `custom_components/red_energy/data_validation.py` - Data validation and transformation
 - `custom_components/red_energy/config_migration.py` - Config version migrations
+- `tests/test_config_flow_basic.py` - Authentication and config flow tests
 
 ## Last Updated
 
-2025-10-06 - Initial documentation created
+2025-10-06 - Added OAuth2 authentication reference documentation
 
