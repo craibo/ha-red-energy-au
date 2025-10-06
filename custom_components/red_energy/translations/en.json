@@ -13,16 +13,9 @@
           "client_id": "Capture this from your Red Energy mobile app using Proxyman or similar network monitoring tool"
         }
       },
-      "account_select": {
-        "title": "Select Accounts",
-        "description": "Choose which Red Energy accounts to monitor. Found {account_count} account(s).",
-        "data": {
-          "selected_accounts": "Accounts to Monitor"
-        }
-      },
       "service_select": {
         "title": "Select Services",
-        "description": "Choose which services to monitor for your {selected_accounts} selected account(s).",
+        "description": "All {account_count} properties will be monitored. Choose which services to track.",
         "data": {
           "services": "Services to Monitor"
         }
@@ -33,8 +26,7 @@
       "cannot_connect": "Failed to connect to Red Energy. Check your internet connection.",
       "invalid_client_id": "Invalid client ID. Please check the captured client ID from your mobile app.",
       "unknown": "Unexpected error occurred",
-      "no_accounts": "No Red Energy accounts found for this user",
-      "select_account": "Please select at least one account"
+      "no_accounts": "No Red Energy accounts found for this user"
     },
     "abort": {
       "already_configured": "Red Energy account is already configured"

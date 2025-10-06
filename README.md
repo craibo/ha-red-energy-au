@@ -63,6 +63,8 @@ A comprehensive Home Assistant custom integration for Red Energy (Australian ene
 
 ### Configuration
 
+⚠️ **Important**: Authentication will not work if you are connected to a VPN. Ensure your VPN is disabled during the initial setup and authentication process.
+
 1. Go to **Settings** → **Devices & Services**
 2. Click **Add Integration** and search for "Red Energy"
 3. Enter your Red Energy credentials:
@@ -83,7 +85,11 @@ The Client ID is required for OAuth2 authentication with Red Energy's API. To ob
 5. Find the `client_id` parameter in the OAuth2 requests
 6. Copy this value to use in the integration setup
 
+**Example Client ID Format**: `0oa1a2b3c4d5e6f7g8h9`
+
 ⚠️ **Important**: This integration uses the real Red Energy API. You must have valid Red Energy account credentials and a captured client_id to use this integration.
+
+> **For Developers**: See `.cursor/rules/red-energy-authentication.md` for detailed OAuth2 PKCE implementation reference, token lifecycle management, and error handling patterns.
 
 ## Sensors Created
 
@@ -251,20 +257,24 @@ pytest tests/ -v
 
 ## Support
 
-- **Documentation**: See the various `STAGE*_TESTING.md` files for detailed testing guides
+- **Documentation**: See [INSTALLATION.md](INSTALLATION.md) for detailed setup instructions
 - **Issues**: Report bugs or feature requests via [GitHub Issues](https://github.com/craibo/ha-red-energy-au/issues)
-- **Automation Examples**: Comprehensive examples in `AUTOMATION_EXAMPLES.md`
+- **Automation Examples**: Comprehensive examples in [AUTOMATION_EXAMPLES.md](AUTOMATION_EXAMPLES.md)
+- **Developer Reference**: See `.cursor/rules/` for API structure and authentication documentation
 
 ## Architecture
 
 The integration uses a modular architecture with the following key components:
 
+- **OAuth2 PKCE Authentication**: Secure authentication with Okta-based token management
 - **Data Coordinator**: Manages API polling and data updates
 - **Device Manager**: Enhanced device registry and entity organization
 - **Performance Monitor**: Operation timing and memory optimization
 - **State Manager**: Entity state restoration and availability management
 - **Error Recovery**: Comprehensive error handling with circuit breakers
 - **Config Migration**: Automatic configuration version management
+
+For detailed implementation references, see `.cursor/rules/red-energy-authentication.md` and `.cursor/rules/red-energy-api-structure.md`.
 
 ## Real-World Usage
 

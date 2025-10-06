@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Tuple
 
 import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry
@@ -27,7 +27,8 @@ _LOGGER = logging.getLogger(__name__)
 CONFIG_VERSION_1 = 1  # Initial version
 CONFIG_VERSION_2 = 2  # Added advanced sensors and polling options
 CONFIG_VERSION_3 = 3  # Added performance optimizations and device management
-CURRENT_CONFIG_VERSION = CONFIG_VERSION_3
+CONFIG_VERSION_4 = 4  # Auto-select all accounts and fix account ID matching
+CURRENT_CONFIG_VERSION = CONFIG_VERSION_4
 
 
 class ConfigValidationError(Exception):
@@ -64,6 +65,10 @@ class RedEnergyConfigMigrator:
             # Migrate from version 2 to 3
             if current_version < CONFIG_VERSION_3:
                 migration_success &= await self._migrate_v2_to_v3(config_entry)
+            
+            # Migrate from version 3 to 4
+            if current_version < CONFIG_VERSION_4:
+                migration_success &= await self._migrate_v3_to_v4(config_entry)
             
             if migration_success:
                 # Update version in config entry
@@ -141,6 +146,76 @@ class RedEnergyConfigMigrator:
             
         except Exception as err:
             _LOGGER.error("Failed to migrate v2 to v3: %s", err)
+            return False
+
+    async def _migrate_v3_to_v4(self, config_entry: ConfigEntry) -> bool:
+        """Migrate from version 3 to 4 - Auto-select all accounts and fix ID matching."""
+        _LOGGER.info("Migrating config entry from v3 to v4 - Updating account selection")
+        
+        try:
+            from homeassistant.helpers.aiohttp_client import async_get_clientsession
+            from .api import RedEnergyAPI
+            from .data_validation import validate_properties_data
+            
+            new_data = dict(config_entry.data)
+            selected_accounts = new_data.get(DATA_SELECTED_ACCOUNTS, [])
+            
+            _LOGGER.info("Current selected_accounts: %s", selected_accounts)
+            
+            # Check if we have invalid account IDs (like ['0'])
+            if selected_accounts == ['0'] or not selected_accounts:
+                _LOGGER.info("Detected invalid account IDs, fetching real property IDs from API")
+                
+                # Fetch real property IDs from API
+                session = async_get_clientsession(self.hass)
+                api = RedEnergyAPI(session)
+                
+                try:
+                    # Authenticate
+                    await api.authenticate(
+                        new_data[CONF_USERNAME],
+                        new_data[CONF_PASSWORD],
+                        new_data[CONF_CLIENT_ID]
+                    )
+                    
+                    # Get properties
+                    raw_properties = await api.get_properties()
+                    properties = validate_properties_data(raw_properties)
+                    
+                    # Extract all property IDs
+                    property_ids = [str(prop.get("id")) for prop in properties if prop.get("id")]
+                    
+                    _LOGGER.info("Fetched %d properties from API: %s", len(property_ids), property_ids)
+                    
+                    if property_ids:
+                        new_data[DATA_SELECTED_ACCOUNTS] = property_ids
+                        _LOGGER.info("Updated selected_accounts to: %s", property_ids)
+                    else:
+                        _LOGGER.warning("No properties found in API response, keeping existing config")
+                        return True
+                    
+                except Exception as err:
+                    _LOGGER.error("Failed to fetch properties from API during migration: %s", err)
+                    _LOGGER.warning("Will keep existing config and let user reconfigure if needed")
+                    return True
+            else:
+                _LOGGER.info("Account IDs look valid, ensuring they are strings")
+                # Ensure all IDs are strings
+                new_data[DATA_SELECTED_ACCOUNTS] = [str(acc_id) for acc_id in selected_accounts]
+            
+            # Update config entry
+            self.hass.config_entries.async_update_entry(
+                config_entry,
+                data=new_data
+            )
+            
+            _LOGGER.info("Successfully migrated to v4, selected_accounts: %s", 
+                        new_data[DATA_SELECTED_ACCOUNTS])
+            
+            return True
+            
+        except Exception as err:
+            _LOGGER.error("Failed to migrate v3 to v4: %s", err, exc_info=True)
             return False
 
 
