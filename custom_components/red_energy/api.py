@@ -59,6 +59,7 @@ class RedEnergyAPI:
             # Step 3: Generate PKCE parameters
             code_verifier = self._generate_code_verifier()
             code_challenge = self._generate_code_challenge(code_verifier)
+            _LOGGER.debug("Generated PKCE - Verifier: %s, Challenge: %s", code_verifier, code_challenge)
             
             # Step 4: Get authorization code using session token
             auth_code = await self._get_authorization_code(
@@ -89,8 +90,10 @@ class RedEnergyAPI:
     
     def _generate_code_verifier(self) -> str:
         """Generate PKCE code verifier."""
-        # Generate 48 character base64url-encoded random string (compatible with authlib)
-        return base64.urlsafe_b64encode(secrets.token_bytes(36)).decode().rstrip('=')
+        # Generate 48 character random string matching authlib's generate_token(48)
+        # Uses URL-safe characters as per RFC 7636: [a-zA-Z0-9\-\.\_\~]
+        alphabet = string.ascii_letters + string.digits + '-._~'
+        return ''.join(secrets.choice(alphabet) for _ in range(48))
     
     def _generate_code_challenge(self, verifier: str) -> str:
         """Generate PKCE code challenge from verifier."""
@@ -149,23 +152,30 @@ class RedEnergyAPI:
         code_challenge: str
     ) -> str:
         """Get authorization code using session token and PKCE challenge."""
-        # Generate state and nonce for OAuth2 security
+        # Generate state and nonce for OAuth2 security (matching working project)
         state = str(uuid.uuid4())
         nonce = str(uuid.uuid4())
+        _LOGGER.debug("Generated OAuth2 - State: %s, Nonce: %s", state, nonce)
         
-        auth_params = {
+        # Build authorization URL exactly like the working project
+        base_params = {
             'client_id': client_id,
             'response_type': 'code',
             'redirect_uri': self.REDIRECT_URI,
             'scope': 'openid profile offline_access',
             'code_challenge': code_challenge,
-            'code_challenge_method': 'S256',
-            'state': state,
-            'nonce': nonce,
-            'sessionToken': session_token
+            'code_challenge_method': 'S256'
         }
         
-        auth_url = f"{auth_endpoint}?{urlencode(auth_params)}"
+        extra_params = {
+            'sessionToken': session_token,
+            'state': state,
+            'nonce': nonce
+        }
+        
+        # Combine all parameters like OAuth2Session.create_authorization_url() would
+        all_params = {**base_params, **extra_params}
+        auth_url = f"{auth_endpoint}?{urlencode(all_params)}"
         _LOGGER.debug("Authorization URL: %s", auth_url)
         
         # Make request to authorization endpoint - this should redirect
@@ -183,12 +193,11 @@ class RedEnergyAPI:
                     )
                     raise RedEnergyAuthError("No redirect location found in authorization response")
                 
-                _LOGGER.debug("Authorization redirect location: %s", location)
-                
                 # Parse authorization code from redirect URL
                 parsed_url = urlparse(location)
                 query_params = parse_qs(parsed_url.query)
                 auth_code = query_params.get("code", [None])[0]
+                _LOGGER.debug("Authorization redirect - Location: %s, Code: %s", location, auth_code)
                 
                 if not auth_code:
                     error = query_params.get("error", ["Unknown error"])[0]
