@@ -29,6 +29,8 @@ env.bak/
 venv.bak/
 
 # IDEs
+.claude/
+.cursor/
 .vscode/
 .idea/
 *.swp

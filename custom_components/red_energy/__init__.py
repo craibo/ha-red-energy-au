@@ -27,6 +27,23 @@ _LOGGER = logging.getLogger(__name__)
 PLATFORMS: list[Platform] = [Platform.SENSOR]
 
 
+async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Migrate config entry to current version."""
+    from .config_migration import RedEnergyConfigMigrator
+    
+    _LOGGER.info("Migrating Red Energy config entry from version %s", entry.version)
+    
+    migrator = RedEnergyConfigMigrator(hass)
+    migration_success = await migrator.async_migrate_config_entry(entry)
+    
+    if migration_success:
+        _LOGGER.info("Successfully migrated config entry to version %s", entry.version)
+    else:
+        _LOGGER.error("Failed to migrate config entry")
+    
+    return migration_success
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Red Energy from a config entry."""
     _LOGGER.debug("Setting up Red Energy integration for entry %s", entry.entry_id)
@@ -46,16 +63,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
     
     # Import Stage 5 components dynamically to avoid circular imports
-    from .config_migration import RedEnergyConfigMigrator
     from .state_manager import RedEnergyStateManager  
     from .device_manager import RedEnergyDeviceManager
-    
-    # Check for config migration needs
-    migrator = RedEnergyConfigMigrator(hass)
-    migration_success = await migrator.async_migrate_config_entry(entry)
-    if not migration_success:
-        _LOGGER.error("Failed to migrate config entry %s", entry.entry_id)
-        # Continue anyway - migration failure shouldn't block setup
     
     # Initialize Stage 5 components
     state_manager = RedEnergyStateManager(hass)

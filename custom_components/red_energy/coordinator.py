@@ -77,47 +77,113 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
         try:
             # Ensure we're authenticated
             if not self.api._access_token:
-                _LOGGER.debug("Authenticating with Red Energy API")
+                _LOGGER.info("Authenticating with Red Energy API")
                 await self.api.authenticate(self.username, self.password, self.client_id)
             
             # Get customer and property data if not cached
             if not self._customer_data:
                 raw_customer_data = await self.api.get_customer_data()
+                _LOGGER.info("=" * 80)
+                _LOGGER.info("RAW CUSTOMER API RESPONSE:")
+                _LOGGER.info("Type: %s", type(raw_customer_data))
+                _LOGGER.info("Data: %s", raw_customer_data)
+                _LOGGER.info("=" * 80)
                 self._customer_data = validate_customer_data(raw_customer_data)
+                _LOGGER.info("Validated customer data - ID: %s, Name: %s", 
+                            self._customer_data.get("id"), self._customer_data.get("name"))
                 
                 raw_properties = await self.api.get_properties()
+                _LOGGER.info("=" * 80)
+                _LOGGER.info("RAW PROPERTIES API RESPONSE:")
+                _LOGGER.info("Type: %s", type(raw_properties))
+                _LOGGER.info("Count: %d", len(raw_properties) if isinstance(raw_properties, list) else 0)
+                _LOGGER.info("Data: %s", raw_properties)
+                _LOGGER.info("=" * 80)
                 self._properties = validate_properties_data(raw_properties)
+                _LOGGER.info("Validated %d properties:", len(self._properties))
+                for prop in self._properties:
+                    _LOGGER.info("  - Property ID: %s, Name: %s, Services: %s", 
+                                prop.get("id"), prop.get("name"), 
+                                [s.get("type") for s in prop.get("services", [])])
+            
+            # Log selected accounts configuration
+            _LOGGER.info("=" * 80)
+            _LOGGER.info("COORDINATOR CONFIGURATION:")
+            _LOGGER.info("Selected accounts: %s (type: %s)", self.selected_accounts, type(self.selected_accounts))
+            _LOGGER.info("Configured services: %s", self.services)
+            _LOGGER.info("Total properties available: %d", len(self._properties))
+            property_ids = [str(p.get("id")) for p in self._properties]
+            _LOGGER.info("Available property IDs: %s (types: %s)", property_ids, [type(pid) for pid in property_ids])
+            _LOGGER.info("=" * 80)
             
             # Fetch usage data for selected accounts and services
             usage_data = {}
             
+            matched_properties = 0
+            skipped_properties = 0
+            
             for property_data in self._properties:
                 property_id = property_data.get("id")
-                if property_id not in self.selected_accounts:
+                property_name = property_data.get("name", "Unknown")
+                
+                _LOGGER.info("Processing property: ID='%s' (type: %s), Name='%s'", property_id, type(property_id), property_name)
+                
+                # Convert to string for comparison since selected_accounts are strings
+                property_id_str = str(property_id)
+                if property_id_str not in self.selected_accounts:
+                    _LOGGER.warning(
+                        "Property '%s' (ID: %s) not in selected_accounts %s - SKIPPING",
+                        property_name, property_id, self.selected_accounts
+                    )
+                    skipped_properties += 1
                     continue
                 
+                matched_properties += 1
+                _LOGGER.info("Property '%s' (ID: %s) MATCHED - fetching usage data", property_name, property_id_str)
+                
                 property_services = property_data.get("services", [])
+                _LOGGER.info("  Property has %d services: %s", 
+                            len(property_services),
+                            [s.get("type") for s in property_services])
                 property_usage = {}
                 
                 for service in property_services:
                     service_type = service.get("type")
                     consumer_number = service.get("consumer_number")
+                    is_active = service.get("active", True)
                     
-                    if not consumer_number or service_type not in self.services:
+                    _LOGGER.info("  Processing service: type=%s, consumer_number=%s, active=%s", 
+                                service_type, consumer_number, is_active)
+                    
+                    if not consumer_number:
+                        _LOGGER.warning("    Service %s has no consumer_number - SKIPPING", service_type)
                         continue
                     
-                    if not service.get("active", True):
-                        _LOGGER.debug("Skipping inactive service %s for property %s", service_type, property_id)
+                    if service_type not in self.services:
+                        _LOGGER.info("    Service %s not in configured services %s - SKIPPING", 
+                                    service_type, self.services)
                         continue
+                    
+                    if not is_active:
+                        _LOGGER.info("    Service %s is inactive - SKIPPING", service_type)
+                        continue
+                    
+                    _LOGGER.info("    Service %s MATCHED - fetching usage data", service_type)
                     
                     try:
                         # Get usage data for the last 30 days
                         end_date = datetime.now()
                         start_date = end_date - timedelta(days=30)
                         
+                        _LOGGER.info("    Calling API get_usage_data: consumer=%s, from=%s, to=%s",
+                                    consumer_number, start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d'))
+                        
                         raw_usage = await self.api.get_usage_data(
                             consumer_number, start_date, end_date
                         )
+                        
+                        _LOGGER.info("    Raw usage API response type: %s", type(raw_usage))
+                        _LOGGER.info("    Raw usage API response: %s", raw_usage)
                         
                         # Validate usage data
                         validated_usage = validate_usage_data(raw_usage)
@@ -128,31 +194,54 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
                             "last_updated": end_date.isoformat(),
                         }
                         
-                        _LOGGER.debug(
-                            "Fetched %s usage data for property %s: %s total usage",
+                        _LOGGER.info(
+                            "    ✓ Successfully fetched %s usage for property %s: %s total usage, %s total cost",
                             service_type,
                             property_id,
-                            validated_usage.get("total_usage", 0)
+                            validated_usage.get("total_usage", 0),
+                            validated_usage.get("total_cost", 0)
                         )
                         
                     except (RedEnergyAPIError, DataValidationError) as err:
                         _LOGGER.error(
-                            "Failed to fetch/validate %s usage for property %s: %s",
+                            "    ✗ Failed to fetch/validate %s usage for property %s: %s",
                             service_type,
                             property_id,
-                            err
+                            err,
+                            exc_info=True
                         )
                         # Don't fail the entire update for one service error
                         continue
                 
                 if property_usage:
-                    usage_data[property_id] = {
+                    usage_data[property_id_str] = {
                         "property": property_data,
                         "services": property_usage,
                     }
+                    _LOGGER.info("✓ Successfully collected usage data for property '%s' with %d services", 
+                                property_name, len(property_usage))
+                else:
+                    _LOGGER.warning("✗ No usage data collected for property '%s'", property_name)
+            
+            _LOGGER.info("=" * 80)
+            _LOGGER.info("DATA COLLECTION SUMMARY:")
+            _LOGGER.info("Total properties processed: %d", len(self._properties))
+            _LOGGER.info("Properties matched: %d", matched_properties)
+            _LOGGER.info("Properties skipped: %d", skipped_properties)
+            _LOGGER.info("Properties with usage data: %d", len(usage_data))
+            _LOGGER.info("=" * 80)
             
             if not usage_data:
-                raise UpdateFailed("No usage data retrieved for any configured services")
+                available_ids = [str(p.get('id')) for p in self._properties]
+                error_msg = (
+                    f"No usage data retrieved for any configured services. "
+                    f"Processed {len(self._properties)} properties, "
+                    f"matched {matched_properties}, skipped {skipped_properties}. "
+                    f"Selected accounts: {self.selected_accounts}, "
+                    f"Available property IDs: {available_ids}"
+                )
+                _LOGGER.error(error_msg)
+                raise UpdateFailed(error_msg)
             
             return {
                 "customer": self._customer_data,
