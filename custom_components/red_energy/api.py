@@ -1,6 +1,7 @@
 """Red Energy API client for Home Assistant integration."""
 from __future__ import annotations
 
+import json
 import logging
 import secrets
 import string
@@ -40,6 +41,7 @@ class RedEnergyAPI:
         self._access_token: Optional[str] = None
         self._refresh_token: Optional[str] = None
         self._token_expires: Optional[datetime] = None
+        self._logged_entry_mapping: bool = False
         
     async def authenticate(self, username: str, password: str, client_id: str) -> bool:
         """Authenticate with Red Energy using Okta session token and OAuth2 PKCE flow."""
@@ -316,11 +318,46 @@ class RedEnergyAPI:
                 response.raise_for_status()
                 raw_data = await response.json()
                 
+                # Enhanced logging for investigation
                 _LOGGER.info("=" * 80)
-                _LOGGER.info("RAW USAGE API RESPONSE:")
-                _LOGGER.info("Consumer: %s", consumer_number)
-                _LOGGER.info("Type: %s", type(raw_data))
-                _LOGGER.info("Data: %s", raw_data)
+                _LOGGER.info("RAW USAGE API RESPONSE - DETAILED ANALYSIS")
+                _LOGGER.info("=" * 80)
+                _LOGGER.info("Request Parameters:")
+                _LOGGER.info("  Consumer Number: %s", consumer_number)
+                _LOGGER.info("  Date Range: %s to %s", params['fromDate'], params['toDate'])
+                _LOGGER.info("")
+                _LOGGER.info("Response Analysis:")
+                _LOGGER.info("  Data Type: %s", type(raw_data).__name__)
+                
+                if isinstance(raw_data, list):
+                    _LOGGER.info("  Array Length: %d items", len(raw_data))
+                    if raw_data:
+                        _LOGGER.info("  First Item Type: %s", type(raw_data[0]).__name__)
+                        if isinstance(raw_data[0], dict):
+                            _LOGGER.info("  First Item Keys: %s", list(raw_data[0].keys()))
+                elif isinstance(raw_data, dict):
+                    _LOGGER.info("  Dictionary Keys: %s", list(raw_data.keys()))
+                    for key, value in raw_data.items():
+                        if isinstance(value, list):
+                            _LOGGER.info("    - %s: list with %d items", key, len(value))
+                        elif isinstance(value, dict):
+                            _LOGGER.info("    - %s: dict with keys %s", key, list(value.keys()))
+                        else:
+                            _LOGGER.info("    - %s: %s = %s", key, type(value).__name__, value)
+                
+                _LOGGER.info("")
+                _LOGGER.info("Complete JSON Response (pretty-printed):")
+                try:
+                    pretty_json = json.dumps(raw_data, indent=2, default=str)
+                    # Split by lines to log each line separately (better for log viewing)
+                    for line in pretty_json.split('\n')[:100]:  # Limit to first 100 lines
+                        _LOGGER.info("  %s", line)
+                    if len(pretty_json.split('\n')) > 100:
+                        _LOGGER.info("  ... (truncated, %d total lines)", len(pretty_json.split('\n')))
+                except Exception as err:
+                    _LOGGER.info("  Unable to pretty-print JSON: %s", err)
+                    _LOGGER.info("  Raw data: %s", raw_data)
+                
                 _LOGGER.info("=" * 80)
                 
                 # Transform API response to expected format
@@ -406,11 +443,12 @@ class RedEnergyAPI:
         # Case 3: Data is a list of usage entries (most common API format)
         if isinstance(raw_data, list):
             _LOGGER.debug("API returned list of %d usage entries - transforming", len(raw_data))
+            normalized_entries = [self._normalize_usage_entry(entry) for entry in raw_data]
             return {
                 "consumer_number": str(consumer_number),
                 "from_date": from_date_str,
                 "to_date": to_date_str,
-                "usage_data": raw_data
+                "usage_data": normalized_entries
             }
         
         # Case 4: Data is a dict with different field names - try to extract usage data
@@ -429,20 +467,22 @@ class RedEnergyAPI:
             # If we found usage entries as a list, use them
             if isinstance(usage_entries, list):
                 _LOGGER.debug("Extracted %d usage entries from dict format", len(usage_entries))
+                normalized_entries = [self._normalize_usage_entry(entry) for entry in usage_entries]
                 return {
                     "consumer_number": str(consumer_number),
                     "from_date": from_date_str,
                     "to_date": to_date_str,
-                    "usage_data": usage_entries
+                    "usage_data": normalized_entries
                 }
             
             # Otherwise, the dict might be a single usage entry - wrap it in a list
             _LOGGER.debug("API returned single dict entry - wrapping in list")
+            normalized_entry = self._normalize_usage_entry(raw_data)
             return {
                 "consumer_number": str(consumer_number),
                 "from_date": from_date_str,
                 "to_date": to_date_str,
-                "usage_data": [raw_data]
+                "usage_data": [normalized_entry]
             }
         
         # Case 5: Unexpected format - log error but return empty structure
@@ -456,3 +496,73 @@ class RedEnergyAPI:
             "to_date": to_date_str,
             "usage_data": []
         }
+    
+    def _normalize_usage_entry(self, entry: Any) -> Dict[str, Any]:
+        """Normalize a single usage entry to expected field names.
+        
+        Red Energy returns daily summaries with:
+        - usageDate: the date
+        - halfHours: array of 30-minute intervals
+        - consumptionDollar: daily total cost (excl GST)
+        - Individual intervals can be aggregated for total kWh
+        """
+        if not isinstance(entry, dict):
+            _LOGGER.warning("Usage entry is not a dict: %s, returning empty entry", type(entry))
+            return {"date": "", "usage": 0.0, "cost": 0.0}
+        
+        # Log the first entry to help debug field mapping
+        if not self._logged_entry_mapping:
+            _LOGGER.info("=" * 80)
+            _LOGGER.info("USAGE ENTRY FIELD MAPPING (First Entry)")
+            _LOGGER.info("=" * 80)
+            _LOGGER.info("Original Entry Structure:")
+            try:
+                # Log just the keys and top-level values, not the huge halfHours array
+                summary = {k: (f"[{len(v)} items]" if isinstance(v, list) else v) 
+                          for k, v in entry.items()}
+                pretty_entry = json.dumps(summary, indent=2, default=str)
+                for line in pretty_entry.split('\n'):
+                    _LOGGER.info("  %s", line)
+            except Exception:
+                _LOGGER.info("  %s", entry)
+            self._logged_entry_mapping = True
+        
+        # Extract date from usageDate field
+        date_value = entry.get("usageDate", "")
+        
+        # Sum up consumption from halfHours array
+        usage_kwh = 0.0
+        half_hours = entry.get("halfHours", [])
+        if isinstance(half_hours, list):
+            for interval in half_hours:
+                if isinstance(interval, dict):
+                    # Sum consumption (net of generation)
+                    consumption = float(interval.get("consumptionKwh", 0.0))
+                    usage_kwh += consumption
+        
+        # Use daily consumption cost (excl GST) - Red Energy provides this aggregated
+        cost_value = float(entry.get("consumptionDollar", 0.0))
+        
+        # Handle solar generation separately if needed (negative cost)
+        generation_dollar = float(entry.get("generationDollar", 0.0))
+        # Net cost = consumption cost + generation credit (generation is negative)
+        net_cost = cost_value + generation_dollar
+        
+        _LOGGER.debug(
+            "Normalized entry: date=%s, usage=%.3f kWh, consumption_cost=$%.2f, generation_credit=$%.2f, net=$%.2f",
+            date_value, usage_kwh, cost_value, generation_dollar, net_cost
+        )
+        
+        return {
+            "date": str(date_value),
+            "usage": round(usage_kwh, 3),
+            "cost": round(net_cost, 2),  # Net cost including solar credits
+            "unit": "kWh"
+        }
+    
+    def _find_source_key(self, entry: Dict[str, Any], possible_keys: List[str]) -> str:
+        """Find which key was actually present in the entry."""
+        for key in possible_keys:
+            if key in entry and entry[key]:
+                return f"'{key}'"
+        return "none (using default)"
