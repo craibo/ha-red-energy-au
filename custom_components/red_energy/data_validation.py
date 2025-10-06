@@ -101,16 +101,45 @@ def validate_single_property(data: Dict[str, Any]) -> Dict[str, Any]:
         
         _LOGGER.info("No property ID found in API response, generated synthetic ID: %s", property_id)
     
-    property_name = data.get("name") or data.get("propertyName") or f"Property {property_id}"
+    # Get property name - try various fields
+    property_name = data.get("name") or data.get("propertyName")
+    
+    # If no name, try to build from address
+    if not property_name:
+        address_data = data.get("address", {})
+        if isinstance(address_data, dict):
+            # Try display address fields first
+            display_addresses = address_data.get("displayAddresses", {})
+            if isinstance(display_addresses, dict):
+                property_name = display_addresses.get("shortForm") or display_addresses.get("extraShortForm")
+            
+            # Fall back to building from address parts
+            if not property_name:
+                house = address_data.get("house", "").strip()
+                street = address_data.get("street", "").strip()
+                suburb = address_data.get("suburb", "").strip()
+                if house and street and suburb:
+                    property_name = f"{house} {street}, {suburb}"
+                elif street and suburb:
+                    property_name = f"{street}, {suburb}"
+    
+    # Final fallback
+    if not property_name:
+        property_name = f"Property {property_id}"
+    
+    # API can return either "services" or "consumers"
+    services_data = data.get("services") or data.get("consumers", [])
+    _LOGGER.info("Property %s has %d services/consumers", property_id, len(services_data) if isinstance(services_data, list) else 0)
     
     validated_property = {
         "id": str(property_id),
         "name": str(property_name),
         "address": validate_address(data.get("address", {})),
-        "services": validate_services(data.get("services", [])),
+        "services": validate_services(services_data),
     }
     
-    _LOGGER.debug("Validated property: %s (ID: %s)", validated_property["name"], validated_property["id"])
+    _LOGGER.info("Validated property: %s (ID: %s) with %d services", 
+                validated_property["name"], validated_property["id"], len(validated_property["services"]))
     return validated_property
 
 
@@ -119,9 +148,28 @@ def validate_address(data: Dict[str, Any]) -> Dict[str, Any]:
     if not isinstance(data, dict):
         data = {}
     
+    # Build full street address from house + street
+    house = data.get("house", "").strip()
+    street = data.get("street", "").strip()
+    
+    if house and street:
+        # Combine house number with street name
+        full_street = f"{house} {street}"
+    elif street:
+        full_street = street
+    elif house:
+        full_street = house
+    else:
+        full_street = ""
+    
+    # API uses "suburb" instead of "city"
+    city = data.get("city", "").strip()
+    if not city:
+        city = data.get("suburb", "").strip()
+    
     return {
-        "street": data.get("street", "").strip(),
-        "city": data.get("city", "").strip(),
+        "street": full_street,
+        "city": city,
         "state": data.get("state", "").strip(),
         "postcode": data.get("postcode", "").strip(),
     }
@@ -150,18 +198,40 @@ def validate_single_service(data: Dict[str, Any]) -> Dict[str, Any]:
     if not isinstance(data, dict):
         raise DataValidationError("Service data must be a dictionary")
     
+    # Handle both formats: "type" or "utility"
     service_type = data.get("type", "").lower()
+    
+    # API returns "utility" with values "E" or "G"
+    if not service_type:
+        utility = data.get("utility", "").upper()
+        if utility == "E":
+            service_type = "electricity"
+        elif utility == "G":
+            service_type = "gas"
+        else:
+            raise DataValidationError(f"Invalid utility type: {utility}")
+    
     if service_type not in ["electricity", "gas"]:
         raise DataValidationError(f"Invalid service type: {service_type}")
     
-    consumer_number = data.get("consumer_number")
+    # Handle both "consumer_number" and "consumerNumber"
+    consumer_number = data.get("consumer_number") or data.get("consumerNumber")
     if not consumer_number:
-        raise DataValidationError("Service missing consumer_number")
+        raise DataValidationError("Service missing consumer_number/consumerNumber")
+    
+    # Handle both "active" (boolean) and "status" (ON/OFF)
+    is_active = data.get("active", True)
+    if not isinstance(is_active, bool):
+        status = data.get("status", "").upper()
+        is_active = status == "ON"
+    
+    _LOGGER.debug("Validated service: type=%s, consumer=%s, active=%s", 
+                 service_type, consumer_number, is_active)
     
     return {
         "type": service_type,
         "consumer_number": str(consumer_number),
-        "active": bool(data.get("active", True)),
+        "active": is_active,
     }
 
 

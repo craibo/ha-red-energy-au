@@ -109,9 +109,11 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
             # Log selected accounts configuration
             _LOGGER.info("=" * 80)
             _LOGGER.info("COORDINATOR CONFIGURATION:")
-            _LOGGER.info("Selected accounts: %s", self.selected_accounts)
+            _LOGGER.info("Selected accounts: %s (type: %s)", self.selected_accounts, type(self.selected_accounts))
             _LOGGER.info("Configured services: %s", self.services)
             _LOGGER.info("Total properties available: %d", len(self._properties))
+            property_ids = [str(p.get("id")) for p in self._properties]
+            _LOGGER.info("Available property IDs: %s (types: %s)", property_ids, [type(pid) for pid in property_ids])
             _LOGGER.info("=" * 80)
             
             # Fetch usage data for selected accounts and services
@@ -124,9 +126,11 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
                 property_id = property_data.get("id")
                 property_name = property_data.get("name", "Unknown")
                 
-                _LOGGER.info("Processing property: ID='%s', Name='%s'", property_id, property_name)
+                _LOGGER.info("Processing property: ID='%s' (type: %s), Name='%s'", property_id, type(property_id), property_name)
                 
-                if property_id not in self.selected_accounts:
+                # Convert to string for comparison since selected_accounts are strings
+                property_id_str = str(property_id)
+                if property_id_str not in self.selected_accounts:
                     _LOGGER.warning(
                         "Property '%s' (ID: %s) not in selected_accounts %s - SKIPPING",
                         property_name, property_id, self.selected_accounts
@@ -135,7 +139,7 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
                     continue
                 
                 matched_properties += 1
-                _LOGGER.info("Property '%s' (ID: %s) MATCHED - fetching usage data", property_name, property_id)
+                _LOGGER.info("Property '%s' (ID: %s) MATCHED - fetching usage data", property_name, property_id_str)
                 
                 property_services = property_data.get("services", [])
                 _LOGGER.info("  Property has %d services: %s", 
@@ -210,7 +214,7 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
                         continue
                 
                 if property_usage:
-                    usage_data[property_id] = {
+                    usage_data[property_id_str] = {
                         "property": property_data,
                         "services": property_usage,
                     }
@@ -228,12 +232,13 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
             _LOGGER.info("=" * 80)
             
             if not usage_data:
+                available_ids = [str(p.get('id')) for p in self._properties]
                 error_msg = (
                     f"No usage data retrieved for any configured services. "
                     f"Processed {len(self._properties)} properties, "
                     f"matched {matched_properties}, skipped {skipped_properties}. "
                     f"Selected accounts: {self.selected_accounts}, "
-                    f"Available property IDs: {[p.get('id') for p in self._properties]}"
+                    f"Available property IDs: {available_ids}"
                 )
                 _LOGGER.error(error_msg)
                 raise UpdateFailed(error_msg)

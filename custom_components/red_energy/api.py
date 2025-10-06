@@ -1,7 +1,6 @@
 """Red Energy API client for Home Assistant integration."""
 from __future__ import annotations
 
-import asyncio
 import logging
 import secrets
 import string
@@ -315,7 +314,17 @@ class RedEnergyAPI:
         async with async_timeout.timeout(API_TIMEOUT):
             async with self._session.get(url, headers=headers, params=params) as response:
                 response.raise_for_status()
-                return await response.json()
+                raw_data = await response.json()
+                
+                _LOGGER.info("=" * 80)
+                _LOGGER.info("RAW USAGE API RESPONSE:")
+                _LOGGER.info("Consumer: %s", consumer_number)
+                _LOGGER.info("Type: %s", type(raw_data))
+                _LOGGER.info("Data: %s", raw_data)
+                _LOGGER.info("=" * 80)
+                
+                # Transform API response to expected format
+                return self._transform_usage_data(raw_data, consumer_number, from_date, to_date)
     
     async def _ensure_valid_token(self) -> None:
         """Ensure we have a valid access token."""
@@ -367,3 +376,83 @@ class RedEnergyAPI:
                 self._token_expires = datetime.now() + timedelta(seconds=expires_in)
                 
                 _LOGGER.debug("Access token refreshed successfully")
+    
+    def _transform_usage_data(
+        self, 
+        raw_data: Any, 
+        consumer_number: str, 
+        from_date: datetime, 
+        to_date: datetime
+    ) -> Dict[str, Any]:
+        """Transform Red Energy API usage data to expected format."""
+        from_date_str = from_date.strftime('%Y-%m-%d')
+        to_date_str = to_date.strftime('%Y-%m-%d')
+        
+        # Case 1: Data is None or empty
+        if raw_data is None:
+            _LOGGER.warning("API returned None for usage data - returning empty structure")
+            return {
+                "consumer_number": str(consumer_number),
+                "from_date": from_date_str,
+                "to_date": to_date_str,
+                "usage_data": []
+            }
+        
+        # Case 2: Data is already in expected format (has consumer_number and usage_data)
+        if isinstance(raw_data, dict) and "consumer_number" in raw_data and "usage_data" in raw_data:
+            _LOGGER.debug("API data already in expected format")
+            return raw_data
+        
+        # Case 3: Data is a list of usage entries (most common API format)
+        if isinstance(raw_data, list):
+            _LOGGER.debug("API returned list of %d usage entries - transforming", len(raw_data))
+            return {
+                "consumer_number": str(consumer_number),
+                "from_date": from_date_str,
+                "to_date": to_date_str,
+                "usage_data": raw_data
+            }
+        
+        # Case 4: Data is a dict with different field names - try to extract usage data
+        if isinstance(raw_data, dict):
+            # Look for common variations of usage data fields
+            usage_entries = (
+                raw_data.get("usage_data") or
+                raw_data.get("usageData") or
+                raw_data.get("data") or
+                raw_data.get("intervals") or
+                raw_data.get("usage") or
+                raw_data.get("entries") or
+                []
+            )
+            
+            # If we found usage entries as a list, use them
+            if isinstance(usage_entries, list):
+                _LOGGER.debug("Extracted %d usage entries from dict format", len(usage_entries))
+                return {
+                    "consumer_number": str(consumer_number),
+                    "from_date": from_date_str,
+                    "to_date": to_date_str,
+                    "usage_data": usage_entries
+                }
+            
+            # Otherwise, the dict might be a single usage entry - wrap it in a list
+            _LOGGER.debug("API returned single dict entry - wrapping in list")
+            return {
+                "consumer_number": str(consumer_number),
+                "from_date": from_date_str,
+                "to_date": to_date_str,
+                "usage_data": [raw_data]
+            }
+        
+        # Case 5: Unexpected format - log error but return empty structure
+        _LOGGER.error(
+            "Unexpected usage data format: type=%s, data=%s - returning empty structure",
+            type(raw_data), raw_data
+        )
+        return {
+            "consumer_number": str(consumer_number),
+            "from_date": from_date_str,
+            "to_date": to_date_str,
+            "usage_data": []
+        }
