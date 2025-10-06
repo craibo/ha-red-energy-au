@@ -38,6 +38,8 @@ A comprehensive Home Assistant custom integration for Red Energy (Australian ene
 
 ## Setup
 
+⚠️ **Important**: Authentication will not work if you are connected to a VPN. Ensure your VPN is disabled during the initial setup and authentication process.
+
 1. Enter your Red Energy credentials (username, password, client ID)
 2. Select which properties to monitor
 3. Choose services (electricity, gas, or both)
