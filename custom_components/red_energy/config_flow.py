@@ -3,9 +3,8 @@ from __future__ import annotations
 
 import logging
 from datetime import timedelta
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
-import aiohttp
 import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
@@ -34,7 +33,6 @@ from .const import (
     SCAN_INTERVAL_OPTIONS,
     SERVICE_TYPE_ELECTRICITY,
     SERVICE_TYPE_GAS,
-    STEP_ACCOUNT_SELECT,
     STEP_SERVICE_SELECT,
     STEP_USER,
 )
@@ -84,11 +82,19 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
             raise InvalidAuth
         
         # Get customer data and properties
-        customer_data = await api.get_customer_data()
-        properties = await api.get_properties()
+        raw_customer_data = await api.get_customer_data()
+        raw_properties = await api.get_properties()
         
-        if not properties:
+        if not raw_properties:
             raise NoAccounts
+        
+        # Validate the data
+        from .data_validation import validate_customer_data, validate_properties_data
+        
+        customer_data = validate_customer_data(raw_customer_data)
+        properties = validate_properties_data(raw_properties)
+        
+        _LOGGER.info("Validated %d properties during setup", len(properties))
         
         # Return info that you want to store in the config entry.
         return {
@@ -104,6 +110,13 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
             data[CONF_USERNAME], err
         )
         raise InvalidAuth from err
+    except DataValidationError as err:
+        _LOGGER.error(
+            "Data validation error for user %s: %s. "
+            "The API response format may have changed or returned invalid data.",
+            data[CONF_USERNAME], err
+        )
+        raise CannotConnect from err
     except RedEnergyAPIError as err:
         _LOGGER.error(
             "Red Energy API error for user %s: %s. "
@@ -157,19 +170,30 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 self._customer_data = info[DATA_CUSTOMER_DATA]
                 self._accounts = info[DATA_ACCOUNTS]
                 
+                _LOGGER.info("=" * 80)
+                _LOGGER.info("CONFIG FLOW - Retrieved %d validated properties:", len(self._accounts))
+                for idx, account in enumerate(self._accounts):
+                    _LOGGER.info("  Property %d:", idx)
+                    _LOGGER.info("    - ID: %s", account.get("id"))
+                    _LOGGER.info("    - Name: %s", account.get("name"))
+                    _LOGGER.info("    - Services: %d", len(account.get("services", [])))
+                _LOGGER.info("=" * 80)
+                
                 # Check if we already have this account configured
                 await self.async_set_unique_id(
                     f"{user_input[CONF_USERNAME]}_{user_input[CONF_CLIENT_ID]}"
                 )
                 self._abort_if_unique_id_configured()
                 
-                # Move to account selection
-                if len(self._accounts) == 1:
-                    # Only one account, auto-select it
-                    self._selected_accounts = [self._accounts[0].get("id", "0")]
-                    return await self.async_step_service_select()
+                # Auto-select all accounts - properties are already validated with IDs
+                self._selected_accounts = [account["id"] for account in self._accounts]
+                _LOGGER.info("Auto-selected %d accounts: %s", len(self._selected_accounts), self._selected_accounts)
+                
+                if not self._selected_accounts:
+                    _LOGGER.error("No valid account IDs found in properties. Raw accounts: %s", self._accounts)
+                    errors["base"] = ERROR_NO_ACCOUNTS
                 else:
-                    return await self.async_step_account_select()
+                    return await self.async_step_service_select()
 
         return self.async_show_form(
             step_id=STEP_USER,
@@ -177,44 +201,6 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             errors=errors,
             description_placeholders={
                 "client_id_help": "You need to capture the client_id from your Red Energy mobile app using a network monitoring tool like Proxyman."
-            }
-        )
-
-    async def async_step_account_select(
-        self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
-        """Handle account selection."""
-        errors: dict[str, str] = {}
-        
-        if user_input is not None:
-            selected = user_input.get(DATA_SELECTED_ACCOUNTS, [])
-            if not selected:
-                errors[DATA_SELECTED_ACCOUNTS] = "select_account"
-            else:
-                self._selected_accounts = selected
-                return await self.async_step_service_select()
-
-        # Build account selection options
-        account_options = {}
-        for account in self._accounts:
-            account_id = account.get("id", "unknown")
-            account_name = account.get("name", f"Account {account_id}")
-            address = account.get("address", {})
-            display_name = f"{account_name}"
-            if address:
-                display_name += f" - {address.get('street', '')}, {address.get('city', '')}"
-            account_options[account_id] = display_name
-
-        schema = vol.Schema({
-            vol.Required(DATA_SELECTED_ACCOUNTS): vol.In(account_options),
-        })
-
-        return self.async_show_form(
-            step_id=STEP_ACCOUNT_SELECT,
-            data_schema=schema,
-            errors=errors,
-            description_placeholders={
-                "account_count": str(len(self._accounts))
             }
         )
 
@@ -232,7 +218,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             
             title = self._customer_data.get("name", "Red Energy")
             if len(self._selected_accounts) > 1:
-                title += f" ({len(self._selected_accounts)} accounts)"
+                title += f" ({len(self._selected_accounts)} properties)"
                 
             return self.async_create_entry(
                 title=title,
@@ -246,16 +232,14 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         }
         
         schema = vol.Schema({
-            vol.Required("services", default=[SERVICE_TYPE_ELECTRICITY]): vol.All(
-                cv.ensure_list, [vol.In(service_options)]
-            ),
+            vol.Required("services", default=[SERVICE_TYPE_ELECTRICITY]): cv.multi_select(service_options),
         })
 
         return self.async_show_form(
             step_id=STEP_SERVICE_SELECT,
             data_schema=schema,
             description_placeholders={
-                "selected_accounts": str(len(self._selected_accounts))
+                "account_count": str(len(self._selected_accounts))
             }
         )
 
@@ -270,10 +254,6 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
 class RedEnergyOptionsFlowHandler(config_entries.OptionsFlow):
     """Red Energy config flow options handler."""
-
-    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
-        """Initialize options flow."""
-        self.config_entry = config_entry
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
@@ -317,18 +297,24 @@ class RedEnergyOptionsFlowHandler(config_entries.OptionsFlow):
                 interval_options[key] = "1 hour"
         
         schema = vol.Schema({
-            vol.Required("services", default=current_services): vol.All(
-                cv.ensure_list, [vol.In(service_options)]
-            ),
+            vol.Required("services", default=current_services): cv.multi_select(service_options),
             vol.Required(CONF_SCAN_INTERVAL, default=current_scan_interval): vol.In(interval_options),
             vol.Required(CONF_ENABLE_ADVANCED_SENSORS, default=current_advanced_sensors): bool,
         })
+        
+        # Convert current_scan_interval to minutes for display
+        if isinstance(current_scan_interval, str):
+            current_scan_interval_seconds = SCAN_INTERVAL_OPTIONS.get(current_scan_interval, DEFAULT_SCAN_INTERVAL)
+        else:
+            current_scan_interval_seconds = current_scan_interval
+        
+        current_interval_minutes = current_scan_interval_seconds // 60
 
         return self.async_show_form(
             step_id="init",
             data_schema=schema,
             description_placeholders={
-                "current_interval": f"{current_scan_interval // 60} minutes",
+                "current_interval": f"{current_interval_minutes} minutes",
             }
         )
 

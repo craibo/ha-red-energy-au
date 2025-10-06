@@ -4,6 +4,7 @@ A comprehensive Home Assistant custom integration for Red Energy (Australian ene
 
 ## Key Features
 
+- **Secure OAuth2 Authentication**: PKCE-based authentication with Okta token management
 - **Real-time Energy Monitoring**: Track daily electricity and gas usage with cost analysis
 - **Multi-Property Support**: Monitor multiple properties from a single Red Energy account
 - **Advanced Analytics**: Daily/monthly averages, peak usage detection, and efficiency ratings
@@ -38,7 +39,20 @@ A comprehensive Home Assistant custom integration for Red Energy (Australian ene
 
 ## Setup
 
-1. Enter your Red Energy credentials (username, password, client ID)
+⚠️ **Important**: Authentication will not work if you are connected to a VPN. Ensure your VPN is disabled during the initial setup and authentication process.
+
+### Required Credentials
+
+**Client ID Required**: You must capture the Client ID from the Red Energy mobile app using network monitoring tools (e.g., Proxyman or Charles Proxy). Look for the `client_id` parameter in OAuth2 requests to `redenergy.okta.com`.
+
+**Example Client ID Format**: `0oa1a2b3c4d5e6f7g8h9`
+
+### Configuration Steps
+
+1. Enter your Red Energy credentials:
+   - **Username**: Your Red Energy account email
+   - **Password**: Your Red Energy account password
+   - **Client ID**: Captured from mobile app (required for OAuth2 authentication)
 2. Select which properties to monitor
 3. Choose services (electricity, gas, or both)
 4. Configure polling interval and advanced options
@@ -82,15 +96,15 @@ A comprehensive Home Assistant custom integration for Red Energy (Australian ene
 ## Documentation
 
 Complete documentation includes:
-- Installation and configuration guides
-- 11 automation examples with YAML code
+- Installation and configuration guide (INSTALLATION.md)
+- 11 automation examples with YAML code (AUTOMATION_EXAMPLES.md)
 - Troubleshooting and debug information
 - Performance optimization recommendations
-- Stage-by-stage development documentation
+- Developer references for API structure and OAuth2 authentication
 
 ## Support
 
-- Comprehensive testing guides for all features
+- Detailed installation and automation documentation
 - GitHub Issues for bug reports and feature requests
 - Active development with regular updates
 - Community-driven with responsive support

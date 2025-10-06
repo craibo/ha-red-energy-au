@@ -1,0 +1,464 @@
+# Red Energy API Response Structure
+
+> Last Updated: 2025-10-06
+> 
+> This document defines the actual API response structures returned by the Red Energy API and how they map to our internal data model.
+
+## Overview
+
+The Red Energy API returns data in a specific structure that differs from typical REST API conventions. This document serves as the authoritative reference for understanding and validating API responses.
+
+---
+
+## 1. Properties/Accounts Response
+
+### Endpoint
+`GET /api/properties` or similar endpoint
+
+### Actual API Response Structure
+
+```json
+[
+  {
+    "propertyPhysicalNumber": 82227160,
+    "propertyNumber": "82227160.8490263",
+    "accountNumber": 8490263,
+    "address": {
+      "unit": null,
+      "unitType": null,
+      "house": "27",
+      "floor": null,
+      "building": null,
+      "street": "SUNNYSIDE CRES",
+      "streetType": null,
+      "suburb": "CASTLECRAG",
+      "pobox": null,
+      "townCity": null,
+      "postcode": "2068",
+      "state": "NSW",
+      "country": null,
+      "gentrackDisplayAddress": "27 SUNNYSIDE CRES, CASTLECRAG, NSW 2068",
+      "displayAddresses": {
+        "shortForm": "27 Sunnyside Crescent, Castlecrag",
+        "shortFormAlt": "27 Sunnyside Crescent, Castlecrag",
+        "extraShortForm": "27 Sunnyside Crescent",
+        "longForm": "27 Sunnyside Crescent\nCastlecrag NSW 2068",
+        "longFormAlt": "27 Sunnyside Crescent, Castlecrag, New South Wales 2 0 6 8"
+      },
+      "displayAddress": "27 SUNNYSIDE CRES\nCASTLECRAG  NSW  2068"
+    },
+    "consumers": [
+      {
+        "consumerNumber": 4235478511,
+        "propertyNumber": "82227160.8490263",
+        "accountNumber": 8490263,
+        "entryDate": "2024-09-13",
+        "finalDate": null,
+        "status": "ON",
+        "nmi": "4103296839",
+        "nmiWithChecksum": "41032968395",
+        "utility": "E",
+        "meterType": "INTERVAL",
+        "chargeClass": "RES",
+        "solar": true,
+        "lastBillDate": "2025-09-10",
+        "nextBillDate": "2025-10-11",
+        "latitude": -33.799045,
+        "longitude": 151.212185,
+        "balanceDollar": -75.0,
+        "arrearsDollar": 0.0,
+        "productName": "Qantas Red Saver",
+        "linesCompany": "Ausgrid",
+        "jurisdiction": "NSW",
+        "billingFrequency": "MONTHLY"
+      }
+    ]
+  }
+]
+```
+
+### Key Field Mappings
+
+| API Field | Our Internal Field | Notes |
+|-----------|-------------------|-------|
+| `accountNumber` | `id` | Primary identifier for the property |
+| `consumers` | `services` | Array of services (electricity/gas) |
+| No direct field | `name` | Built from `address.displayAddresses.shortForm` or address parts |
+| `address` | `address` | Transformed to our address structure |
+
+### Property ID Resolution
+
+The integration looks for property ID in this order:
+1. `data.get("id")`
+2. `data.get("propertyId")`
+3. `data.get("property_id")`
+4. `data.get("accountNumber")` ✅ **Used by Red Energy API**
+5. Generated from address if none found
+
+---
+
+## 2. Consumer/Service Structure
+
+### Actual API Structure
+
+```json
+{
+  "consumerNumber": 4235478511,
+  "accountNumber": 8490263,
+  "utility": "E",
+  "status": "ON",
+  "nmi": "4103296839",
+  "meterType": "INTERVAL",
+  "solar": true,
+  "productName": "Qantas Red Saver",
+  "linesCompany": "Ausgrid",
+  "balanceDollar": -75.0
+}
+```
+
+### Field Mappings
+
+| API Field | Our Internal Field | Transformation |
+|-----------|-------------------|----------------|
+| `consumerNumber` | `consumer_number` | Convert to string |
+| `utility` | `type` | `"E"` → `"electricity"`, `"G"` → `"gas"` |
+| `status` | `active` | `"ON"` → `true`, `"OFF"` → `false` |
+
+### Utility Code Mapping
+
+```python
+# API → Internal
+"E" → "electricity"
+"G" → "gas"
+```
+
+### Status Mapping
+
+```python
+# API → Internal
+"ON" → True
+"OFF" → False
+```
+
+---
+
+## 3. Address Structure
+
+### Actual API Structure
+
+```json
+{
+  "unit": null,
+  "unitType": null,
+  "house": "27",
+  "floor": null,
+  "building": null,
+  "street": "SUNNYSIDE CRES",
+  "streetType": null,
+  "suburb": "CASTLECRAG",
+  "pobox": null,
+  "townCity": null,
+  "postcode": "2068",
+  "state": "NSW",
+  "country": null,
+  "gentrackDisplayAddress": "27 SUNNYSIDE CRES, CASTLECRAG, NSW 2068",
+  "displayAddresses": {
+    "shortForm": "27 Sunnyside Crescent, Castlecrag",
+    "shortFormAlt": "27 Sunnyside Crescent, Castlecrag",
+    "extraShortForm": "27 Sunnyside Crescent",
+    "longForm": "27 Sunnyside Crescent\nCastlecrag NSW 2068",
+    "longFormAlt": "27 Sunnyside Crescent, Castlecrag, New South Wales 2 0 6 8"
+  },
+  "displayAddress": "27 SUNNYSIDE CRES\nCASTLECRAG  NSW  2068"
+}
+```
+
+### Field Mappings
+
+| API Field | Our Internal Field | Transformation |
+|-----------|-------------------|----------------|
+| `house` + `street` | `street` | Combined: `"27 SUNNYSIDE CRES"` |
+| `suburb` | `city` | Direct mapping |
+| `state` | `state` | Direct mapping |
+| `postcode` | `postcode` | Direct mapping |
+
+### Display Address Priority
+
+For property names, we use in order:
+1. `displayAddresses.shortForm` ✅ **Preferred** - "27 Sunnyside Crescent, Castlecrag"
+2. `displayAddresses.extraShortForm` - "27 Sunnyside Crescent"
+3. Built from `house` + `street` + `suburb`
+4. Fallback: `"Property {id}"`
+
+---
+
+## 4. Customer Data Response
+
+### Actual API Structure
+
+```json
+{
+  "id": "CUST123456",
+  "name": "John Smith",
+  "email": "john.smith@example.com",
+  "phone": "0412345678",
+  "accounts": [...]
+}
+```
+
+### Field Mappings
+
+| API Field | Our Internal Field | Notes |
+|-----------|-------------------|-------|
+| `id` | `id` | Customer ID |
+| `name` | `name` | Customer name |
+| `email` | `email` | Contact email |
+| `phone` / `phoneNumber` / `mobile` | `phone` | First non-null value |
+
+---
+
+## 5. Usage Data Response
+
+### Expected Structure
+
+```json
+{
+  "consumer_number": "4235478511",
+  "from_date": "2025-09-06",
+  "to_date": "2025-10-06",
+  "usage_data": [
+    {
+      "date": "2025-09-06",
+      "usage": 12.5,
+      "cost": 3.37
+    },
+    {
+      "date": "2025-09-07",
+      "usage": 14.2,
+      "cost": 3.83
+    }
+  ],
+  "total_usage": 26.7,
+  "total_cost": 7.20
+}
+```
+
+### Field Requirements
+
+| Field | Type | Required | Notes |
+|-------|------|----------|-------|
+| `consumer_number` | string | Yes | Must match consumer from property |
+| `usage_data` | array | Yes | Array of daily usage entries |
+| `usage_data[].date` | string | Yes | ISO 8601 date format |
+| `usage_data[].usage` | number | Yes | kWh or MJ |
+| `usage_data[].cost` | number | Yes | Dollar amount |
+
+---
+
+## 6. Validation Rules
+
+### Property Validation
+
+```python
+# Required fields
+- accountNumber (becomes id)
+- address (object)
+- consumers (array)
+
+# Optional fields
+- propertyNumber
+- propertyPhysicalNumber
+```
+
+### Consumer/Service Validation
+
+```python
+# Required fields
+- consumerNumber
+- utility ("E" or "G")
+
+# Optional fields (with defaults)
+- status (default: "ON")
+- accountNumber
+```
+
+### Address Validation
+
+```python
+# Required fields
+- At least one of: house, street, suburb
+- state
+- postcode
+
+# Optional fields
+- unit, unitType, floor, building
+- displayAddresses
+```
+
+---
+
+## 7. Common Issues and Solutions
+
+### Issue 1: "No accounts found"
+
+**Cause:** Validation fails because API structure doesn't match expected format
+
+**Solution:** Check that validation handles both:
+- `consumers` (Red Energy format) ✅
+- `services` (generic format)
+
+### Issue 2: Property ID mismatch
+
+**Cause:** Config has `"0"` but API returns actual account numbers
+
+**Solution:** 
+- Always use `accountNumber` from API
+- Convert to string for consistent comparison
+- Config migration v4 auto-fixes old configs
+
+### Issue 3: Service not detected
+
+**Cause:** Looking for `type: "electricity"` but API has `utility: "E"`
+
+**Solution:** Map utility codes:
+```python
+if utility == "E":
+    service_type = "electricity"
+elif utility == "G":
+    service_type = "gas"
+```
+
+---
+
+## 8. Data Transformation Examples
+
+### Example 1: Property Transformation
+
+**Input (API):**
+```json
+{
+  "accountNumber": 8490263,
+  "address": {
+    "house": "27",
+    "street": "SUNNYSIDE CRES",
+    "suburb": "CASTLECRAG",
+    "state": "NSW",
+    "postcode": "2068",
+    "displayAddresses": {
+      "shortForm": "27 Sunnyside Crescent, Castlecrag"
+    }
+  },
+  "consumers": [...]
+}
+```
+
+**Output (Internal):**
+```json
+{
+  "id": "8490263",
+  "name": "27 Sunnyside Crescent, Castlecrag",
+  "address": {
+    "street": "27 SUNNYSIDE CRES",
+    "city": "CASTLECRAG",
+    "state": "NSW",
+    "postcode": "2068"
+  },
+  "services": [...]
+}
+```
+
+### Example 2: Consumer Transformation
+
+**Input (API):**
+```json
+{
+  "consumerNumber": 4235478511,
+  "utility": "E",
+  "status": "ON"
+}
+```
+
+**Output (Internal):**
+```json
+{
+  "type": "electricity",
+  "consumer_number": "4235478511",
+  "active": true
+}
+```
+
+---
+
+## 9. Version History
+
+### v4 (2025-10-06)
+- ✅ Added support for `consumers` array (vs `services`)
+- ✅ Added `utility` → `type` mapping
+- ✅ Added `status` → `active` mapping
+- ✅ Added `consumerNumber` support
+- ✅ Added `suburb` → `city` mapping
+- ✅ Added `displayAddresses.shortForm` for property names
+- ✅ Auto-select all accounts by default
+
+### v3 (Previous)
+- Added performance optimizations
+- Added device management
+
+### v2 (Previous)
+- Added advanced sensors
+- Added polling options
+
+### v1 (Initial)
+- Basic property and service support
+- Expected different API structure
+
+---
+
+## 10. Testing Checklist
+
+When updating API response handling:
+
+- [ ] Test with single property
+- [ ] Test with multiple properties
+- [ ] Test with electricity only
+- [ ] Test with gas only
+- [ ] Test with both utilities
+- [ ] Test with inactive service (status: "OFF")
+- [ ] Test with missing optional fields
+- [ ] Test property name generation
+- [ ] Test address parsing with unit number
+- [ ] Test address parsing without house number
+- [ ] Verify entity IDs are friendly
+- [ ] Verify all IDs are strings for comparison
+
+---
+
+## 11. References
+
+- Integration: `custom_components/red_energy/`
+- Validation: `custom_components/red_energy/data_validation.py`
+- API Client: `custom_components/red_energy/api.py`
+- Config Flow: `custom_components/red_energy/config_flow.py`
+- Migration: `custom_components/red_energy/config_migration.py`
+
+---
+
+## 12. Future Considerations
+
+### Potential API Changes to Watch For
+
+1. **New Utility Types**: Currently only `"E"` and `"G"` - watch for new codes
+2. **Additional Status Values**: Currently only `"ON"` and `"OFF"` - watch for `"PENDING"`, `"SUSPENDED"`, etc.
+3. **New Address Fields**: API may add fields like `streetNumber`, `streetName` separately
+4. **Multiple Meters**: Some properties may have multiple meters per utility type
+5. **Solar Feed-in Data**: Consider separate handling for solar generation vs consumption
+
+### Recommended Improvements
+
+1. Cache API responses to reduce API calls
+2. Add retry logic for failed API calls
+3. Implement exponential backoff
+4. Add API rate limiting
+5. Monitor for API deprecation notices
+6. Add support for real-time usage data if API provides websockets
+

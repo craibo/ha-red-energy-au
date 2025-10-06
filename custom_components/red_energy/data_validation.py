@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -17,30 +17,28 @@ def validate_customer_data(data: Dict[str, Any]) -> Dict[str, Any]:
     if not isinstance(data, dict):
         raise DataValidationError("Customer data must be a dictionary")
     
-    required_fields = ["id", "name", "email"]
-    for field in required_fields:
-        if field not in data:
-            _LOGGER.warning("Missing required customer field: %s", field)
-            # Provide default values for missing fields
-            if field == "id":
-                data[field] = "unknown"
-            elif field == "name":
-                data[field] = "Red Energy Customer"
-            elif field == "email":
-                data[field] = "unknown@redenergy.com.au"
+    _LOGGER.debug("Validating customer data with keys: %s", list(data.keys()))
     
-    # Sanitize data
+    customer_id = data.get("id") or data.get("customerId") or data.get("customer_id")
+    if not customer_id:
+        email = data.get("email") or data.get("emailAddress") or "unknown@redenergy.com.au"
+        customer_id = f"customer_{email.split('@')[0]}"
+        _LOGGER.info("No customer ID found in API response, generated synthetic ID: %s", customer_id)
+    
+    customer_name = data.get("name") or data.get("customerName") or data.get("displayName") or "Red Energy Customer"
+    customer_email = data.get("email") or data.get("emailAddress") or "unknown@redenergy.com.au"
+    
     validated_data = {
-        "id": str(data["id"]),
-        "name": str(data["name"]).strip(),
-        "email": str(data["email"]).strip().lower(),
+        "id": str(customer_id),
+        "name": str(customer_name).strip(),
+        "email": str(customer_email).strip().lower(),
     }
     
-    # Add optional fields if present
-    if "phone" in data:
-        validated_data["phone"] = str(data["phone"]).strip()
+    phone = data.get("phone") or data.get("phoneNumber") or data.get("mobile")
+    if phone:
+        validated_data["phone"] = str(phone).strip()
     
-    _LOGGER.debug("Validated customer data: %s", validated_data["name"])
+    _LOGGER.debug("Validated customer data: %s (ID: %s)", validated_data["name"], validated_data["id"])
     return validated_data
 
 
@@ -52,21 +50,27 @@ def validate_properties_data(data: List[Dict[str, Any]]) -> List[Dict[str, Any]]
     if not data:
         raise DataValidationError("No properties found in response")
     
+    _LOGGER.info("Validating %d properties from API", len(data))
     validated_properties = []
     
     for i, property_data in enumerate(data):
         try:
+            _LOGGER.info("Validating property %d: %s", i, property_data)
             validated_property = validate_single_property(property_data)
             validated_properties.append(validated_property)
+            _LOGGER.info("  ✓ Property %d validated successfully: ID=%s, Name=%s", 
+                        i, validated_property.get("id"), validated_property.get("name"))
         except DataValidationError as err:
-            _LOGGER.error("Property %d validation failed: %s", i, err)
+            _LOGGER.error("  ✗ Property %d validation failed: %s", i, err)
+            _LOGGER.error("     Raw property data: %s", property_data)
             # Skip invalid properties rather than failing completely
             continue
     
     if not validated_properties:
+        _LOGGER.error("No valid properties after validation! Original data: %s", data)
         raise DataValidationError("No valid properties after validation")
     
-    _LOGGER.debug("Validated %d properties", len(validated_properties))
+    _LOGGER.info("Successfully validated %d of %d properties", len(validated_properties), len(data))
     return validated_properties
 
 
@@ -75,17 +79,67 @@ def validate_single_property(data: Dict[str, Any]) -> Dict[str, Any]:
     if not isinstance(data, dict):
         raise DataValidationError("Property data must be a dictionary")
     
-    # Required fields
-    if "id" not in data:
-        raise DataValidationError("Property missing required 'id' field")
+    _LOGGER.debug("Validating property with keys: %s", list(data.keys()))
+    
+    property_id = data.get("id") or data.get("propertyId") or data.get("property_id") or data.get("accountNumber")
+    
+    if not property_id:
+        address = data.get("address", {})
+        if isinstance(address, dict):
+            address_parts = [
+                str(address.get("street", "")),
+                str(address.get("city", "")),
+                str(address.get("postcode", ""))
+            ]
+            address_key = "_".join([p for p in address_parts if p]).replace(" ", "_")[:50]
+            if address_key:
+                property_id = f"property_{address_key}"
+            else:
+                property_id = f"property_{hash(str(data)) % 100000}"
+        else:
+            property_id = f"property_{hash(str(data)) % 100000}"
+        
+        _LOGGER.info("No property ID found in API response, generated synthetic ID: %s", property_id)
+    
+    # Get property name - try various fields
+    property_name = data.get("name") or data.get("propertyName")
+    
+    # If no name, try to build from address
+    if not property_name:
+        address_data = data.get("address", {})
+        if isinstance(address_data, dict):
+            # Try display address fields first
+            display_addresses = address_data.get("displayAddresses", {})
+            if isinstance(display_addresses, dict):
+                property_name = display_addresses.get("shortForm") or display_addresses.get("extraShortForm")
+            
+            # Fall back to building from address parts
+            if not property_name:
+                house = address_data.get("house", "").strip()
+                street = address_data.get("street", "").strip()
+                suburb = address_data.get("suburb", "").strip()
+                if house and street and suburb:
+                    property_name = f"{house} {street}, {suburb}"
+                elif street and suburb:
+                    property_name = f"{street}, {suburb}"
+    
+    # Final fallback
+    if not property_name:
+        property_name = f"Property {property_id}"
+    
+    # API can return either "services" or "consumers"
+    services_data = data.get("services") or data.get("consumers", [])
+    _LOGGER.info("Property %s has %d services/consumers", property_id, len(services_data) if isinstance(services_data, list) else 0)
     
     validated_property = {
-        "id": str(data["id"]),
-        "name": data.get("name", f"Property {data['id']}"),
+        "id": str(property_id),
+        "name": str(property_name),
         "address": validate_address(data.get("address", {})),
-        "services": validate_services(data.get("services", [])),
+        "services": validate_services(services_data),
     }
     
+    _LOGGER.info("Validated property: %s (ID: %s) with %d services", 
+                validated_property["name"], validated_property["id"], len(validated_property["services"]))
     return validated_property
 
 
@@ -94,9 +148,28 @@ def validate_address(data: Dict[str, Any]) -> Dict[str, Any]:
     if not isinstance(data, dict):
         data = {}
     
+    # Build full street address from house + street
+    house = data.get("house", "").strip()
+    street = data.get("street", "").strip()
+    
+    if house and street:
+        # Combine house number with street name
+        full_street = f"{house} {street}"
+    elif street:
+        full_street = street
+    elif house:
+        full_street = house
+    else:
+        full_street = ""
+    
+    # API uses "suburb" instead of "city"
+    city = data.get("city", "").strip()
+    if not city:
+        city = data.get("suburb", "").strip()
+    
     return {
-        "street": data.get("street", "").strip(),
-        "city": data.get("city", "").strip(),
+        "street": full_street,
+        "city": city,
         "state": data.get("state", "").strip(),
         "postcode": data.get("postcode", "").strip(),
     }
@@ -125,18 +198,40 @@ def validate_single_service(data: Dict[str, Any]) -> Dict[str, Any]:
     if not isinstance(data, dict):
         raise DataValidationError("Service data must be a dictionary")
     
+    # Handle both formats: "type" or "utility"
     service_type = data.get("type", "").lower()
+    
+    # API returns "utility" with values "E" or "G"
+    if not service_type:
+        utility = data.get("utility", "").upper()
+        if utility == "E":
+            service_type = "electricity"
+        elif utility == "G":
+            service_type = "gas"
+        else:
+            raise DataValidationError(f"Invalid utility type: {utility}")
+    
     if service_type not in ["electricity", "gas"]:
         raise DataValidationError(f"Invalid service type: {service_type}")
     
-    consumer_number = data.get("consumer_number")
+    # Handle both "consumer_number" and "consumerNumber"
+    consumer_number = data.get("consumer_number") or data.get("consumerNumber")
     if not consumer_number:
-        raise DataValidationError("Service missing consumer_number")
+        raise DataValidationError("Service missing consumer_number/consumerNumber")
+    
+    # Handle both "active" (boolean) and "status" (ON/OFF)
+    is_active = data.get("active", True)
+    if not isinstance(is_active, bool):
+        status = data.get("status", "").upper()
+        is_active = status == "ON"
+    
+    _LOGGER.debug("Validated service: type=%s, consumer=%s, active=%s", 
+                 service_type, consumer_number, is_active)
     
     return {
         "type": service_type,
         "consumer_number": str(consumer_number),
-        "active": bool(data.get("active", True)),
+        "active": is_active,
     }
 
 
