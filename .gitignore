@@ -29,6 +29,8 @@ env.bak/
 venv.bak/
 
 # IDEs
+.claude/
+.cursor/
 .vscode/
 .idea/
 *.swp
@@ -72,7 +74,3 @@ coverage.xml
 # Temporary files
 *.tmp
 *.temp
-
-# IDEs
-.claude/
-.cursor/
