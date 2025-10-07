@@ -591,6 +591,7 @@ class RedEnergySolarSensor(RedEnergyBaseSensor):
         """Initialize the solar sensor."""
         super().__init__(coordinator, config_entry, property_id, service_type, SENSOR_TYPE_SOLAR)
         
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
         self._attr_icon = "mdi:solar-power"
 
     @property
@@ -891,11 +892,18 @@ class RedEnergyStatusSensor(RedEnergyBaseSensor):
             return None
         
         status = metadata.get("status")
-        if status == "ON":
-            return "Active"
-        elif status == "OFF":
-            return "Inactive"
-        return status
+        if status:
+            if status == "ON":
+                return "Active"
+            elif status == "OFF":
+                return "Inactive"
+            return status
+        
+        is_active = metadata.get("active")
+        if is_active is not None:
+            return "Active" if is_active else "Inactive"
+        
+        return None
 
 
 class RedEnergyDailyImportUsageSensor(RedEnergyBaseSensor):
