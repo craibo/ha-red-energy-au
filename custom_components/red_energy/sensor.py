@@ -98,7 +98,6 @@ async def async_setup_entry(
                 # Total cost/credit breakdown
                 RedEnergyTotalImportCostSensor(coordinator, config_entry, account_id, service_type),
                 RedEnergyTotalExportCreditSensor(coordinator, config_entry, account_id, service_type),
-                RedEnergyNetCostSensor(coordinator, config_entry, account_id, service_type),
             ])
             
             # Advanced sensors (optional)
@@ -126,8 +125,8 @@ async def async_setup_entry(
     _LOGGER.debug(
         "Created %d sensors (%d core, %d advanced) for Red Energy integration", 
         len(entities),
-        len(selected_accounts) * len(services) * 23,  # Core sensors per account/service
-        len(entities) - (len(selected_accounts) * len(services) * 23)  # Advanced sensors
+        len(selected_accounts) * len(services) * 22,  # Core sensors per account/service
+        len(entities) - (len(selected_accounts) * len(services) * 22)  # Advanced sensors
     )
     async_add_entities(entities)
 
@@ -1096,43 +1095,6 @@ class RedEnergyTotalExportCreditSensor(RedEnergyBaseSensor):
             "service_type": self._service_type,
             "period": self._get_period_description(),
             "description": "Total credit from solar export"
-        }
-
-
-class RedEnergyNetCostSensor(RedEnergyBaseSensor):
-    """Red Energy net cost sensor (import cost - export credit)."""
-
-    def __init__(
-        self,
-        coordinator: RedEnergyDataCoordinator,
-        config_entry: ConfigEntry,
-        property_id: str,
-        service_type: str,
-    ) -> None:
-        """Initialize the net cost sensor."""
-        super().__init__(coordinator, config_entry, property_id, service_type, "net_cost")
-        
-        self._attr_device_class = SensorDeviceClass.MONETARY
-        self._attr_native_unit_of_measurement = "AUD"
-        self._attr_state_class = SensorStateClass.TOTAL
-
-    @property
-    def native_value(self) -> Optional[float]:
-        """Return the net cost."""
-        return self.coordinator.get_net_total_cost(self._property_id, self._service_type)
-
-    @property
-    def extra_state_attributes(self) -> Optional[dict[str, Any]]:
-        """Return extra state attributes."""
-        import_cost = self.coordinator.get_total_import_cost(self._property_id, self._service_type)
-        export_credit = self.coordinator.get_total_export_credit(self._property_id, self._service_type)
-        
-        return {
-            "import_cost": import_cost,
-            "export_credit": export_credit,
-            "calculation": "import_cost - export_credit",
-            "period": self._get_period_description(),
-            "description": "Actual cost after solar credits"
         }
 
 

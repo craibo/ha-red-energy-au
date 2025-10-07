@@ -41,7 +41,6 @@ SENSOR_TYPE_TOTAL_EXPORT_USAGE: Final = "total_export_usage"
 # Breakdown sensor types - Cost (CORE)
 SENSOR_TYPE_TOTAL_IMPORT_COST: Final = "total_import_cost"
 SENSOR_TYPE_TOTAL_EXPORT_CREDIT: Final = "total_export_credit"
-SENSOR_TYPE_NET_COST: Final = "net_cost"
 
 # Breakdown sensor types - Time period import (ADVANCED)
 SENSOR_TYPE_PEAK_IMPORT_USAGE: Final = "peak_import_usage"
