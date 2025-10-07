@@ -30,6 +30,39 @@ SENSOR_TYPE_MONTHLY_AVERAGE: Final = "monthly_average"
 SENSOR_TYPE_PEAK_USAGE: Final = "peak_usage"
 SENSOR_TYPE_EFFICIENCY: Final = "efficiency"
 
+# Breakdown sensor types - Daily (CORE)
+SENSOR_TYPE_DAILY_IMPORT_USAGE: Final = "daily_import_usage"
+SENSOR_TYPE_DAILY_EXPORT_USAGE: Final = "daily_export_usage"
+
+# Breakdown sensor types - Total (CORE)
+SENSOR_TYPE_TOTAL_IMPORT_USAGE: Final = "total_import_usage"
+SENSOR_TYPE_TOTAL_EXPORT_USAGE: Final = "total_export_usage"
+
+# Breakdown sensor types - Cost (CORE)
+SENSOR_TYPE_TOTAL_IMPORT_COST: Final = "total_import_cost"
+SENSOR_TYPE_TOTAL_EXPORT_CREDIT: Final = "total_export_credit"
+SENSOR_TYPE_NET_COST: Final = "net_cost"
+
+# Breakdown sensor types - Time period import (ADVANCED)
+SENSOR_TYPE_PEAK_IMPORT_USAGE: Final = "peak_import_usage"
+SENSOR_TYPE_OFFPEAK_IMPORT_USAGE: Final = "offpeak_import_usage"
+SENSOR_TYPE_SHOULDER_IMPORT_USAGE: Final = "shoulder_import_usage"
+
+# Breakdown sensor types - Time period export (ADVANCED)
+SENSOR_TYPE_PEAK_EXPORT_USAGE: Final = "peak_export_usage"
+SENSOR_TYPE_OFFPEAK_EXPORT_USAGE: Final = "offpeak_export_usage"
+SENSOR_TYPE_SHOULDER_EXPORT_USAGE: Final = "shoulder_export_usage"
+
+# Breakdown sensor types - Demand and environmental (ADVANCED)
+SENSOR_TYPE_MAX_DEMAND: Final = "max_demand"
+SENSOR_TYPE_MAX_DEMAND_TIME: Final = "max_demand_interval_start"
+SENSOR_TYPE_CARBON_EMISSION: Final = "carbon_emission_tonne"
+
+# Time period values (from API)
+TIME_PERIOD_PEAK: Final = "PEAK"
+TIME_PERIOD_OFFPEAK: Final = "OFFPEAK"
+TIME_PERIOD_SHOULDER: Final = "SHOULDER"
+
 # Service metadata sensor types
 SENSOR_TYPE_NMI: Final = "nmi"
 SENSOR_TYPE_METER_TYPE: Final = "meter_type"
@@ -41,6 +74,9 @@ SENSOR_TYPE_ARREARS: Final = "arrears"
 SENSOR_TYPE_LAST_BILL_DATE: Final = "last_bill_date"
 SENSOR_TYPE_NEXT_BILL_DATE: Final = "next_bill_date"
 SENSOR_TYPE_BILLING_FREQUENCY: Final = "billing_frequency"
+SENSOR_TYPE_JURISDICTION: Final = "jurisdiction"
+SENSOR_TYPE_CHARGE_CLASS: Final = "charge_class"
+SENSOR_TYPE_STATUS: Final = "status"
 
 # Configuration options
 CONF_SCAN_INTERVAL: Final = "scan_interval"

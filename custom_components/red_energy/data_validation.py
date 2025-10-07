@@ -249,6 +249,7 @@ def validate_single_service(data: Dict[str, Any]) -> Dict[str, Any]:
         "billingFrequency",
         "chargeClass",
         "jurisdiction",
+        "status",
         "latitude",
         "longitude",
         "entryDate",
@@ -302,7 +303,7 @@ def validate_usage_data(data: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def validate_usage_entry(data: Dict[str, Any]) -> Dict[str, Any]:
-    """Validate a single usage data entry."""
+    """Validate a single usage data entry with breakdown data."""
     if not isinstance(data, dict):
         raise DataValidationError("Usage entry must be a dictionary")
     
@@ -316,32 +317,84 @@ def validate_usage_entry(data: Dict[str, Any]) -> Dict[str, Any]:
     except ValueError as err:
         raise DataValidationError(f"Invalid date format: {date_str}") from err
     
-    # Validate usage (must be numeric)
-    usage = data.get("usage", 0)
-    try:
-        usage = float(usage)
-        if usage < 0:
-            _LOGGER.warning("Negative usage value: %s, setting to 0", usage)
-            usage = 0.0
-    except (ValueError, TypeError) as err:
-        raise DataValidationError(f"Invalid usage value: {usage}") from err
+    # Define numeric fields to validate
+    numeric_fields = [
+        "usage", "cost",
+        "import_usage", "export_usage",
+        "import_cost", "export_credit", "net_cost",
+        "peak_import_usage", "offpeak_import_usage", "shoulder_import_usage",
+        "peak_export_usage", "offpeak_export_usage", "shoulder_export_usage",
+        "max_demand_kw", "carbon_emission_tonne"
+    ]
     
-    # Validate cost (must be numeric)
-    cost = data.get("cost", 0)
-    try:
-        cost = float(cost)
-        if cost < 0:
-            _LOGGER.warning("Negative cost value: %s, setting to 0", cost)
-            cost = 0.0
-    except (ValueError, TypeError) as err:
-        raise DataValidationError(f"Invalid cost value: {cost}") from err
-    
-    return {
+    validated_data = {
         "date": date_str,
-        "usage": round(usage, 3),
-        "cost": round(cost, 2),
         "unit": data.get("unit", "kWh"),
     }
+    
+    # Validate all numeric fields
+    for field in numeric_fields:
+        if field in data:
+            try:
+                value = float(data[field])
+                # Handle negative values appropriately based on field type
+                if value < 0:
+                    if field == "usage":
+                        # Net usage can be negative for solar properties (export > import)
+                        _LOGGER.debug(
+                            "Negative net usage on %s: %.3f kWh (solar export exceeded grid import)",
+                            date_str, value
+                        )
+                    elif field not in ["cost", "net_cost"]:
+                        # Other fields (import/export usage) should not be negative
+                        _LOGGER.warning(
+                            "Negative value for %s on %s: %.3f",
+                            field, date_str, value
+                        )
+                validated_data[field] = value
+            except (ValueError, TypeError) as err:
+                raise DataValidationError(f"Invalid {field} value: {data.get(field)}") from err
+    
+    # Validate breakdown sums (with tolerance for floating point)
+    if "import_usage" in validated_data:
+        period_sum = (
+            validated_data.get("peak_import_usage", 0) +
+            validated_data.get("offpeak_import_usage", 0) +
+            validated_data.get("shoulder_import_usage", 0)
+        )
+        tolerance = 0.01  # 10 Wh tolerance
+        if abs(period_sum - validated_data["import_usage"]) > tolerance:
+            _LOGGER.warning(
+                "Import usage breakdown mismatch for %s: total=%.3f, sum=%.3f (diff=%.3f)",
+                date_str, validated_data["import_usage"], period_sum,
+                abs(period_sum - validated_data["import_usage"])
+            )
+    
+    # Validate export breakdown sums
+    if "export_usage" in validated_data:
+        period_sum = (
+            validated_data.get("peak_export_usage", 0) +
+            validated_data.get("offpeak_export_usage", 0) +
+            validated_data.get("shoulder_export_usage", 0)
+        )
+        tolerance = 0.01
+        if abs(period_sum - validated_data["export_usage"]) > tolerance:
+            _LOGGER.warning(
+                "Export usage breakdown mismatch for %s: total=%.3f, sum=%.3f (diff=%.3f)",
+                date_str, validated_data["export_usage"], period_sum,
+                abs(period_sum - validated_data["export_usage"])
+            )
+    
+    # Validate cost calculation
+    if all(k in validated_data for k in ["import_cost", "export_credit", "net_cost"]):
+        calculated_net = validated_data["import_cost"] - validated_data["export_credit"]
+        if abs(calculated_net - validated_data["net_cost"]) > 0.01:
+            _LOGGER.warning(
+                "Net cost mismatch for %s: calculated=%.2f, stored=%.2f",
+                date_str, calculated_net, validated_data["net_cost"]
+            )
+    
+    return validated_data
 
 
 def sanitize_sensor_name(name: str) -> str:

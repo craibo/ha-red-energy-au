@@ -41,12 +41,16 @@ class RedEnergyAPI:
         self._access_token: Optional[str] = None
         self._refresh_token: Optional[str] = None
         self._token_expires: Optional[datetime] = None
+        self._client_id: Optional[str] = None
         self._logged_entry_mapping: bool = False
         
     async def authenticate(self, username: str, password: str, client_id: str) -> bool:
         """Authenticate with Red Energy using Okta session token and OAuth2 PKCE flow."""
         try:
             _LOGGER.debug("Starting Red Energy authentication")
+            
+            # Store client_id for token refresh operations
+            self._client_id = client_id
             
             # Step 1: Get Okta session token
             session_token, session_expires = await self._get_session_token(username, password)
@@ -384,6 +388,9 @@ class RedEnergyAPI:
         if not self._refresh_token:
             raise RedEnergyAuthError("No refresh token available")
         
+        if not self._client_id:
+            raise RedEnergyAuthError("No client ID available for token refresh")
+        
         # Get token endpoint from discovery
         discovery_data = await self._get_discovery_data()
         token_endpoint = discovery_data["token_endpoint"]
@@ -391,6 +398,7 @@ class RedEnergyAPI:
         token_data = {
             'grant_type': 'refresh_token',
             'refresh_token': self._refresh_token,
+            'client_id': self._client_id,
         }
         
         async with async_timeout.timeout(API_TIMEOUT):
@@ -498,17 +506,25 @@ class RedEnergyAPI:
         }
     
     def _normalize_usage_entry(self, entry: Any) -> Dict[str, Any]:
-        """Normalize a single usage entry to expected field names.
+        """Normalize a single usage entry with comprehensive breakdowns.
+        
+        Extracts detailed breakdown data from halfHours array including:
+        - Separate import (consumption) and export (generation) totals
+        - Time period breakdowns (PEAK/OFFPEAK/SHOULDER)
+        - Max demand tracking
+        - Carbon emissions
         
         Red Energy returns daily summaries with:
         - usageDate: the date
-        - halfHours: array of 30-minute intervals
+        - halfHours: array of 48 30-minute intervals
         - consumptionDollar: daily total cost (excl GST)
-        - Individual intervals can be aggregated for total kWh
+        - generationDollar: daily solar credit
+        - maxDemandDetail: max demand information
+        - carbonEmissionTonne: daily carbon emissions
         """
         if not isinstance(entry, dict):
             _LOGGER.warning("Usage entry is not a dict: %s, returning empty entry", type(entry))
-            return {"date": "", "usage": 0.0, "cost": 0.0}
+            return self._empty_entry()
         
         # Log the first entry to help debug field mapping
         if not self._logged_entry_mapping:
@@ -529,35 +545,135 @@ class RedEnergyAPI:
         
         # Extract date from usageDate field
         date_value = entry.get("usageDate", "")
-        
-        # Sum up consumption from halfHours array
-        usage_kwh = 0.0
         half_hours = entry.get("halfHours", [])
+        
+        # Initialize accumulators
+        import_usage = 0.0
+        export_usage = 0.0
+        
+        # Time period breakdowns
+        peak_import = 0.0
+        offpeak_import = 0.0
+        shoulder_import = 0.0
+        peak_export = 0.0
+        offpeak_export = 0.0
+        shoulder_export = 0.0
+        
+        # Max demand tracking
+        max_demand_kw = 0.0
+        max_demand_time = None
+        
+        # Process each 30-minute interval (48 per day)
         if isinstance(half_hours, list):
             for interval in half_hours:
-                if isinstance(interval, dict):
-                    # Sum consumption (net of generation)
-                    consumption = float(interval.get("consumptionKwh", 0.0))
-                    usage_kwh += consumption
+                if not isinstance(interval, dict):
+                    continue
+                
+                # Extract interval data
+                consumption = float(interval.get("consumptionKwh", 0.0))
+                generation = float(interval.get("generationKwh", 0.0))
+                period = interval.get("primaryConsumptionTariffComponent", "").upper()
+                
+                # Accumulate totals
+                import_usage += consumption
+                export_usage += generation
+                
+                # Accumulate by time period
+                if period == "PEAK":
+                    peak_import += consumption
+                    peak_export += generation
+                elif period == "OFFPEAK":
+                    offpeak_import += consumption
+                    offpeak_export += generation
+                elif period == "SHOULDER":
+                    shoulder_import += consumption
+                    shoulder_export += generation
+                
+                # Track max demand from interval detail
+                demand_detail = interval.get("demandDetail", {})
+                if isinstance(demand_detail, dict):
+                    demand_kw = float(demand_detail.get("demandKw", 0.0))
+                    if demand_kw > max_demand_kw:
+                        max_demand_kw = demand_kw
+                        max_demand_time = interval.get("intervalStart")
         
-        # Use daily consumption cost (excl GST) - Red Energy provides this aggregated
-        cost_value = float(entry.get("consumptionDollar", 0.0))
-        
-        # Handle solar generation separately if needed (negative cost)
+        # Extract daily costs from summary
+        import_cost = float(entry.get("consumptionDollar", 0.0))
         generation_dollar = float(entry.get("generationDollar", 0.0))
-        # Net cost = consumption cost + generation credit (generation is negative)
-        net_cost = cost_value + generation_dollar
+        export_credit = abs(generation_dollar)  # Convert to positive value
+        net_cost = import_cost - export_credit
+        
+        # Extract carbon emissions from daily summary
+        carbon_emission = float(entry.get("carbonEmissionTonne", 0.0))
+        
+        # Check for max demand from daily summary (may be more accurate)
+        max_demand_detail = entry.get("maxDemandDetail", {})
+        if isinstance(max_demand_detail, dict) and max_demand_detail:
+            daily_max_demand = float(max_demand_detail.get("demandKw", 0.0))
+            if daily_max_demand > max_demand_kw:
+                max_demand_kw = daily_max_demand
+                max_demand_time = max_demand_detail.get("intervalStart")
         
         _LOGGER.debug(
-            "Normalized entry: date=%s, usage=%.3f kWh, consumption_cost=$%.2f, generation_credit=$%.2f, net=$%.2f",
-            date_value, usage_kwh, cost_value, generation_dollar, net_cost
+            "Normalized entry for %s: import=%.3f kWh, export=%.3f kWh, "
+            "import_cost=$%.2f, export_credit=$%.2f, net=$%.2f, "
+            "peak_import=%.3f, offpeak_import=%.3f, shoulder_import=%.3f",
+            date_value, import_usage, export_usage,
+            import_cost, export_credit, net_cost,
+            peak_import, offpeak_import, shoulder_import
         )
         
         return {
+            # Backward compatibility
             "date": str(date_value),
-            "usage": round(usage_kwh, 3),
-            "cost": round(net_cost, 2),  # Net cost including solar credits
-            "unit": "kWh"
+            "usage": round(import_usage - export_usage, 3),  # Net usage
+            "cost": round(net_cost, 2),
+            "unit": "kWh",
+            
+            # Import/Export totals
+            "import_usage": round(import_usage, 3),
+            "export_usage": round(export_usage, 3),
+            "import_cost": round(import_cost, 2),
+            "export_credit": round(export_credit, 2),
+            "net_cost": round(net_cost, 2),
+            
+            # Time period import breakdowns
+            "peak_import_usage": round(peak_import, 3),
+            "offpeak_import_usage": round(offpeak_import, 3),
+            "shoulder_import_usage": round(shoulder_import, 3),
+            
+            # Time period export breakdowns
+            "peak_export_usage": round(peak_export, 3),
+            "offpeak_export_usage": round(offpeak_export, 3),
+            "shoulder_export_usage": round(shoulder_export, 3),
+            
+            # Demand and environmental
+            "max_demand_kw": round(max_demand_kw, 3),
+            "max_demand_time": max_demand_time,
+            "carbon_emission_tonne": round(carbon_emission, 6)
+        }
+    
+    def _empty_entry(self) -> Dict[str, Any]:
+        """Return an empty entry structure with all fields initialized to zero."""
+        return {
+            "date": "",
+            "usage": 0.0,
+            "cost": 0.0,
+            "unit": "kWh",
+            "import_usage": 0.0,
+            "export_usage": 0.0,
+            "import_cost": 0.0,
+            "export_credit": 0.0,
+            "net_cost": 0.0,
+            "peak_import_usage": 0.0,
+            "offpeak_import_usage": 0.0,
+            "shoulder_import_usage": 0.0,
+            "peak_export_usage": 0.0,
+            "offpeak_export_usage": 0.0,
+            "shoulder_export_usage": 0.0,
+            "max_demand_kw": 0.0,
+            "max_demand_time": None,
+            "carbon_emission_tonne": 0.0
         }
     
     def _find_source_key(self, entry: Dict[str, Any], possible_keys: List[str]) -> str:
