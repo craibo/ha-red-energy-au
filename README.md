@@ -97,16 +97,50 @@ The Client ID is required for OAuth2 authentication with Red Energy's API. To ob
 For each enabled service (electricity/gas) per property:
 
 - `sensor.{property_name}_{service}_daily_usage` - Current daily usage (kWh/MJ)
-- `sensor.{property_name}_{service}_total_cost` - Total cost over data period (AUD)
-- `sensor.{property_name}_{service}_total_usage` - Total usage over data period (kWh/MJ)
+- `sensor.{property_name}_{service}_total_cost` - Total cost since last bill (AUD)
+- `sensor.{property_name}_{service}_total_usage` - Total usage since last bill (kWh/MJ)
 
 ### Advanced Sensors (Optional)
 When "Advanced Sensors" are enabled:
 
 - `sensor.{property_name}_{service}_daily_average` - Average daily usage
-- `sensor.{property_name}_{service}_monthly_average` - Projected monthly usage
+- `sensor.{property_name}_{service}_monthly_average` - Projected monthly usage (billing period-adjusted)
 - `sensor.{property_name}_{service}_peak_usage` - Highest single-day usage with date
 - `sensor.{property_name}_{service}_efficiency` - Usage consistency efficiency rating (0-100%)
+
+## Usage Calculation & Billing Period
+
+### How Usage is Calculated
+
+The integration automatically aligns with your Red Energy billing cycle by using the `lastBillDate` from your account:
+
+- **Usage Period**: `lastBillDate` to current date
+- **Updates**: Automatically adjusts each billing cycle
+- **Alignment**: Matches your actual Red Energy bill for easy comparison
+
+### Benefits of Billing Period Tracking
+
+- **Accurate Cost Projections**: Monthly averages reflect your actual billing cycle
+- **Bill Comparison**: Sensor totals directly match your Red Energy bill amounts
+- **Flexible Billing**: Works with all billing frequencies (monthly, quarterly, etc.)
+- **Real-time Progress**: Track current bill period costs as they accumulate
+
+### Fallback Behavior
+
+If `lastBillDate` is unavailable (new accounts or API issues):
+- Automatically falls back to 30-day rolling period
+- Continues to provide accurate usage data
+- Returns to billing period tracking once data is available
+
+### Viewing Your Current Period
+
+Each sensor includes the current calculation period in its attributes:
+```yaml
+period: "28 days (since last bill)"
+period_days: 28
+start_date: "2025-09-09T00:00:00"
+end_date: "2025-10-07T12:34:56"
+```
 
 ## Service Calls
 
@@ -274,7 +308,6 @@ The integration uses a modular architecture with the following key components:
 - **Error Recovery**: Comprehensive error handling with circuit breakers
 - **Config Migration**: Automatic configuration version management
 
-For detailed implementation references, see `.cursor/rules/red-energy-authentication.md` and `.cursor/rules/red-energy-api-structure.md`.
 
 ## Real-World Usage
 
