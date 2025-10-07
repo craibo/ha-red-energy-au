@@ -4,11 +4,9 @@ A comprehensive Home Assistant custom integration for Red Energy (Australian ene
 
 ## Key Features
 
-- **Secure OAuth2 Authentication**: PKCE-based authentication with Okta token management
 - **Real-time Energy Monitoring**: Track daily electricity and gas usage with cost analysis
 - **Multi-Property Support**: Monitor multiple properties from a single Red Energy account
 - **Advanced Analytics**: Daily/monthly averages, peak usage detection, and efficiency ratings
-- **Performance Optimized**: Enhanced device management with 50% faster startup and 40% memory reduction
 - **Automation Ready**: 11 pre-built automation examples with voice assistant integration
 - **Energy Dashboard Integration**: Native Home Assistant Energy dashboard support
 
