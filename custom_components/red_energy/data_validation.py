@@ -337,12 +337,20 @@ def validate_usage_entry(data: Dict[str, Any]) -> Dict[str, Any]:
         if field in data:
             try:
                 value = float(data[field])
-                # Only warn for negative values on fields that shouldn't be negative
-                if value < 0 and field not in ["cost", "net_cost"]:
-                    _LOGGER.warning(
-                        "Negative value for %s on %s: %.3f",
-                        field, date_str, value
-                    )
+                # Handle negative values appropriately based on field type
+                if value < 0:
+                    if field == "usage":
+                        # Net usage can be negative for solar properties (export > import)
+                        _LOGGER.debug(
+                            "Negative net usage on %s: %.3f kWh (solar export exceeded grid import)",
+                            date_str, value
+                        )
+                    elif field not in ["cost", "net_cost"]:
+                        # Other fields (import/export usage) should not be negative
+                        _LOGGER.warning(
+                            "Negative value for %s on %s: %.3f",
+                            field, date_str, value
+                        )
                 validated_data[field] = value
             except (ValueError, TypeError) as err:
                 raise DataValidationError(f"Invalid {field} value: {data.get(field)}") from err

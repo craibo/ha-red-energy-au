@@ -620,3 +620,27 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
         
         usage_data = service_data["usage_data"].get("usage_data", [])
         return sum(entry.get("carbon_emission_tonne", 0) for entry in usage_data)
+
+    def get_latest_import_cost(self, property_id: str, service_type: str) -> Optional[float]:
+        """Get the most recent daily import cost."""
+        service_data = self.get_service_usage(property_id, service_type)
+        if not service_data or "usage_data" not in service_data:
+            return None
+        
+        usage_data = service_data["usage_data"].get("usage_data", [])
+        if not usage_data:
+            return None
+        
+        return usage_data[-1].get("import_cost", 0.0)
+
+    def get_latest_export_credit(self, property_id: str, service_type: str) -> Optional[float]:
+        """Get the most recent daily export credit."""
+        service_data = self.get_service_usage(property_id, service_type)
+        if not service_data or "usage_data" not in service_data:
+            return None
+        
+        usage_data = service_data["usage_data"].get("usage_data", [])
+        if not usage_data:
+            return None
+        
+        return usage_data[-1].get("export_credit", 0.0)
