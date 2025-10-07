@@ -89,8 +89,6 @@ The Client ID is required for OAuth2 authentication with Red Energy's API. To ob
 
 ⚠️ **Important**: This integration uses the real Red Energy API. You must have valid Red Energy account credentials and a captured client_id to use this integration.
 
-> **For Developers**: See `.cursor/rules/red-energy-authentication.md` for detailed OAuth2 PKCE implementation reference, token lifecycle management, and error handling patterns.
-
 ## Sensors Created
 
 ### Core Sensors (Always Available)
