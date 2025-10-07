@@ -41,12 +41,16 @@ class RedEnergyAPI:
         self._access_token: Optional[str] = None
         self._refresh_token: Optional[str] = None
         self._token_expires: Optional[datetime] = None
+        self._client_id: Optional[str] = None
         self._logged_entry_mapping: bool = False
         
     async def authenticate(self, username: str, password: str, client_id: str) -> bool:
         """Authenticate with Red Energy using Okta session token and OAuth2 PKCE flow."""
         try:
             _LOGGER.debug("Starting Red Energy authentication")
+            
+            # Store client_id for token refresh operations
+            self._client_id = client_id
             
             # Step 1: Get Okta session token
             session_token, session_expires = await self._get_session_token(username, password)
@@ -384,6 +388,9 @@ class RedEnergyAPI:
         if not self._refresh_token:
             raise RedEnergyAuthError("No refresh token available")
         
+        if not self._client_id:
+            raise RedEnergyAuthError("No client ID available for token refresh")
+        
         # Get token endpoint from discovery
         discovery_data = await self._get_discovery_data()
         token_endpoint = discovery_data["token_endpoint"]
@@ -391,6 +398,7 @@ class RedEnergyAPI:
         token_data = {
             'grant_type': 'refresh_token',
             'refresh_token': self._refresh_token,
+            'client_id': self._client_id,
         }
         
         async with async_timeout.timeout(API_TIMEOUT):
