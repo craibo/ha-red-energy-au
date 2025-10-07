@@ -164,12 +164,9 @@ class RedEnergyBaseSensor(CoordinatorEntity, SensorEntity):
         self._attr_name = f"{property_name} {service_display} {sensor_type.replace('_', ' ').title()}"
         self._attr_unique_id = f"{DOMAIN}_{config_entry.entry_id}_{property_id}_{service_type}_{sensor_type}"
         
-        # Set device info for grouping
+        # Set device info for grouping (device_manager handles full device metadata)
         self._attr_device_info = {
-            "identifiers": {(DOMAIN, f"{config_entry.entry_id}_{property_id}")},
-            "name": property_name,
-            "manufacturer": "Red Energy",
-            "model": f"{service_display} Service",
+            "identifiers": {(DOMAIN, property_id)},
         }
 
     @property
