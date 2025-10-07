@@ -323,46 +323,46 @@ class RedEnergyAPI:
                 raw_data = await response.json()
                 
                 # Enhanced logging for investigation
-                _LOGGER.info("=" * 80)
-                _LOGGER.info("RAW USAGE API RESPONSE - DETAILED ANALYSIS")
-                _LOGGER.info("=" * 80)
-                _LOGGER.info("Request Parameters:")
-                _LOGGER.info("  Consumer Number: %s", consumer_number)
-                _LOGGER.info("  Date Range: %s to %s", params['fromDate'], params['toDate'])
-                _LOGGER.info("")
-                _LOGGER.info("Response Analysis:")
-                _LOGGER.info("  Data Type: %s", type(raw_data).__name__)
+                _LOGGER.debug("=" * 80)
+                _LOGGER.debug("RAW USAGE API RESPONSE - DETAILED ANALYSIS")
+                _LOGGER.debug("=" * 80)
+                _LOGGER.debug("Request Parameters:")
+                _LOGGER.debug("  Consumer Number: %s", consumer_number)
+                _LOGGER.debug("  Date Range: %s to %s", params['fromDate'], params['toDate'])
+                _LOGGER.debug("")
+                _LOGGER.debug("Response Analysis:")
+                _LOGGER.debug("  Data Type: %s", type(raw_data).__name__)
                 
                 if isinstance(raw_data, list):
-                    _LOGGER.info("  Array Length: %d items", len(raw_data))
+                    _LOGGER.debug("  Array Length: %d items", len(raw_data))
                     if raw_data:
-                        _LOGGER.info("  First Item Type: %s", type(raw_data[0]).__name__)
+                        _LOGGER.debug("  First Item Type: %s", type(raw_data[0]).__name__)
                         if isinstance(raw_data[0], dict):
-                            _LOGGER.info("  First Item Keys: %s", list(raw_data[0].keys()))
+                            _LOGGER.debug("  First Item Keys: %s", list(raw_data[0].keys()))
                 elif isinstance(raw_data, dict):
-                    _LOGGER.info("  Dictionary Keys: %s", list(raw_data.keys()))
+                    _LOGGER.debug("  Dictionary Keys: %s", list(raw_data.keys()))
                     for key, value in raw_data.items():
                         if isinstance(value, list):
-                            _LOGGER.info("    - %s: list with %d items", key, len(value))
+                            _LOGGER.debug("    - %s: list with %d items", key, len(value))
                         elif isinstance(value, dict):
-                            _LOGGER.info("    - %s: dict with keys %s", key, list(value.keys()))
+                            _LOGGER.debug("    - %s: dict with keys %s", key, list(value.keys()))
                         else:
-                            _LOGGER.info("    - %s: %s = %s", key, type(value).__name__, value)
+                            _LOGGER.debug("    - %s: %s = %s", key, type(value).__name__, value)
                 
-                _LOGGER.info("")
-                _LOGGER.info("Complete JSON Response (pretty-printed):")
+                _LOGGER.debug("")
+                _LOGGER.debug("Complete JSON Response (pretty-printed):")
                 try:
                     pretty_json = json.dumps(raw_data, indent=2, default=str)
                     # Split by lines to log each line separately (better for log viewing)
                     for line in pretty_json.split('\n')[:100]:  # Limit to first 100 lines
-                        _LOGGER.info("  %s", line)
+                        _LOGGER.debug("  %s", line)
                     if len(pretty_json.split('\n')) > 100:
-                        _LOGGER.info("  ... (truncated, %d total lines)", len(pretty_json.split('\n')))
+                        _LOGGER.debug("  ... (truncated, %d total lines)", len(pretty_json.split('\n')))
                 except Exception as err:
-                    _LOGGER.info("  Unable to pretty-print JSON: %s", err)
-                    _LOGGER.info("  Raw data: %s", raw_data)
+                    _LOGGER.debug("  Unable to pretty-print JSON: %s", err)
+                    _LOGGER.debug("  Raw data: %s", raw_data)
                 
-                _LOGGER.info("=" * 80)
+                _LOGGER.debug("=" * 80)
                 
                 # Transform API response to expected format
                 return self._transform_usage_data(raw_data, consumer_number, from_date, to_date)
@@ -528,19 +528,19 @@ class RedEnergyAPI:
         
         # Log the first entry to help debug field mapping
         if not self._logged_entry_mapping:
-            _LOGGER.info("=" * 80)
-            _LOGGER.info("USAGE ENTRY FIELD MAPPING (First Entry)")
-            _LOGGER.info("=" * 80)
-            _LOGGER.info("Original Entry Structure:")
+            _LOGGER.debug("=" * 80)
+            _LOGGER.debug("USAGE ENTRY FIELD MAPPING (First Entry)")
+            _LOGGER.debug("=" * 80)
+            _LOGGER.debug("Original Entry Structure:")
             try:
                 # Log just the keys and top-level values, not the huge halfHours array
                 summary = {k: (f"[{len(v)} items]" if isinstance(v, list) else v) 
                           for k, v in entry.items()}
                 pretty_entry = json.dumps(summary, indent=2, default=str)
                 for line in pretty_entry.split('\n'):
-                    _LOGGER.info("  %s", line)
+                    _LOGGER.debug("  %s", line)
             except Exception:
-                _LOGGER.info("  %s", entry)
+                _LOGGER.debug("  %s", entry)
             self._logged_entry_mapping = True
         
         # Extract date from usageDate field
