@@ -494,3 +494,153 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
         )
         
         return service_metadata
+
+    def get_latest_import_usage(self, property_id: str, service_type: str) -> Optional[float]:
+        """Get the most recent daily import usage."""
+        service_data = self.get_service_usage(property_id, service_type)
+        if not service_data or "usage_data" not in service_data:
+            return None
+        
+        usage_data = service_data["usage_data"].get("usage_data", [])
+        if not usage_data:
+            return None
+        
+        return usage_data[-1].get("import_usage", 0.0)
+
+    def get_latest_export_usage(self, property_id: str, service_type: str) -> Optional[float]:
+        """Get the most recent daily export usage."""
+        service_data = self.get_service_usage(property_id, service_type)
+        if not service_data or "usage_data" not in service_data:
+            return None
+        
+        usage_data = service_data["usage_data"].get("usage_data", [])
+        if not usage_data:
+            return None
+        
+        return usage_data[-1].get("export_usage", 0.0)
+
+    def get_total_import_usage(self, property_id: str, service_type: str) -> Optional[float]:
+        """Get total import usage over period."""
+        service_data = self.get_service_usage(property_id, service_type)
+        if not service_data or "usage_data" not in service_data:
+            return None
+        
+        usage_data = service_data["usage_data"].get("usage_data", [])
+        return sum(entry.get("import_usage", 0) for entry in usage_data)
+
+    def get_total_export_usage(self, property_id: str, service_type: str) -> Optional[float]:
+        """Get total export usage over period."""
+        service_data = self.get_service_usage(property_id, service_type)
+        if not service_data or "usage_data" not in service_data:
+            return None
+        
+        usage_data = service_data["usage_data"].get("usage_data", [])
+        return sum(entry.get("export_usage", 0) for entry in usage_data)
+
+    def get_period_import_usage(self, property_id: str, service_type: str, period: str) -> Optional[float]:
+        """Get total import usage for specific time period (PEAK/OFFPEAK/SHOULDER)."""
+        service_data = self.get_service_usage(property_id, service_type)
+        if not service_data or "usage_data" not in service_data:
+            return None
+        
+        usage_data = service_data["usage_data"].get("usage_data", [])
+        field_name = f"{period.lower()}_import_usage"
+        return sum(entry.get(field_name, 0) for entry in usage_data)
+
+    def get_period_export_usage(self, property_id: str, service_type: str, period: str) -> Optional[float]:
+        """Get total export usage for specific time period (PEAK/OFFPEAK/SHOULDER)."""
+        service_data = self.get_service_usage(property_id, service_type)
+        if not service_data or "usage_data" not in service_data:
+            return None
+        
+        usage_data = service_data["usage_data"].get("usage_data", [])
+        field_name = f"{period.lower()}_export_usage"
+        return sum(entry.get(field_name, 0) for entry in usage_data)
+
+    def get_total_import_cost(self, property_id: str, service_type: str) -> Optional[float]:
+        """Get total import cost over period."""
+        service_data = self.get_service_usage(property_id, service_type)
+        if not service_data or "usage_data" not in service_data:
+            return None
+        
+        usage_data = service_data["usage_data"].get("usage_data", [])
+        return sum(entry.get("import_cost", 0) for entry in usage_data)
+
+    def get_total_export_credit(self, property_id: str, service_type: str) -> Optional[float]:
+        """Get total export credit over period."""
+        service_data = self.get_service_usage(property_id, service_type)
+        if not service_data or "usage_data" not in service_data:
+            return None
+        
+        usage_data = service_data["usage_data"].get("usage_data", [])
+        return sum(entry.get("export_credit", 0) for entry in usage_data)
+
+    def get_net_total_cost(self, property_id: str, service_type: str) -> Optional[float]:
+        """Get net total cost (import - export) over period."""
+        import_cost = self.get_total_import_cost(property_id, service_type)
+        export_credit = self.get_total_export_credit(property_id, service_type)
+        
+        if import_cost is None or export_credit is None:
+            return None
+        
+        return import_cost - export_credit
+
+    def get_max_demand_data(self, property_id: str, service_type: str) -> Optional[Dict[str, Any]]:
+        """Get maximum demand data (kW and timestamp)."""
+        service_data = self.get_service_usage(property_id, service_type)
+        if not service_data or "usage_data" not in service_data:
+            return None
+        
+        usage_data = service_data["usage_data"].get("usage_data", [])
+        if not usage_data:
+            return None
+        
+        max_demand_kw = 0.0
+        max_demand_time = None
+        max_demand_date = None
+        
+        for entry in usage_data:
+            demand = entry.get("max_demand_kw", 0.0)
+            if demand > max_demand_kw:
+                max_demand_kw = demand
+                max_demand_time = entry.get("max_demand_time")
+                max_demand_date = entry.get("date")
+        
+        return {
+            "max_demand_kw": max_demand_kw,
+            "max_demand_time": max_demand_time,
+            "max_demand_date": max_demand_date
+        }
+
+    def get_total_carbon_emission(self, property_id: str, service_type: str) -> Optional[float]:
+        """Get total carbon emissions over period."""
+        service_data = self.get_service_usage(property_id, service_type)
+        if not service_data or "usage_data" not in service_data:
+            return None
+        
+        usage_data = service_data["usage_data"].get("usage_data", [])
+        return sum(entry.get("carbon_emission_tonne", 0) for entry in usage_data)
+
+    def get_latest_import_cost(self, property_id: str, service_type: str) -> Optional[float]:
+        """Get the most recent daily import cost."""
+        service_data = self.get_service_usage(property_id, service_type)
+        if not service_data or "usage_data" not in service_data:
+            return None
+        
+        usage_data = service_data["usage_data"].get("usage_data", [])
+        if not usage_data:
+            return None
+        
+        return usage_data[-1].get("import_cost", 0.0)
+
+    def get_latest_export_credit(self, property_id: str, service_type: str) -> Optional[float]:
+        """Get the most recent daily export credit."""
+        service_data = self.get_service_usage(property_id, service_type)
+        if not service_data or "usage_data" not in service_data:
+            return None
+        
+        usage_data = service_data["usage_data"].get("usage_data", [])
+        if not usage_data:
+            return None
+        
+        return usage_data[-1].get("export_credit", 0.0)
