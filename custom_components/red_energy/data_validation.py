@@ -249,6 +249,7 @@ def validate_single_service(data: Dict[str, Any]) -> Dict[str, Any]:
         "billingFrequency",
         "chargeClass",
         "jurisdiction",
+        "status",
         "latitude",
         "longitude",
         "entryDate",
