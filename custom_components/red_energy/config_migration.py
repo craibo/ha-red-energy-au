@@ -28,7 +28,8 @@ CONFIG_VERSION_1 = 1  # Initial version
 CONFIG_VERSION_2 = 2  # Added advanced sensors and polling options
 CONFIG_VERSION_3 = 3  # Added performance optimizations and device management
 CONFIG_VERSION_4 = 4  # Auto-select all accounts and fix account ID matching
-CURRENT_CONFIG_VERSION = CONFIG_VERSION_4
+CONFIG_VERSION_5 = 5  # Fixed device identifier mismatch (removed duplicate devices)
+CURRENT_CONFIG_VERSION = CONFIG_VERSION_5
 
 
 class ConfigValidationError(Exception):
@@ -69,6 +70,10 @@ class RedEnergyConfigMigrator:
             # Migrate from version 3 to 4
             if current_version < CONFIG_VERSION_4:
                 migration_success &= await self._migrate_v3_to_v4(config_entry)
+            
+            # Migrate from version 4 to 5
+            if current_version < CONFIG_VERSION_5:
+                migration_success &= await self._migrate_v4_to_v5(config_entry)
             
             if migration_success:
                 # Update version in config entry
@@ -217,6 +222,50 @@ class RedEnergyConfigMigrator:
         except Exception as err:
             _LOGGER.error("Failed to migrate v3 to v4: %s", err, exc_info=True)
             return False
+
+    async def _migrate_v4_to_v5(self, config_entry: ConfigEntry) -> bool:
+        """Migrate from version 4 to 5 - Fix device identifier mismatch."""
+        _LOGGER.info("Migrating config entry from v4 to v5 - Cleaning up duplicate devices")
+        
+        try:
+            from homeassistant.helpers import device_registry as dr
+            
+            device_registry = dr.async_get(self.hass)
+            selected_accounts = config_entry.data.get(DATA_SELECTED_ACCOUNTS, [])
+            
+            cleaned_devices = 0
+            
+            # Find and remove orphaned devices with old identifier pattern
+            for account_id in selected_accounts:
+                # Old identifier pattern that needs to be removed
+                old_identifier = (DOMAIN, f"{config_entry.entry_id}_{account_id}")
+                
+                # Check if device with old identifier exists
+                old_device = device_registry.async_get_device(identifiers={old_identifier})
+                
+                if old_device:
+                    _LOGGER.info(
+                        "Found orphaned device with old identifier: %s (ID: %s, Name: %s)",
+                        old_identifier, old_device.id, old_device.name
+                    )
+                    
+                    # Remove the orphaned device
+                    device_registry.async_remove_device(old_device.id)
+                    cleaned_devices += 1
+                    _LOGGER.info("Removed orphaned device: %s", old_device.name)
+            
+            if cleaned_devices > 0:
+                _LOGGER.info("Successfully cleaned up %d orphaned device(s)", cleaned_devices)
+            else:
+                _LOGGER.debug("No orphaned devices found to clean up")
+            
+            return True
+            
+        except Exception as err:
+            _LOGGER.error("Failed to migrate v4 to v5: %s", err, exc_info=True)
+            # Don't fail the entire migration if device cleanup fails
+            # The fix will still work for new device creation
+            return True
 
 
 class RedEnergyConfigValidator:
