@@ -162,7 +162,7 @@ class RedEnergyBaseSensor(CoordinatorEntity, SensorEntity):
             
         service_display = service_type.title()
         
-        self._attr_name = f"{property_name} {service_display} {sensor_type.title()}"
+        self._attr_name = f"{property_name} {service_display} {sensor_type.replace('_', ' ').title()}"
         self._attr_unique_id = f"{DOMAIN}_{config_entry.entry_id}_{property_id}_{service_type}_{sensor_type}"
         
         # Set device info for grouping
@@ -181,6 +181,17 @@ class RedEnergyBaseSensor(CoordinatorEntity, SensorEntity):
             and self.coordinator.data is not None
             and self._property_id in self.coordinator.data.get("usage_data", {})
         )
+
+    def _get_period_description(self) -> str:
+        service_data = self.coordinator.get_service_usage(self._property_id, self._service_type)
+        if not service_data:
+            return "30 days"
+        
+        period_days = service_data.get("period_days")
+        if period_days is None:
+            return "30 days"
+        
+        return f"{period_days} days (since last bill)"
 
 
 class RedEnergyCostSensor(RedEnergyBaseSensor):
@@ -216,7 +227,7 @@ class RedEnergyCostSensor(RedEnergyBaseSensor):
             "consumer_number": service_data.get("consumer_number"),
             "last_updated": service_data.get("last_updated"),
             "service_type": self._service_type,
-            "period": "30 days",
+            "period": self._get_period_description(),
         }
 
 
@@ -302,8 +313,16 @@ class RedEnergyMonthlyAverageSensor(RedEnergyBaseSensor):
         if total_usage is None:
             return None
         
-        # Project 30-day usage to monthly (30.44 days average)
-        return round(total_usage * (30.44 / 30), 2)
+        service_data = self.coordinator.get_service_usage(self._property_id, self._service_type)
+        if not service_data:
+            return None
+        
+        period_days = service_data.get("period_days", 30)
+        
+        if period_days == 0:
+            return 0
+        
+        return round(total_usage / period_days * 30.44, 2)
 
 
 class RedEnergyPeakUsageSensor(RedEnergyBaseSensor):
@@ -944,7 +963,7 @@ class RedEnergyTotalImportUsageSensor(RedEnergyBaseSensor):
             "consumer_number": service_data.get("consumer_number"),
             "last_updated": service_data.get("last_updated"),
             "service_type": self._service_type,
-            "period": "30 days",
+            "period": self._get_period_description(),
             "daily_count": len(daily_data),
             "from_date": usage_data.get("from_date"),
             "to_date": usage_data.get("to_date"),
@@ -994,7 +1013,7 @@ class RedEnergyTotalExportUsageSensor(RedEnergyBaseSensor):
             "consumer_number": service_data.get("consumer_number"),
             "last_updated": service_data.get("last_updated"),
             "service_type": self._service_type,
-            "period": "30 days",
+            "period": self._get_period_description(),
             "daily_count": len(daily_data),
             "from_date": usage_data.get("from_date"),
             "to_date": usage_data.get("to_date"),
@@ -1035,7 +1054,7 @@ class RedEnergyTotalImportCostSensor(RedEnergyBaseSensor):
             "consumer_number": service_data.get("consumer_number"),
             "last_updated": service_data.get("last_updated"),
             "service_type": self._service_type,
-            "period": "30 days",
+            "period": self._get_period_description(),
             "gst_inclusive": False,
             "description": "Total cost of grid import"
         }
@@ -1075,7 +1094,7 @@ class RedEnergyTotalExportCreditSensor(RedEnergyBaseSensor):
             "consumer_number": service_data.get("consumer_number"),
             "last_updated": service_data.get("last_updated"),
             "service_type": self._service_type,
-            "period": "30 days",
+            "period": self._get_period_description(),
             "description": "Total credit from solar export"
         }
 
@@ -1112,7 +1131,7 @@ class RedEnergyNetCostSensor(RedEnergyBaseSensor):
             "import_cost": import_cost,
             "export_credit": export_credit,
             "calculation": "import_cost - export_credit",
-            "period": "30 days",
+            "period": self._get_period_description(),
             "description": "Actual cost after solar credits"
         }
 
@@ -1230,7 +1249,7 @@ class RedEnergyPeakImportUsageSensor(RedEnergyBaseSensor):
             "consumer_number": service_data.get("consumer_number"),
             "time_period": "PEAK",
             "percentage_of_total": round(percentage, 1),
-            "period": "30 days"
+            "period": self._get_period_description()
         }
 
 
@@ -1271,7 +1290,7 @@ class RedEnergyOffpeakImportUsageSensor(RedEnergyBaseSensor):
             "consumer_number": service_data.get("consumer_number"),
             "time_period": "OFFPEAK",
             "percentage_of_total": round(percentage, 1),
-            "period": "30 days"
+            "period": self._get_period_description()
         }
 
 
@@ -1312,7 +1331,7 @@ class RedEnergyShoulderImportUsageSensor(RedEnergyBaseSensor):
             "consumer_number": service_data.get("consumer_number"),
             "time_period": "SHOULDER",
             "percentage_of_total": round(percentage, 1),
-            "period": "30 days"
+            "period": self._get_period_description()
         }
 
 
@@ -1354,7 +1373,7 @@ class RedEnergyPeakExportUsageSensor(RedEnergyBaseSensor):
             "consumer_number": service_data.get("consumer_number"),
             "time_period": "PEAK",
             "percentage_of_total": round(percentage, 1),
-            "period": "30 days",
+            "period": self._get_period_description(),
             "description": "Solar export during peak tariff"
         }
 
@@ -1397,7 +1416,7 @@ class RedEnergyOffpeakExportUsageSensor(RedEnergyBaseSensor):
             "consumer_number": service_data.get("consumer_number"),
             "time_period": "OFFPEAK",
             "percentage_of_total": round(percentage, 1),
-            "period": "30 days",
+            "period": self._get_period_description(),
             "description": "Solar export during offpeak tariff"
         }
 
@@ -1440,7 +1459,7 @@ class RedEnergyShoulderExportUsageSensor(RedEnergyBaseSensor):
             "consumer_number": service_data.get("consumer_number"),
             "time_period": "SHOULDER",
             "percentage_of_total": round(percentage, 1),
-            "period": "30 days",
+            "period": self._get_period_description(),
             "description": "Solar export during shoulder tariff"
         }
 
@@ -1481,7 +1500,7 @@ class RedEnergyMaxDemandSensor(RedEnergyBaseSensor):
         return {
             "max_demand_time": data.get("max_demand_time"),
             "max_demand_date": data.get("max_demand_date"),
-            "period": "30 days"
+            "period": self._get_period_description()
         }
 
 
@@ -1546,6 +1565,6 @@ class RedEnergyCarbonEmissionSensor(RedEnergyBaseSensor):
         
         return {
             "emission_factor_kg_per_kwh": round(emission_factor, 3),
-            "period": "30 days",
+            "period": self._get_period_description(),
             "description": "Total carbon emissions from grid consumption"
         }
