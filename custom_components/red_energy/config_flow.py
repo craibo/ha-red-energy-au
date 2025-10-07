@@ -249,7 +249,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         config_entry: config_entries.ConfigEntry,
     ) -> RedEnergyOptionsFlowHandler:
         """Create the options flow."""
-        return RedEnergyOptionsFlowHandler(config_entry)
+        return RedEnergyOptionsFlowHandler()
 
 
 class RedEnergyOptionsFlowHandler(config_entries.OptionsFlow):
