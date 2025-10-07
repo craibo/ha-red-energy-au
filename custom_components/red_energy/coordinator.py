@@ -72,6 +72,39 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
             update_interval=timedelta(seconds=DEFAULT_SCAN_INTERVAL),
         )
 
+    def _get_usage_period_dates(self, service: Dict[str, Any]) -> tuple[datetime, datetime]:
+        end_date = datetime.now()
+        start_date = None
+        
+        last_bill_date = service.get("lastBillDate")
+        if last_bill_date:
+            try:
+                start_date = datetime.strptime(last_bill_date, "%Y-%m-%d")
+                
+                if start_date > end_date:
+                    _LOGGER.warning("lastBillDate %s is in the future, falling back to 30-day period", last_bill_date)
+                    start_date = None
+                elif (end_date - start_date).days > 90:
+                    _LOGGER.warning("lastBillDate %s is >90 days old (%d days), this may be a long billing period", 
+                                  last_bill_date, (end_date - start_date).days)
+                else:
+                    _LOGGER.info("Using billing period: %s to %s (%d days)", 
+                               start_date.strftime('%Y-%m-%d'), 
+                               end_date.strftime('%Y-%m-%d'),
+                               (end_date - start_date).days)
+                    
+            except (ValueError, TypeError) as err:
+                _LOGGER.warning("Invalid lastBillDate format '%s': %s, falling back to 30-day period", last_bill_date, err)
+                start_date = None
+        
+        if start_date is None:
+            start_date = end_date - timedelta(days=30)
+            _LOGGER.info("Using 30-day fallback period: %s to %s", 
+                       start_date.strftime('%Y-%m-%d'), 
+                       end_date.strftime('%Y-%m-%d'))
+        
+        return start_date, end_date
+
     async def _async_update_data(self) -> Dict[str, Any]:
         """Fetch data from Red Energy API."""
         try:
@@ -171,9 +204,7 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
                     _LOGGER.info("    Service %s MATCHED - fetching usage data", service_type)
                     
                     try:
-                        # Get usage data for the last 30 days
-                        end_date = datetime.now()
-                        start_date = end_date - timedelta(days=30)
+                        start_date, end_date = self._get_usage_period_dates(service)
                         
                         _LOGGER.info("    Calling API get_usage_data: consumer=%s, from=%s, to=%s",
                                     consumer_number, start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d'))
@@ -188,10 +219,15 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
                         # Validate usage data
                         validated_usage = validate_usage_data(raw_usage)
                         
+                        period_days = (end_date - start_date).days
+                        
                         property_usage[service_type] = {
                             "consumer_number": consumer_number,
                             "usage_data": validated_usage,
                             "last_updated": end_date.isoformat(),
+                            "start_date": start_date.isoformat(),
+                            "end_date": end_date.isoformat(),
+                            "period_days": period_days,
                         }
                         
                         _LOGGER.info(
@@ -339,9 +375,7 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
                 continue
             
             try:
-                # Get usage data for the last 30 days
-                end_date = datetime.now()
-                start_date = end_date - timedelta(days=30)
+                start_date, end_date = self._get_usage_period_dates(service)
                 
                 raw_usage = await self.api.get_usage_data(
                     consumer_number, start_date, end_date
@@ -349,10 +383,15 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
                 
                 validated_usage = validate_usage_data(raw_usage)
                 
+                period_days = (end_date - start_date).days
+                
                 property_usage[service_type] = {
                     "consumer_number": consumer_number,
                     "usage_data": validated_usage,
                     "last_updated": end_date.isoformat(),
+                    "start_date": start_date.isoformat(),
+                    "end_date": end_date.isoformat(),
+                    "period_days": period_days,
                 }
                 
             except Exception as err:
