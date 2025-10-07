@@ -13,6 +13,7 @@ from homeassistant.components.sensor import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import UnitOfEnergy
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
@@ -23,9 +24,11 @@ from .const import (
     SENSOR_TYPE_ARREARS,
     SENSOR_TYPE_BALANCE,
     SENSOR_TYPE_BILLING_FREQUENCY,
+    SENSOR_TYPE_CHARGE_CLASS,
     SENSOR_TYPE_DAILY_AVERAGE,
     SENSOR_TYPE_DISTRIBUTOR,
     SENSOR_TYPE_EFFICIENCY,
+    SENSOR_TYPE_JURISDICTION,
     SENSOR_TYPE_LAST_BILL_DATE,
     SENSOR_TYPE_METER_TYPE,
     SENSOR_TYPE_MONTHLY_AVERAGE,
@@ -34,6 +37,7 @@ from .const import (
     SENSOR_TYPE_PEAK_USAGE,
     SENSOR_TYPE_PRODUCT_NAME,
     SENSOR_TYPE_SOLAR,
+    SENSOR_TYPE_STATUS,
     SERVICE_TYPE_ELECTRICITY,
     SERVICE_TYPE_GAS,
 )
@@ -81,6 +85,9 @@ async def async_setup_entry(
                 RedEnergyLastBillDateSensor(coordinator, config_entry, account_id, service_type),
                 RedEnergyNextBillDateSensor(coordinator, config_entry, account_id, service_type),
                 RedEnergyBillingFrequencySensor(coordinator, config_entry, account_id, service_type),
+                RedEnergyJurisdictionSensor(coordinator, config_entry, account_id, service_type),
+                RedEnergyChargeClassSensor(coordinator, config_entry, account_id, service_type),
+                RedEnergyStatusSensor(coordinator, config_entry, account_id, service_type),
                 # NEW: Daily import/export breakdown (CORE)
                 RedEnergyDailyImportUsageSensor(coordinator, config_entry, account_id, service_type),
                 RedEnergyDailyExportUsageSensor(coordinator, config_entry, account_id, service_type),
@@ -118,8 +125,8 @@ async def async_setup_entry(
     _LOGGER.debug(
         "Created %d sensors (%d core, %d advanced) for Red Energy integration", 
         len(entities),
-        len(selected_accounts) * len(services) * 20,  # Core sensors
-        len(entities) - (len(selected_accounts) * len(services) * 20)  # Advanced sensors
+        len(selected_accounts) * len(services) * 23,  # Core sensors (20 + 3 new diagnostic)
+        len(entities) - (len(selected_accounts) * len(services) * 23)  # Advanced sensors
     )
     async_add_entities(entities)
 
@@ -532,6 +539,7 @@ class RedEnergyNmiSensor(RedEnergyBaseSensor):
         """Initialize the NMI sensor."""
         super().__init__(coordinator, config_entry, property_id, service_type, SENSOR_TYPE_NMI)
         
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
         self._attr_icon = "mdi:identifier"
 
     @property
@@ -557,6 +565,7 @@ class RedEnergyMeterTypeSensor(RedEnergyBaseSensor):
         """Initialize the meter type sensor."""
         super().__init__(coordinator, config_entry, property_id, service_type, SENSOR_TYPE_METER_TYPE)
         
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
         self._attr_icon = "mdi:meter-electric"
 
     @property
@@ -608,6 +617,7 @@ class RedEnergyProductNameSensor(RedEnergyBaseSensor):
         """Initialize the energy plan sensor."""
         super().__init__(coordinator, config_entry, property_id, service_type, SENSOR_TYPE_PRODUCT_NAME)
         
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
         self._attr_icon = "mdi:package-variant"
 
     @property
@@ -633,6 +643,7 @@ class RedEnergyDistributorSensor(RedEnergyBaseSensor):
         """Initialize the distributor sensor."""
         super().__init__(coordinator, config_entry, property_id, service_type, SENSOR_TYPE_DISTRIBUTOR)
         
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
         self._attr_icon = "mdi:transmission-tower"
 
     @property
@@ -712,6 +723,7 @@ class RedEnergyLastBillDateSensor(RedEnergyBaseSensor):
         """Initialize the last bill date sensor."""
         super().__init__(coordinator, config_entry, property_id, service_type, SENSOR_TYPE_LAST_BILL_DATE)
         
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
         self._attr_device_class = SensorDeviceClass.TIMESTAMP
         self._attr_icon = "mdi:calendar-check"
 
@@ -746,6 +758,7 @@ class RedEnergyNextBillDateSensor(RedEnergyBaseSensor):
         """Initialize the next bill date sensor."""
         super().__init__(coordinator, config_entry, property_id, service_type, SENSOR_TYPE_NEXT_BILL_DATE)
         
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
         self._attr_device_class = SensorDeviceClass.TIMESTAMP
         self._attr_icon = "mdi:calendar-clock"
 
@@ -780,6 +793,7 @@ class RedEnergyBillingFrequencySensor(RedEnergyBaseSensor):
         """Initialize the billing frequency sensor."""
         super().__init__(coordinator, config_entry, property_id, service_type, SENSOR_TYPE_BILLING_FREQUENCY)
         
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
         self._attr_icon = "mdi:calendar-refresh"
 
     @property
@@ -793,6 +807,95 @@ class RedEnergyBillingFrequencySensor(RedEnergyBaseSensor):
         if frequency:
             return frequency.title()
         return None
+
+
+class RedEnergyJurisdictionSensor(RedEnergyBaseSensor):
+    """Red Energy jurisdiction sensor."""
+
+    def __init__(
+        self,
+        coordinator: RedEnergyDataCoordinator,
+        config_entry: ConfigEntry,
+        property_id: str,
+        service_type: str,
+    ) -> None:
+        """Initialize the jurisdiction sensor."""
+        super().__init__(coordinator, config_entry, property_id, service_type, SENSOR_TYPE_JURISDICTION)
+        
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+        self._attr_icon = "mdi:map-marker"
+
+    @property
+    def native_value(self) -> Optional[str]:
+        """Return the jurisdiction."""
+        metadata = self.coordinator.get_service_metadata(self._property_id, self._service_type)
+        if not metadata:
+            return None
+        
+        return metadata.get("jurisdiction")
+
+
+class RedEnergyChargeClassSensor(RedEnergyBaseSensor):
+    """Red Energy charge class sensor (Energy Plan Type)."""
+
+    def __init__(
+        self,
+        coordinator: RedEnergyDataCoordinator,
+        config_entry: ConfigEntry,
+        property_id: str,
+        service_type: str,
+    ) -> None:
+        """Initialize the charge class sensor."""
+        super().__init__(coordinator, config_entry, property_id, service_type, SENSOR_TYPE_CHARGE_CLASS)
+        
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+        self._attr_icon = "mdi:tag"
+        self._attr_name = f"{self._attr_name.rsplit(' ', 1)[0]} Energy Plan Type"
+
+    @property
+    def native_value(self) -> Optional[str]:
+        """Return the charge class."""
+        metadata = self.coordinator.get_service_metadata(self._property_id, self._service_type)
+        if not metadata:
+            return None
+        
+        charge_class = metadata.get("chargeClass")
+        if charge_class == "RES":
+            return "Residential"
+        elif charge_class == "SME":
+            return "Small Business"
+        return charge_class
+
+
+class RedEnergyStatusSensor(RedEnergyBaseSensor):
+    """Red Energy consumer status sensor."""
+
+    def __init__(
+        self,
+        coordinator: RedEnergyDataCoordinator,
+        config_entry: ConfigEntry,
+        property_id: str,
+        service_type: str,
+    ) -> None:
+        """Initialize the status sensor."""
+        super().__init__(coordinator, config_entry, property_id, service_type, SENSOR_TYPE_STATUS)
+        
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+        self._attr_icon = "mdi:power-plug"
+
+    @property
+    def native_value(self) -> Optional[str]:
+        """Return the consumer status."""
+        metadata = self.coordinator.get_service_metadata(self._property_id, self._service_type)
+        if not metadata:
+            return None
+        
+        status = metadata.get("status")
+        if status == "ON":
+            return "Active"
+        elif status == "OFF":
+            return "Inactive"
+        return status
 
 
 class RedEnergyDailyImportUsageSensor(RedEnergyBaseSensor):

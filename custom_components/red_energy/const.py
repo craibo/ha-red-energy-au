@@ -74,6 +74,9 @@ SENSOR_TYPE_ARREARS: Final = "arrears"
 SENSOR_TYPE_LAST_BILL_DATE: Final = "last_bill_date"
 SENSOR_TYPE_NEXT_BILL_DATE: Final = "next_bill_date"
 SENSOR_TYPE_BILLING_FREQUENCY: Final = "billing_frequency"
+SENSOR_TYPE_JURISDICTION: Final = "jurisdiction"
+SENSOR_TYPE_CHARGE_CLASS: Final = "charge_class"
+SENSOR_TYPE_STATUS: Final = "status"
 
 # Configuration options
 CONF_SCAN_INTERVAL: Final = "scan_interval"
