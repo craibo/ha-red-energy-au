@@ -264,10 +264,16 @@ class RedEnergyOptionsFlowHandler(config_entries.OptionsFlow):
             entry_data = self.hass.data[DOMAIN][self.config_entry.entry_id]
             coordinator = entry_data["coordinator"]
             
-            new_interval = user_input.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
-            if new_interval != coordinator.update_interval.total_seconds():
-                coordinator.update_interval = timedelta(seconds=new_interval)
-                _LOGGER.info("Updated polling interval to %d seconds", new_interval)
+            new_interval_key = user_input.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
+            # Convert string key to seconds value
+            if isinstance(new_interval_key, str):
+                new_interval_seconds = SCAN_INTERVAL_OPTIONS.get(new_interval_key, DEFAULT_SCAN_INTERVAL)
+            else:
+                new_interval_seconds = new_interval_key
+            
+            if new_interval_seconds != coordinator.update_interval.total_seconds():
+                coordinator.update_interval = timedelta(seconds=new_interval_seconds)
+                _LOGGER.info("Updated polling interval to %d seconds", new_interval_seconds)
             
             return self.async_create_entry(title="", data=user_input)
 

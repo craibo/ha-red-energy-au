@@ -38,7 +38,9 @@
         "title": "Red Energy Options",
         "description": "Configure which services to monitor.",
         "data": {
-          "services": "Services to Monitor"
+          "services": "Services to Monitor",
+          "scan_interval": "Scan Interval",
+          "enable_advanced_sensors": "Enable Advanced Sensors"
         }
       }
     }
