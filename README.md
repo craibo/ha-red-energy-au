@@ -45,15 +45,11 @@ A comprehensive Home Assistant custom integration for Red Energy (Australian ene
 
 ### Installation via HACS (Recommended)
 
-1. Open HACS in Home Assistant
-2. Go to "Integrations"
-3. Click the three dots in the top right corner
-4. Select "Custom repositories"
-5. Add this repository URL: `https://github.com/craibo/ha-red-energy-au`
-6. Select category "Integration"
-7. Click "Add"
-8. Find "Red Energy" and click "Download"
-9. Restart Home Assistant
+1. Install [HACS](#hacs) follwing the instructions [here](https://hacs.xyz/docs/setup/download)
+2. [![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=craibo&repository=ha-red-energy-au&category=integration)
+3. Press the Download button
+4. Restart Home Assistant
+5. [![Open your Home Assistant instance and start setting up a new integration.](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=red_energy)
 
 ### Manual Installation
 

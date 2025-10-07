@@ -34,7 +34,6 @@ from custom_components.red_energy.sensor import (
     RedEnergyTotalExportUsageSensor,
     RedEnergyTotalImportCostSensor,
     RedEnergyTotalExportCreditSensor,
-    RedEnergyNetCostSensor,
     RedEnergyPeakImportUsageSensor,
     RedEnergyOffpeakImportUsageSensor,
     RedEnergyShoulderImportUsageSensor,
@@ -388,19 +387,6 @@ class TestCostCreditSensors:
         sensor = RedEnergyTotalExportCreditSensor(coordinator, config_entry, "prop-001", SERVICE_TYPE_ELECTRICITY)
         
         assert sensor.native_value == 2.10
-
-    def test_net_cost_sensor(self):
-        """Test net cost sensor."""
-        coordinator = create_mock_coordinator()
-        config_entry = create_mock_config_entry()
-        
-        sensor = RedEnergyNetCostSensor(coordinator, config_entry, "prop-001", SERVICE_TYPE_ELECTRICITY)
-        
-        assert sensor.native_value == 21.14
-        attrs = sensor.extra_state_attributes
-        assert "import_cost" in attrs
-        assert "export_credit" in attrs
-        assert "calculation" in attrs
 
 
 class TestTimePeriodSensors:
