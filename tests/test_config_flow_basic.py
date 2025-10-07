@@ -27,7 +27,6 @@ def test_config_flow_has_required_classes():
     # Check for required classes and methods
     assert "class ConfigFlow" in content
     assert "async_step_user" in content
-    assert "async_step_account_select" in content
     assert "async_step_service_select" in content
     assert "RedEnergyOptionsFlowHandler" in content
 

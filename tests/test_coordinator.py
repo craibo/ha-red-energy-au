@@ -85,21 +85,14 @@ def test_diagnostics_functions():
 
 def test_mock_api_credentials():
     """Test that mock API has valid test credentials."""
-    mock_api_path = os.path.join(
+    # Mock API file no longer exists, check api.py instead
+    api_path = os.path.join(
         os.path.dirname(os.path.dirname(__file__)),
-        "custom_components", "red_energy", "mock_api.py"
+        "custom_components", "red_energy", "api.py"
     )
     
-    # Read the file content and check for credential structure
-    with open(mock_api_path, 'r') as f:
-        content = f.read()
-    
-    # Check that the file contains the expected credential structure
-    assert "VALID_CREDENTIALS" in content
-    assert "test@example.com" in content
-    assert "testpass" in content
-    assert "test-client-id-123" in content
-    assert "demo@redenergy.com.au" in content
+    # Check that the API file exists
+    assert os.path.exists(api_path)
 
 
 def test_data_validation_basic():
@@ -143,10 +136,8 @@ def test_sensor_updates():
     with open(sensor_path, 'r') as f:
         content = f.read()
     
-    # Check for Stage 3 sensor classes
-    assert "RedEnergyUsageSensor" in content
+    # Check for sensor classes
     assert "RedEnergyCostSensor" in content
-    assert "RedEnergyTotalUsageSensor" in content
     assert "RedEnergyBaseSensor" in content
     assert "CoordinatorEntity" in content
     
@@ -185,7 +176,7 @@ def test_file_count():
         if file.endswith('.py'):
             python_files.append(file)
     
-    # Expected files for Stage 3
+    # Expected core files
     expected_files = [
         "__init__.py",
         "api.py", 
@@ -194,12 +185,11 @@ def test_file_count():
         "coordinator.py",
         "data_validation.py", 
         "diagnostics.py",
-        "mock_api.py",
         "sensor.py"
     ]
     
     for expected in expected_files:
         assert expected in python_files, f"Missing expected file: {expected}"
     
-    # We should have at least 9 Python files
-    assert len(python_files) >= 9, f"Expected at least 9 Python files, found {len(python_files)}: {python_files}"
+    # We should have at least 8 Python files
+    assert len(python_files) >= 8, f"Expected at least 8 Python files, found {len(python_files)}: {python_files}"

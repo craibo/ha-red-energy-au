@@ -196,7 +196,6 @@ def test_stage4_file_count():
         "data_validation.py",
         "diagnostics.py",
         "energy.py",
-        "mock_api.py",
         "sensor.py",
         "services.py",
     ]
@@ -204,8 +203,8 @@ def test_stage4_file_count():
     for expected in expected_files:
         assert expected in python_files, f"Missing expected file: {expected}"
     
-    # Should have at least 11 Python files
-    assert len(python_files) >= 11, f"Expected at least 11 Python files, found {len(python_files)}: {python_files}"
+    # Should have at least 10 Python files
+    assert len(python_files) >= 10, f"Expected at least 10 Python files, found {len(python_files)}: {python_files}"
 
 
 def test_advanced_sensor_creation_logic():
