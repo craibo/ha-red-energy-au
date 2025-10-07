@@ -4,11 +4,9 @@ A comprehensive Home Assistant custom integration for Red Energy (Australian ene
 
 ## Key Features
 
-- **Secure OAuth2 Authentication**: PKCE-based authentication with Okta token management
 - **Real-time Energy Monitoring**: Track daily electricity and gas usage with cost analysis
 - **Multi-Property Support**: Monitor multiple properties from a single Red Energy account
 - **Advanced Analytics**: Daily/monthly averages, peak usage detection, and efficiency ratings
-- **Performance Optimized**: Enhanced device management with 50% faster startup and 40% memory reduction
 - **Automation Ready**: 11 pre-built automation examples with voice assistant integration
 - **Energy Dashboard Integration**: Native Home Assistant Energy dashboard support
 
@@ -16,14 +14,20 @@ A comprehensive Home Assistant custom integration for Red Energy (Australian ene
 
 ### Core Sensors (Per Property/Service)
 - Daily usage tracking (kWh for electricity, MJ for gas)
-- Total cost monitoring (AUD)
-- Total usage over data period
+- Total cost monitoring since last bill (AUD)
+- Total usage since last bill
 
 ### Advanced Analytics (Optional)
-- Daily and monthly usage averages
+- Daily and monthly usage averages (billing period-adjusted)
 - Peak usage detection with date attribution  
 - Efficiency ratings (0-100%) based on usage consistency
 - Usage pattern analysis for optimization
+
+### Billing Period Alignment
+- Automatic alignment with Red Energy billing cycles
+- Usage tracking from last bill date to current date
+- Direct comparison with actual Red Energy bills
+- Automatic fallback to 30-day period if needed
 
 ### Service Calls
 - Manual data refresh
@@ -39,7 +43,7 @@ A comprehensive Home Assistant custom integration for Red Energy (Australian ene
 
 ## Setup
 
-⚠️ **Important**: Authentication will not work if you are connected to a VPN. Ensure your VPN is disabled during the initial setup and authentication process.
+⚠️ **Important**: Authentication and token renewal will **not** work if you are connected to a VPN. Ensure your VPN is disabled for the domains `redenergy.okta.com` and `login.redenergy.com.au`
 
 ### Required Credentials
 
@@ -85,13 +89,6 @@ A comprehensive Home Assistant custom integration for Red Energy (Australian ene
 - Voice assistant integration
 - Comprehensive energy dashboard integration
 
-## Technical Specifications
-
-- **Home Assistant Compatibility**: 2024.1+
-- **Test Coverage**: 73+ comprehensive tests
-- **Architecture**: Modular design with enhanced error recovery
-- **Performance**: 50% faster startup, 30% faster processing, 40% less memory usage
-- **Reliability**: 90%+ automatic error recovery rate
 
 ## Documentation
 
