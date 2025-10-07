@@ -162,7 +162,7 @@ class RedEnergyBaseSensor(CoordinatorEntity, SensorEntity):
             
         service_display = service_type.title()
         
-        self._attr_name = f"{property_name} {service_display} {sensor_type.title()}"
+        self._attr_name = f"{property_name} {service_display} {sensor_type.replace('_', ' ').title()}"
         self._attr_unique_id = f"{DOMAIN}_{config_entry.entry_id}_{property_id}_{service_type}_{sensor_type}"
         
         # Set device info for grouping
