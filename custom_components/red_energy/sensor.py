@@ -248,7 +248,7 @@ class RedEnergyDailyAverageSensor(RedEnergyBaseSensor):
             self._attr_device_class = SensorDeviceClass.ENERGY
             self._attr_native_unit_of_measurement = "MJ"
             
-        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_state_class = None
 
     @property
     def native_value(self) -> Optional[float]:
@@ -300,7 +300,7 @@ class RedEnergyMonthlyAverageSensor(RedEnergyBaseSensor):
             self._attr_device_class = SensorDeviceClass.ENERGY
             self._attr_native_unit_of_measurement = "MJ"
             
-        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_state_class = None
 
     @property
     def native_value(self) -> Optional[float]:
@@ -341,7 +341,7 @@ class RedEnergyPeakUsageSensor(RedEnergyBaseSensor):
             self._attr_device_class = SensorDeviceClass.ENERGY
             self._attr_native_unit_of_measurement = "MJ"
             
-        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_state_class = None
 
     @property
     def native_value(self) -> Optional[float]:
