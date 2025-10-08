@@ -19,7 +19,6 @@ SERVICE_REFRESH_DATA_SCHEMA = vol.Schema({})
 SERVICE_UPDATE_CREDENTIALS_SCHEMA = vol.Schema({
     vol.Required("username"): cv.string,
     vol.Required("password"): cv.string,
-    vol.Required("client_id"): cv.string,
 })
 
 SERVICE_EXPORT_DATA_SCHEMA = vol.Schema({
@@ -52,7 +51,6 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         """Service call to update credentials for a specific integration."""
         username = call.data["username"]
         password = call.data["password"]
-        client_id = call.data["client_id"]
         
         _LOGGER.info("Credential update requested for user %s", username)
         
@@ -63,7 +61,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             if coordinator and coordinator.username == username:
                 try:
                     success = await coordinator.async_refresh_credentials(
-                        username, password, client_id
+                        username, password
                     )
                     if success:
                         _LOGGER.info("Successfully updated credentials for %s", username)

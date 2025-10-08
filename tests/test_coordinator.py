@@ -115,8 +115,7 @@ def test_data_validation_basic():
     # Test with valid config
     valid_config = {
         "username": "test@example.com",
-        "password": "testpass",
-        "client_id": "test-client-id-123"
+        "password": "testpass"
     }
     
     # Should not raise exception

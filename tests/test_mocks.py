@@ -49,19 +49,19 @@ class MockRedEnergyAPI:
             }
         ]
     
-    async def authenticate(self, username: str, password: str, client_id: str) -> bool:
+    async def authenticate(self, username: str, password: str) -> bool:
         """Mock authentication."""
         # Mock successful authentication for test credentials
-        if username == "test@example.com" and password == "testpass" and client_id == "test-client-123":
+        if username == "test@example.com" and password == "testpass":
             self._access_token = "mock-access-token"
             self._refresh_token = "mock-refresh-token"
             self._token_expires = datetime.now() + timedelta(hours=1)
             return True
         return False
     
-    async def test_credentials(self, username: str, password: str, client_id: str) -> bool:
+    async def test_credentials(self, username: str, password: str) -> bool:
         """Test mock credentials."""
-        return await self.authenticate(username, password, client_id)
+        return await self.authenticate(username, password)
     
     async def get_customer_data(self) -> Dict[str, Any]:
         """Get mock customer data."""
@@ -128,7 +128,6 @@ def create_mock_config_entry(data=None, options=None):
     mock_entry.data = data or {
         "username": "test@example.com",
         "password": "testpass",
-        "client_id": "test-client-123",
         "selected_accounts": ["prop-001"],
         "services": ["electricity"]
     }
@@ -139,14 +138,12 @@ def create_mock_config_entry(data=None, options=None):
 # Test constants
 MOCK_VALID_CREDENTIALS = {
     "username": "test@example.com",
-    "password": "testpass", 
-    "client_id": "test-client-123"
+    "password": "testpass"
 }
 
 MOCK_INVALID_CREDENTIALS = {
     "username": "invalid@example.com",
-    "password": "wrongpass",
-    "client_id": "invalid-client"
+    "password": "wrongpass"
 }
 
 
