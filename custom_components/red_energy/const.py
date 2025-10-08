@@ -12,7 +12,7 @@ CONF_CLIENT_ID: Final = "client_id"
 CLIENT_ID: Final = "0oa1apu62kkqeet4C3l7"
 
 DEFAULT_NAME: Final = "Red Energy"
-DEFAULT_SCAN_INTERVAL: Final = 300
+DEFAULT_SCAN_INTERVAL: Final = 1800
 
 # Device information
 MANUFACTURER: Final = "Red Energy"

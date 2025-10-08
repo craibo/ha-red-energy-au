@@ -110,9 +110,9 @@ class RedEnergyConfigMigrator:
             if CONF_ENABLE_ADVANCED_SENSORS not in new_options:
                 new_options[CONF_ENABLE_ADVANCED_SENSORS] = False
             
-            # Add scan interval option (5 minutes default)
+            # Add scan interval option (30 minutes default)
             if CONF_SCAN_INTERVAL not in new_options:
-                new_options[CONF_SCAN_INTERVAL] = "5min"
+                new_options[CONF_SCAN_INTERVAL] = "30min"
             
             # Update config entry
             self.hass.config_entries.async_update_entry(
@@ -325,7 +325,7 @@ class RedEnergyConfigValidator:
         # Options schema
         options_schema = vol.Schema({
             vol.Optional(CONF_ENABLE_ADVANCED_SENSORS, default=False): cv.boolean,
-            vol.Optional(CONF_SCAN_INTERVAL, default="5min"): vol.In(list(SCAN_INTERVAL_OPTIONS.keys())),
+            vol.Optional(CONF_SCAN_INTERVAL, default="30min"): vol.In(list(SCAN_INTERVAL_OPTIONS.keys())),
             vol.Optional("enable_performance_monitoring", default=True): cv.boolean,
             vol.Optional("memory_optimization_enabled", default=True): cv.boolean,
             vol.Optional("bulk_processing_enabled", default=True): cv.boolean,
@@ -439,14 +439,14 @@ class RedEnergyConfigValidator:
             )
         
         # Check scan interval
-        scan_interval = config_entry.options.get(CONF_SCAN_INTERVAL, "5min")
+        scan_interval = config_entry.options.get(CONF_SCAN_INTERVAL, "30min")
         if scan_interval == "1min":
             suggestions.append(
-                "Consider using 5-minute polling interval to reduce API load and improve reliability"
+                "Consider using longer polling interval (15-30 minutes) to reduce API load and improve reliability"
             )
-        elif scan_interval in ["30min", "1hour"]:
+        elif scan_interval == "1hour":
             suggestions.append(
-                "Consider using shorter polling intervals (5-15 minutes) for more timely data updates"
+                "Consider using shorter polling intervals (15-30 minutes) for more timely data updates"
             )
         
         # Check number of accounts

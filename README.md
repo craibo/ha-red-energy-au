@@ -222,7 +222,7 @@ The integration includes 11 comprehensive automation examples in `AUTOMATION_EXA
 ## Configuration Options
 
 ### Basic Options
-- **Polling Interval**: 1min, 5min (default), 15min, 30min, 1hour
+- **Polling Interval**: 1min, 5min, 15min, 30min (default), 1hour
 - **Advanced Sensors**: Enable additional calculated sensors
 - **Selected Accounts**: Choose which properties to monitor
 - **Services**: Select electricity, gas, or both per property

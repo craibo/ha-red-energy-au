@@ -57,7 +57,7 @@ A comprehensive Home Assistant custom integration for Red Energy (Australian ene
 
 ## Configuration Options
 
-- **Polling Intervals**: 1min, 5min (default), 15min, 30min, 1hour
+- **Polling Intervals**: 1min, 5min, 15min, 30min (default), 1hour
 - **Advanced Sensors**: Enable detailed usage analytics
 - **Performance Monitoring**: Track operation timing and efficiency
 - **Memory Optimization**: Reduce resource usage for large setups
