@@ -67,8 +67,7 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
         # Test authentication
         auth_success = await api.test_credentials(
             data[CONF_USERNAME],
-            data[CONF_PASSWORD], 
-            CLIENT_ID
+            data[CONF_PASSWORD]
         )
         
         if not auth_success:
