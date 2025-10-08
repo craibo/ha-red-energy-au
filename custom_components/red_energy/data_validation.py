@@ -415,7 +415,7 @@ def sanitize_sensor_name(name: str) -> str:
 
 def validate_config_data(config: Dict[str, Any]) -> None:
     """Validate configuration data."""
-    required_fields = ["username", "password", "client_id"]
+    required_fields = ["username", "password"]
     
     for field in required_fields:
         if field not in config:
@@ -429,10 +429,5 @@ def validate_config_data(config: Dict[str, Any]) -> None:
     username = config["username"]
     if "@" not in username or "." not in username.split("@")[-1]:
         raise DataValidationError("Username must be a valid email address")
-    
-    # Validate client_id format (should be non-empty string)
-    client_id = config["client_id"]
-    if len(client_id) < 5:
-        raise DataValidationError("Client ID appears too short - verify it was captured correctly")
     
     _LOGGER.debug("Configuration validation passed")

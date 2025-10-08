@@ -45,18 +45,11 @@ A comprehensive Home Assistant custom integration for Red Energy (Australian ene
 
 ⚠️ **Important**: Authentication and token renewal will **not** work if you are connected to a VPN. Ensure your VPN is disabled for the domains `redenergy.okta.com` and `login.redenergy.com.au`
 
-### Required Credentials
-
-**Client ID Required**: You must capture the Client ID from the Red Energy mobile app using network monitoring tools (e.g., Proxyman or Charles Proxy). Look for the `client_id` parameter in OAuth2 requests to `redenergy.okta.com`.
-
-**Example Client ID Format**: `0oa1a2b3c4d5e6f7g8h9`
-
 ### Configuration Steps
 
 1. Enter your Red Energy credentials:
    - **Username**: Your Red Energy account email
    - **Password**: Your Red Energy account password
-   - **Client ID**: Captured from mobile app (required for OAuth2 authentication)
 2. Select which properties to monitor
 3. Choose services (electricity, gas, or both)
 4. Configure polling interval and advanced options
@@ -93,9 +86,8 @@ A comprehensive Home Assistant custom integration for Red Energy (Australian ene
 ## Documentation
 
 Complete documentation includes:
-- Installation and configuration guide (INSTALLATION.md)
 - 11 automation examples with YAML code (AUTOMATION_EXAMPLES.md)
-- Troubleshooting and debug information
+- Troubleshooting and debug information in README
 - Performance optimization recommendations
 - Developer references for API structure and OAuth2 authentication
 

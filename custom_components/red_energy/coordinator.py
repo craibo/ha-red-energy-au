@@ -20,7 +20,7 @@ from .data_validation import (
 from .error_recovery import RedEnergyErrorRecoverySystem, ErrorType
 from .performance import PerformanceMonitor, DataProcessor
 from .const import (
-    CONF_CLIENT_ID,
+    CLIENT_ID,
     CONF_PASSWORD,
     CONF_USERNAME,
     DEFAULT_SCAN_INTERVAL,
@@ -40,14 +40,12 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
         hass: HomeAssistant,
         username: str,
         password: str,
-        client_id: str,
         selected_accounts: List[str],
         services: List[str],
     ) -> None:
         """Initialize the coordinator."""
         self.username = username
         self.password = password
-        self.client_id = client_id
         self.selected_accounts = selected_accounts
         
         # Initialize Stage 5 enhancements
@@ -111,7 +109,7 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
             # Ensure we're authenticated
             if not self.api._access_token:
                 _LOGGER.info("Authenticating with Red Energy API")
-                await self.api.authenticate(self.username, self.password, self.client_id)
+                await self.api.authenticate(self.username, self.password)
             
             # Get customer and property data if not cached
             if not self._customer_data:
@@ -301,7 +299,7 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
         try:
             # Ensure authentication
             if not self.api._access_token:
-                await self.api.authenticate(self.username, self.password, self.client_id)
+                await self.api.authenticate(self.username, self.password)
             
             # Get base data if needed
             if not self._customer_data:
@@ -434,14 +432,13 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
         return self._error_recovery.get_error_statistics()
 
     async def async_refresh_credentials(
-        self, username: str, password: str, client_id: str
+        self, username: str, password: str
     ) -> bool:
         """Refresh credentials and test authentication."""
         try:
             # Update credentials
             self.username = username
             self.password = password
-            self.client_id = client_id
             
             # Clear cached auth token to force re-authentication
             self.api._access_token = None
@@ -449,7 +446,7 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
             self.api._token_expires = None
             
             # Test new credentials
-            success = await self.api.authenticate(username, password, client_id)
+            success = await self.api.authenticate(username, password)
             if success:
                 # Clear cached data to force refresh
                 self._customer_data = None

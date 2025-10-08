@@ -17,7 +17,7 @@ from homeassistant.helpers import config_validation as cv
 from .api import RedEnergyAPI, RedEnergyAPIError, RedEnergyAuthError
 from .data_validation import validate_config_data, DataValidationError
 from .const import (
-    CONF_CLIENT_ID,
+    CLIENT_ID,
     CONF_ENABLE_ADVANCED_SENSORS,
     CONF_SCAN_INTERVAL,
     DATA_ACCOUNTS,
@@ -27,7 +27,6 @@ from .const import (
     DOMAIN,
     ERROR_AUTH_FAILED,
     ERROR_CANNOT_CONNECT,
-    ERROR_INVALID_CLIENT_ID,
     ERROR_NO_ACCOUNTS,
     ERROR_UNKNOWN,
     SCAN_INTERVAL_OPTIONS,
@@ -43,7 +42,6 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_USERNAME): str,
         vol.Required(CONF_PASSWORD): str,
-        vol.Required(CONF_CLIENT_ID): str,
     }
 )
 
@@ -56,7 +54,7 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
     except DataValidationError as err:
         _LOGGER.error(
             "Configuration validation failed: %s. "
-            "Ensure you have valid Red Energy credentials and client_id from mobile app",
+            "Ensure you have valid Red Energy credentials",
             err
         )
         raise InvalidAuth from err
@@ -70,13 +68,13 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
         auth_success = await api.test_credentials(
             data[CONF_USERNAME],
             data[CONF_PASSWORD], 
-            data[CONF_CLIENT_ID]
+            CLIENT_ID
         )
         
         if not auth_success:
             _LOGGER.error(
                 "Authentication failed for user %s - credentials rejected by Red Energy API. "
-                "Please verify: 1) Username/password are correct, 2) Client ID is valid and captured correctly from mobile app",
+                "Please verify username and password are correct",
                 data[CONF_USERNAME]
             )
             raise InvalidAuth
@@ -105,8 +103,8 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
     except RedEnergyAuthError as err:
         _LOGGER.error(
             "Red Energy authentication error for user %s: %s. "
-            "This typically indicates invalid credentials or client_id. "
-            "Verify username/password work in Red Energy app and client_id is correctly captured.",
+            "This typically indicates invalid credentials. "
+            "Verify username/password work in Red Energy app.",
             data[CONF_USERNAME], err
         )
         raise InvalidAuth from err
@@ -158,8 +156,6 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 errors["base"] = ERROR_CANNOT_CONNECT
             except InvalidAuth:
                 errors["base"] = ERROR_AUTH_FAILED
-            except InvalidClientId:
-                errors[CONF_CLIENT_ID] = ERROR_INVALID_CLIENT_ID
             except NoAccounts:
                 errors["base"] = ERROR_NO_ACCOUNTS
             except UnknownError:
@@ -180,9 +176,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 _LOGGER.info("=" * 80)
                 
                 # Check if we already have this account configured
-                await self.async_set_unique_id(
-                    f"{user_input[CONF_USERNAME]}_{user_input[CONF_CLIENT_ID]}"
-                )
+                await self.async_set_unique_id(user_input[CONF_USERNAME])
                 self._abort_if_unique_id_configured()
                 
                 # Auto-select all accounts - properties are already validated with IDs
@@ -198,10 +192,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id=STEP_USER,
             data_schema=STEP_USER_DATA_SCHEMA,
-            errors=errors,
-            description_placeholders={
-                "client_id_help": "You need to capture the client_id from your Red Energy mobile app using a network monitoring tool like Proxyman."
-            }
+            errors=errors
         )
 
     async def async_step_service_select(
@@ -331,10 +322,6 @@ class CannotConnect(HomeAssistantError):
 
 class InvalidAuth(HomeAssistantError):
     """Error to indicate there is invalid auth."""
-
-
-class InvalidClientId(HomeAssistantError):
-    """Error to indicate invalid client ID."""
 
 
 class NoAccounts(HomeAssistantError):

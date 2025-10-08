@@ -15,7 +15,7 @@ import base64
 import aiohttp
 import async_timeout
 
-from .const import API_TIMEOUT
+from .const import API_TIMEOUT, CLIENT_ID
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -41,16 +41,12 @@ class RedEnergyAPI:
         self._access_token: Optional[str] = None
         self._refresh_token: Optional[str] = None
         self._token_expires: Optional[datetime] = None
-        self._client_id: Optional[str] = None
         self._logged_entry_mapping: bool = False
         
-    async def authenticate(self, username: str, password: str, client_id: str) -> bool:
+    async def authenticate(self, username: str, password: str) -> bool:
         """Authenticate with Red Energy using Okta session token and OAuth2 PKCE flow."""
         try:
             _LOGGER.debug("Starting Red Energy authentication")
-            
-            # Store client_id for token refresh operations
-            self._client_id = client_id
             
             # Step 1: Get Okta session token
             session_token, session_expires = await self._get_session_token(username, password)
@@ -68,12 +64,12 @@ class RedEnergyAPI:
             
             # Step 4: Get authorization code using session token
             auth_code = await self._get_authorization_code(
-                auth_endpoint, session_token, client_id, code_challenge
+                auth_endpoint, session_token, CLIENT_ID, code_challenge
             )
             
             # Step 5: Exchange authorization code for access/refresh tokens
             await self._exchange_code_for_tokens(
-                token_endpoint, auth_code, client_id, code_verifier
+                token_endpoint, auth_code, CLIENT_ID, code_verifier
             )
             
             _LOGGER.debug("Red Energy authentication successful - access token acquired, expires: %s", self._token_expires)
@@ -262,12 +258,12 @@ class RedEnergyAPI:
                 expires_in = tokens.get('expires_in', 3600)
                 self._token_expires = datetime.now() + timedelta(seconds=expires_in)
     
-    async def test_credentials(self, username: str, password: str, client_id: str) -> bool:
+    async def test_credentials(self, username: str, password: str) -> bool:
         """Test if credentials are valid by attempting full authentication."""
         try:
-            _LOGGER.debug("Testing credentials for user: %s with client_id: %s", username, client_id[:10] + "..." if len(client_id) > 10 else client_id)
+            _LOGGER.debug("Testing credentials for user: %s", username)
             # Perform full authentication to get access token
-            return await self.authenticate(username, password, client_id)
+            return await self.authenticate(username, password)
         except RedEnergyAuthError as err:
             _LOGGER.debug("Credential test failed with RedEnergyAuthError: %s", err)
             return False
@@ -388,9 +384,6 @@ class RedEnergyAPI:
         if not self._refresh_token:
             raise RedEnergyAuthError("No refresh token available")
         
-        if not self._client_id:
-            raise RedEnergyAuthError("No client ID available for token refresh")
-        
         # Get token endpoint from discovery
         discovery_data = await self._get_discovery_data()
         token_endpoint = discovery_data["token_endpoint"]
@@ -398,7 +391,7 @@ class RedEnergyAPI:
         token_data = {
             'grant_type': 'refresh_token',
             'refresh_token': self._refresh_token,
-            'client_id': self._client_id,
+            'client_id': CLIENT_ID,
         }
         
         async with async_timeout.timeout(API_TIMEOUT):

@@ -9,7 +9,6 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResult
 
 from custom_components.red_energy.const import (
-    CONF_CLIENT_ID,
     DOMAIN,
     ERROR_AUTH_FAILED,
     ERROR_CANNOT_CONNECT,
@@ -24,7 +23,6 @@ from custom_components.red_energy.config_flow import (
 MOCK_USER_INPUT = {
     CONF_USERNAME: "test@example.com",
     CONF_PASSWORD: "testpass",
-    CONF_CLIENT_ID: "test-client-id-123",
 }
 
 MOCK_CUSTOMER_DATA = {
@@ -193,8 +191,7 @@ def test_validate_input_structure():
     # Test that schema accepts valid data
     validated = STEP_USER_DATA_SCHEMA(MOCK_USER_INPUT)
     assert validated[CONF_USERNAME] == "test@example.com"
-    assert validated[CONF_PASSWORD] == "testpass" 
-    assert validated[CONF_CLIENT_ID] == "test-client-id-123"
+    assert validated[CONF_PASSWORD] == "testpass"
 
 
 @pytest.mark.asyncio
