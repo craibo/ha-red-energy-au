@@ -11,6 +11,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv
 
 from .const import (
+    CLIENT_ID,
     CONF_CLIENT_ID,
     CONF_ENABLE_ADVANCED_SENSORS,
     CONF_SCAN_INTERVAL,
@@ -29,7 +30,8 @@ CONFIG_VERSION_2 = 2  # Added advanced sensors and polling options
 CONFIG_VERSION_3 = 3  # Added performance optimizations and device management
 CONFIG_VERSION_4 = 4  # Auto-select all accounts and fix account ID matching
 CONFIG_VERSION_5 = 5  # Fixed device identifier mismatch (removed duplicate devices)
-CURRENT_CONFIG_VERSION = CONFIG_VERSION_5
+CONFIG_VERSION_6 = 6  # Removed client_id from user config (now hardcoded)
+CURRENT_CONFIG_VERSION = CONFIG_VERSION_6
 
 
 class ConfigValidationError(Exception):
@@ -74,6 +76,10 @@ class RedEnergyConfigMigrator:
             # Migrate from version 4 to 5
             if current_version < CONFIG_VERSION_5:
                 migration_success &= await self._migrate_v4_to_v5(config_entry)
+            
+            # Migrate from version 5 to 6
+            if current_version < CONFIG_VERSION_6:
+                migration_success &= await self._migrate_v5_to_v6(config_entry)
             
             if migration_success:
                 # Update version in config entry
@@ -179,8 +185,7 @@ class RedEnergyConfigMigrator:
                     # Authenticate
                     await api.authenticate(
                         new_data[CONF_USERNAME],
-                        new_data[CONF_PASSWORD],
-                        new_data[CONF_CLIENT_ID]
+                        new_data[CONF_PASSWORD]
                     )
                     
                     # Get properties
@@ -267,6 +272,34 @@ class RedEnergyConfigMigrator:
             # The fix will still work for new device creation
             return True
 
+    async def _migrate_v5_to_v6(self, config_entry: ConfigEntry) -> bool:
+        """Migrate from version 5 to 6 - Remove client_id from config."""
+        _LOGGER.info("Migrating config entry from v5 to v6 - Removing client_id from config")
+        
+        try:
+            new_data = dict(config_entry.data)
+            
+            # Remove client_id from config if it exists
+            if CONF_CLIENT_ID in new_data:
+                removed_client_id = new_data.pop(CONF_CLIENT_ID)
+                _LOGGER.info("Removed client_id from config (was: %s...)", removed_client_id[:10] if removed_client_id else "None")
+            else:
+                _LOGGER.info("No client_id found in config (already removed or never set)")
+            
+            # Update config entry
+            self.hass.config_entries.async_update_entry(
+                config_entry,
+                data=new_data
+            )
+            
+            _LOGGER.info("Successfully migrated to v6, client_id is now hardcoded in the integration")
+            
+            return True
+            
+        except Exception as err:
+            _LOGGER.error("Failed to migrate v5 to v6: %s", err, exc_info=True)
+            return False
+
 
 class RedEnergyConfigValidator:
     """Validate Red Energy configuration."""
@@ -282,7 +315,6 @@ class RedEnergyConfigValidator:
         base_config_schema = vol.Schema({
             vol.Required(CONF_USERNAME): cv.string,
             vol.Required(CONF_PASSWORD): cv.string,
-            vol.Required(CONF_CLIENT_ID): cv.string,
             vol.Required(DATA_SELECTED_ACCOUNTS): vol.All(cv.ensure_list, [cv.string]),
             vol.Required("services"): vol.All(
                 cv.ensure_list, 
@@ -378,8 +410,7 @@ class RedEnergyConfigValidator:
     def validate_credentials(
         self, 
         username: str, 
-        password: str, 
-        client_id: str
+        password: str
     ) -> Tuple[bool, List[str]]:
         """Validate credential format and content."""
         errors = []
@@ -391,10 +422,6 @@ class RedEnergyConfigValidator:
         # Password validation
         if not password or len(password) < 6:
             errors.append("Password must be at least 6 characters long")
-        
-        # Client ID validation
-        if not client_id or len(client_id) < 10:
-            errors.append("Client ID must be at least 10 characters long")
         
         return len(errors) == 0, errors
 

@@ -3,14 +3,10 @@
     "step": {
       "user": {
         "title": "Red Energy Setup",
-        "description": "Enter your Red Energy credentials. You'll need to obtain the client_id from your mobile app using network monitoring tools.",
+        "description": "Enter your Red Energy credentials.",
         "data": {
           "username": "Username (Email)",
-          "password": "Password", 
-          "client_id": "Client ID"
-        },
-        "data_description": {
-          "client_id": "Capture this from your Red Energy mobile app using Proxyman or similar network monitoring tool"
+          "password": "Password"
         }
       },
       "service_select": {
@@ -24,7 +20,6 @@
     "error": {
       "auth_failed": "Invalid username or password",
       "cannot_connect": "Failed to connect to Red Energy. Check your internet connection.",
-      "invalid_client_id": "Invalid client ID. Please check the captured client ID from your mobile app.",
       "unknown": "Unexpected error occurred",
       "no_accounts": "No Red Energy accounts found for this user"
     },

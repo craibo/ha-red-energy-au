@@ -66,41 +66,66 @@ A comprehensive Home Assistant custom integration for Red Energy (Australian ene
 3. Enter your Red Energy credentials:
    - **Username**: Your Red Energy account email address
    - **Password**: Your Red Energy account password
-   - **Client ID**: Must be captured from Red Energy mobile app using network monitoring tools
 4. Select your properties and services (electricity/gas)
 5. Configure advanced options if desired
 
-#### Getting Your Client ID
-
-The Client ID is required for OAuth2 authentication with Red Energy's API. To obtain it:
-
-1. Install a network monitoring tool like [Proxyman](https://proxyman.io/) (Mac) or [Charles Proxy](https://www.charlesproxy.com/)
-2. Configure your mobile device to use the proxy
-3. Open the Red Energy mobile app and log in
-4. Look for API requests to `redenergy.okta.com` or `login.redenergy.com.au`
-5. Find the `client_id` parameter in the OAuth2 requests
-6. Copy this value to use in the integration setup
-
-**Example Client ID Format**: `0oa1a2b3c4d5e6f7g8h9`
-
-⚠️ **Important**: This integration uses the real Red Energy API. You must have valid Red Energy account credentials and a captured client_id to use this integration.
+⚠️ **Important**: This integration uses the real Red Energy API. You must have valid Red Energy account credentials to use this integration.
 
 ## Sensors Created
 
-### Core Sensors (Always Available)
+### Core Sensors (22 per service - Always Available)
 For each enabled service (electricity/gas) per property:
 
-- `sensor.{property_name}_{service}_daily_usage` - Current daily usage (kWh/MJ)
-- `sensor.{property_name}_{service}_total_cost` - Total cost since last bill (AUD)
-- `sensor.{property_name}_{service}_total_usage` - Total usage since last bill (kWh/MJ)
+**Usage & Cost Tracking:**
+- `sensor.{property_name}_{service}_daily_import_usage` - Daily imported energy (kWh/MJ)
+- `sensor.{property_name}_{service}_daily_export_usage` - Daily exported energy (kWh/MJ)
+- `sensor.{property_name}_{service}_total_import_usage` - Total imported energy since last bill
+- `sensor.{property_name}_{service}_total_export_usage` - Total exported energy since last bill
+- `sensor.{property_name}_{service}_daily_import_cost` - Daily import cost (AUD)
+- `sensor.{property_name}_{service}_daily_export_credit` - Daily export credit (AUD)
+- `sensor.{property_name}_{service}_total_import_cost` - Total import cost since last bill (AUD)
+- `sensor.{property_name}_{service}_total_export_credit` - Total export credit since last bill (AUD)
 
-### Advanced Sensors (Optional)
-When "Advanced Sensors" are enabled:
+**Account & Service Information:**
+- `sensor.{property_name}_{service}_nmi` - National Meter Identifier
+- `sensor.{property_name}_{service}_meter_type` - Meter type (e.g., smart meter)
+- `sensor.{property_name}_{service}_solar` - Solar system indicator
+- `sensor.{property_name}_{service}_energy_plan` - Current energy plan name
+- `sensor.{property_name}_{service}_distributor` - Energy distributor
+- `sensor.{property_name}_{service}_jurisdiction` - Jurisdiction
+- `sensor.{property_name}_{service}_charge_class` - Charge classification
 
+**Billing Information:**
+- `sensor.{property_name}_{service}_balance` - Current account balance (AUD)
+- `sensor.{property_name}_{service}_arrears` - Outstanding arrears (AUD)
+- `sensor.{property_name}_{service}_last_bill_date` - Last billing date
+- `sensor.{property_name}_{service}_next_bill_date` - Next billing date
+- `sensor.{property_name}_{service}_billing_frequency` - Billing cycle frequency
+- `sensor.{property_name}_{service}_status` - Service status
+
+### Advanced Sensors (13 per service - Optional)
+When "Advanced Sensors" are enabled in integration options:
+
+**Statistical Analysis:**
 - `sensor.{property_name}_{service}_daily_average` - Average daily usage
 - `sensor.{property_name}_{service}_monthly_average` - Projected monthly usage (billing period-adjusted)
 - `sensor.{property_name}_{service}_peak_usage` - Highest single-day usage with date
 - `sensor.{property_name}_{service}_efficiency` - Usage consistency efficiency rating (0-100%)
+
+**Time-of-Use Breakdown (Import):**
+- `sensor.{property_name}_{service}_peak_import_usage` - Peak period import usage
+- `sensor.{property_name}_{service}_offpeak_import_usage` - Off-peak period import usage
+- `sensor.{property_name}_{service}_shoulder_import_usage` - Shoulder period import usage
+
+**Time-of-Use Breakdown (Export):**
+- `sensor.{property_name}_{service}_peak_export_usage` - Peak period export usage
+- `sensor.{property_name}_{service}_offpeak_export_usage` - Off-peak period export usage
+- `sensor.{property_name}_{service}_shoulder_export_usage` - Shoulder period export usage
+
+**Demand & Environmental:**
+- `sensor.{property_name}_{service}_max_demand` - Maximum demand (kW)
+- `sensor.{property_name}_{service}_max_demand_interval_start` - Time of maximum demand
+- `sensor.{property_name}_{service}_carbon_emission_tonne` - Carbon emissions (tonnes CO₂e)
 
 ## Usage Calculation & Billing Period
 
@@ -158,7 +183,6 @@ service: red_energy.update_credentials
 data:
   username: "your@email.com"
   password: "newpassword"
-  client_id: "new-client-id"
 ```
 
 ## Energy Dashboard Integration
@@ -220,8 +244,8 @@ The integration includes 11 comprehensive automation examples in `AUTOMATION_EXA
 
 **Authentication failures**
 - Verify username/password are correct
-- Ensure client ID is valid
 - Check for account lockouts on Red Energy website
+- Ensure VPN is disabled during authentication
 
 **Performance issues**
 - Reduce polling frequency for large setups
@@ -285,7 +309,6 @@ pytest tests/ -v
 
 ## Support
 
-- **Documentation**: See [INSTALLATION.md](INSTALLATION.md) for detailed setup instructions
 - **Issues**: Report bugs or feature requests via [GitHub Issues](https://github.com/craibo/ha-red-energy-au/issues)
 - **Automation Examples**: Comprehensive examples in [AUTOMATION_EXAMPLES.md](AUTOMATION_EXAMPLES.md)
 - **Developer Reference**: See `.cursor/rules/` for API structure and authentication documentation
