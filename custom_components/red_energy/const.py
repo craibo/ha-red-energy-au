@@ -9,8 +9,10 @@ CONF_USERNAME: Final = "username"
 CONF_PASSWORD: Final = "password"
 CONF_CLIENT_ID: Final = "client_id"
 
+CLIENT_ID: Final = "0oa1apu62kkqeet4C3l7"
+
 DEFAULT_NAME: Final = "Red Energy"
-DEFAULT_SCAN_INTERVAL: Final = 300
+DEFAULT_SCAN_INTERVAL: Final = 1800
 
 # Device information
 MANUFACTURER: Final = "Red Energy"
@@ -101,7 +103,6 @@ STEP_SERVICE_SELECT: Final = "service_select"
 # Error messages
 ERROR_AUTH_FAILED: Final = "auth_failed"
 ERROR_CANNOT_CONNECT: Final = "cannot_connect"
-ERROR_INVALID_CLIENT_ID: Final = "invalid_client_id"
 ERROR_UNKNOWN: Final = "unknown"
 ERROR_NO_ACCOUNTS: Final = "no_accounts"
 

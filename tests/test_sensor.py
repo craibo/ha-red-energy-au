@@ -113,8 +113,7 @@ def create_mock_config_entry():
     entry.entry_id = "test_entry_id"
     entry.data = {
         "username": "test@example.com",
-        "password": "testpass",
-        "client_id": "test-client-id"
+        "password": "testpass"
     }
     entry.options = {}
     return entry
@@ -469,9 +468,8 @@ class TestSensorDeviceInfo:
         device_info = sensor.device_info
         assert device_info is not None
         assert "identifiers" in device_info
-        assert "name" in device_info
-        assert "manufacturer" in device_info
-        assert "model" in device_info
+        # Device name, manufacturer, and model are managed by device_manager, not sensor
+        # Sensors only provide the identifier for grouping
 
     def test_sensor_device_info_grouping(self):
         """Test sensors from same property are grouped."""

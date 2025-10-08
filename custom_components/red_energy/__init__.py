@@ -11,7 +11,7 @@ from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.update_coordinator import UpdateFailed
 
 from .const import (
-    CONF_CLIENT_ID,
+    CLIENT_ID,
     DATA_SELECTED_ACCOUNTS,
     DOMAIN,
     SERVICE_TYPE_ELECTRICITY,
@@ -51,7 +51,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Extract configuration
     username = entry.data[CONF_USERNAME]
     password = entry.data[CONF_PASSWORD]
-    client_id = entry.data[CONF_CLIENT_ID]
     selected_accounts = entry.data.get(DATA_SELECTED_ACCOUNTS, [])
     services = entry.data.get("services", [SERVICE_TYPE_ELECTRICITY])
     
@@ -74,7 +73,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     
     # Create data coordinator
     coordinator = RedEnergyDataCoordinator(
-        hass, username, password, client_id, selected_accounts, services
+        hass, username, password, selected_accounts, services
     )
     
     # Test initial data fetch

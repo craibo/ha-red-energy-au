@@ -22,13 +22,6 @@ update_credentials:
       selector:
         text:
           type: password
-    client_id:
-      name: Client ID
-      description: Client ID captured from Red Energy mobile app.
-      required: true
-      example: "0oa1a2b3c4d5e6f7g8h9"
-      selector:
-        text:
 
 export_data:
   name: Export data
