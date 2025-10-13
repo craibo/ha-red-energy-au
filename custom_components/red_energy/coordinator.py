@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone, date
 from typing import Any, Dict, List, Optional
 
 from homeassistant.core import HomeAssistant
@@ -62,6 +62,8 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
         
         self._customer_data: Optional[Dict[str, Any]] = None
         self._properties: List[Dict[str, Any]] = []
+        # Track last calendar day we refreshed metadata (customer/properties)
+        self._last_metadata_refresh_date: Optional[date] = None
         
         super().__init__(
             hass,
@@ -111,31 +113,9 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
                 _LOGGER.info("Authenticating with Red Energy API")
                 await self.api.authenticate(self.username, self.password)
             
-            # Get customer and property data if not cached
-            if not self._customer_data:
-                raw_customer_data = await self.api.get_customer_data()
-                _LOGGER.info("=" * 80)
-                _LOGGER.info("RAW CUSTOMER API RESPONSE:")
-                _LOGGER.info("Type: %s", type(raw_customer_data))
-                _LOGGER.info("Data: %s", raw_customer_data)
-                _LOGGER.info("=" * 80)
-                self._customer_data = validate_customer_data(raw_customer_data)
-                _LOGGER.info("Validated customer data - ID: %s, Name: %s", 
-                            self._customer_data.get("id"), self._customer_data.get("name"))
-                
-                raw_properties = await self.api.get_properties()
-                _LOGGER.info("=" * 80)
-                _LOGGER.info("RAW PROPERTIES API RESPONSE:")
-                _LOGGER.info("Type: %s", type(raw_properties))
-                _LOGGER.info("Count: %d", len(raw_properties) if isinstance(raw_properties, list) else 0)
-                _LOGGER.info("Data: %s", raw_properties)
-                _LOGGER.info("=" * 80)
-                self._properties = validate_properties_data(raw_properties)
-                _LOGGER.info("Validated %d properties:", len(self._properties))
-                for prop in self._properties:
-                    _LOGGER.info("  - Property ID: %s, Name: %s, Services: %s", 
-                                prop.get("id"), prop.get("name"), 
-                                [s.get("type") for s in prop.get("services", [])])
+            # Refresh metadata (customer/properties) once per calendar day or on first run
+            if self._should_refresh_metadata_today() or not self._customer_data:
+                await self._async_refresh_metadata()
             
             # Log selected accounts configuration
             _LOGGER.info("=" * 80)
@@ -145,6 +125,8 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
             _LOGGER.info("Total properties available: %d", len(self._properties))
             property_ids = [str(p.get("id")) for p in self._properties]
             _LOGGER.info("Available property IDs: %s (types: %s)", property_ids, [type(pid) for pid in property_ids])
+            _LOGGER.info("Selected accounts types: %s", [type(sa) for sa in self.selected_accounts])
+            _LOGGER.info("Property ID types: %s", [type(p.get("id")) for p in self._properties])
             _LOGGER.info("=" * 80)
             
             # Fetch usage data for selected accounts and services
@@ -275,6 +257,9 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
                     f"Available property IDs: {available_ids}"
                 )
                 _LOGGER.error(error_msg)
+                _LOGGER.error("DEBUG: selected_accounts types: %s", [type(sa) for sa in self.selected_accounts])
+                _LOGGER.error("DEBUG: property ID types: %s", [type(p.get('id')) for p in self._properties])
+                _LOGGER.error("DEBUG: string comparison test: %s", [str(sa) in available_ids for sa in self.selected_accounts])
                 raise UpdateFailed(error_msg)
             
             return {
@@ -293,6 +278,46 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
         except Exception as err:
             _LOGGER.exception("Unexpected error during update")
             raise UpdateFailed(f"Unexpected error: {err}") from err
+    
+    def _should_refresh_metadata_today(self) -> bool:
+        """Return True if we haven't refreshed metadata today (calendar day)."""
+        today = datetime.now(timezone.utc).date()
+        if self._last_metadata_refresh_date is None:
+            return True
+        return self._last_metadata_refresh_date != today
+    
+    async def _async_refresh_metadata(self) -> None:
+        """Refresh customer and properties metadata and update last refresh date."""
+        _LOGGER.info("Refreshing Red Energy metadata (customer and properties)")
+        raw_customer_data = await self.api.get_customer_data()
+        _LOGGER.info("=" * 80)
+        _LOGGER.info("RAW CUSTOMER API RESPONSE:")
+        _LOGGER.info("Type: %s", type(raw_customer_data))
+        _LOGGER.info("Data: %s", raw_customer_data)
+        _LOGGER.info("=" * 80)
+        self._customer_data = validate_customer_data(raw_customer_data)
+        _LOGGER.info("Validated customer data - ID: %s, Name: %s", 
+                    self._customer_data.get("id"), self._customer_data.get("name"))
+
+        raw_properties = await self.api.get_properties()
+        _LOGGER.info("=" * 80)
+        _LOGGER.info("RAW PROPERTIES API RESPONSE:")
+        _LOGGER.info("Type: %s", type(raw_properties))
+        _LOGGER.info("Count: %d", len(raw_properties) if isinstance(raw_properties, list) else 0)
+        _LOGGER.info("Data: %s", raw_properties)
+        _LOGGER.info("=" * 80)
+        self._properties = validate_properties_data(raw_properties)
+        _LOGGER.info("Validated %d properties:", len(self._properties))
+        for prop in self._properties:
+            _LOGGER.info("  - Property ID: %s, Name: %s, Services: %s", 
+                        prop.get("id"), prop.get("name"), 
+                        [s.get("type") for s in prop.get("services", [])])
+        self._last_metadata_refresh_date = datetime.now(timezone.utc).date()
+
+    async def async_refresh_metadata_and_usage(self) -> None:
+        """Manually trigger metadata refresh and then request full data refresh."""
+        await self._async_refresh_metadata()
+        await self.async_request_refresh()
     
     async def _bulk_update_data(self) -> Dict[str, Any]:
         """Handle bulk data updates for multiple accounts efficiently."""
@@ -476,7 +501,7 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
         if not self.data or "usage_data" not in self.data:
             return None
         
-        return self.data["usage_data"].get(property_id)
+        return self.data["usage_data"].get(str(property_id))
 
     def get_service_usage(self, property_id: str, service_type: str) -> Optional[Dict[str, Any]]:
         """Get usage data for a specific property and service."""

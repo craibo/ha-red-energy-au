@@ -602,10 +602,11 @@ class RedEnergyAPI:
         # Check for max demand from daily summary (may be more accurate)
         max_demand_detail = entry.get("maxDemandDetail", {})
         if isinstance(max_demand_detail, dict) and max_demand_detail:
-            daily_max_demand = float(max_demand_detail.get("demandKw", 0.0))
+            # Use correct field names from API response
+            daily_max_demand = float(max_demand_detail.get("maxDemandKw", 0.0))
             if daily_max_demand > max_demand_kw:
                 max_demand_kw = daily_max_demand
-                max_demand_time = max_demand_detail.get("intervalStart")
+                max_demand_time = max_demand_detail.get("maxDemandIntervalStart")
         
         _LOGGER.debug(
             "Normalized entry for %s: import=%.3f kWh, export=%.3f kWh, "
