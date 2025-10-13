@@ -6,6 +6,7 @@ import logging
 from homeassistant.components.button import ButtonEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
@@ -31,9 +32,19 @@ async def async_setup_entry(
     entities.append(RedEnergyRefreshMetadataButton(coordinator, config_entry))
 
     _LOGGER.info("About to register %d button entities with Home Assistant", len(entities))
+    _LOGGER.info("Button entity details: %s", [f"{entity.__class__.__name__}({entity.unique_id})" for entity in entities])
+    
     try:
         async_add_entities(entities)
         _LOGGER.info("Successfully registered %d button entities with Home Assistant", len(entities))
+        
+        # Check if entities are actually in the entity registry
+        entity_registry = er.async_get(hass)
+        red_energy_entities = [entity for entity in entity_registry.entities.values() if entity.platform == DOMAIN]
+        _LOGGER.info("Found %d Red Energy entities in entity registry after button registration: %s", 
+                     len(red_energy_entities), 
+                     [entity.entity_id for entity in red_energy_entities[:10]])  # Show first 10
+        
     except Exception as err:
         _LOGGER.error("Failed to register button entities with Home Assistant: %s", err, exc_info=True)
 
