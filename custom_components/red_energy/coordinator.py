@@ -496,7 +496,7 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
         if not self.data or "usage_data" not in self.data:
             return None
         
-        return self.data["usage_data"].get(property_id)
+        return self.data["usage_data"].get(str(property_id))
 
     def get_service_usage(self, property_id: str, service_type: str) -> Optional[Dict[str, Any]]:
         """Get usage data for a specific property and service."""

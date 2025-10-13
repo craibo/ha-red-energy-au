@@ -175,7 +175,7 @@ class RedEnergyBaseSensor(CoordinatorEntity, SensorEntity):
         return (
             self.coordinator.last_update_success
             and self.coordinator.data is not None
-            and self._property_id in self.coordinator.data.get("usage_data", {})
+            and str(self._property_id) in self.coordinator.data.get("usage_data", {})
         )
 
     def _get_period_description(self) -> str:
