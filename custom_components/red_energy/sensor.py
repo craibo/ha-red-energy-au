@@ -172,11 +172,25 @@ class RedEnergyBaseSensor(CoordinatorEntity, SensorEntity):
     @property
     def available(self) -> bool:
         """Return if entity is available."""
-        return (
-            self.coordinator.last_update_success
-            and self.coordinator.data is not None
-            and str(self._property_id) in self.coordinator.data.get("usage_data", {})
-        )
+        if not self.coordinator.last_update_success:
+            _LOGGER.debug("Sensor %s unavailable: coordinator last_update_success=False", self._attr_unique_id)
+            return False
+        
+        if self.coordinator.data is None:
+            _LOGGER.debug("Sensor %s unavailable: coordinator data is None", self._attr_unique_id)
+            return False
+        
+        usage_data = self.coordinator.data.get("usage_data", {})
+        property_id_str = str(self._property_id)
+        
+        if property_id_str not in usage_data:
+            _LOGGER.debug("Sensor %s unavailable: property_id %s not in usage_data keys: %s", 
+                         self._attr_unique_id, property_id_str, list(usage_data.keys()))
+            return False
+        
+        _LOGGER.debug("Sensor %s available: property_id %s found in usage_data", 
+                     self._attr_unique_id, property_id_str)
+        return True
 
     def _get_period_description(self) -> str:
         service_data = self.coordinator.get_service_usage(self._property_id, self._service_type)
