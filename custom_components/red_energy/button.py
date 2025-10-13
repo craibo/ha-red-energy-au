@@ -59,6 +59,27 @@ class RedEnergyRefreshMetadataButton(ButtonEntity):
         self._config_entry = config_entry
         self._attr_name = "Refresh metadata"
         self._attr_unique_id = f"{config_entry.entry_id}_refresh_metadata"
+        
+        # Associate with the first available device for diagnostics
+        self._attr_device_info = self._get_device_info()
+
+    def _get_device_info(self):
+        """Get device info for the first available property."""
+        if not self._coordinator.data or "usage_data" not in self._coordinator.data:
+            return None
+            
+        usage_data = self._coordinator.data["usage_data"]
+        if not usage_data:
+            return None
+            
+        # Get the first property ID for device association
+        first_property_id = next(iter(usage_data.keys()), None)
+        if not first_property_id:
+            return None
+            
+        return {
+            "identifiers": {(DOMAIN, first_property_id)},
+        }
 
     async def async_press(self) -> None:
         """Handle the button press."""
