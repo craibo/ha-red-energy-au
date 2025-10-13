@@ -13,6 +13,7 @@ from homeassistant.components.sensor import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import UnitOfEnergy
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -128,7 +129,23 @@ async def async_setup_entry(
         len(selected_accounts) * len(services) * 22,  # Core sensors per account/service
         len(entities) - (len(selected_accounts) * len(services) * 22)  # Advanced sensors
     )
-    async_add_entities(entities)
+    
+    _LOGGER.info("About to register %d entities with Home Assistant", len(entities))
+    _LOGGER.info("Entity details: %s", [f"{entity.__class__.__name__}({entity.unique_id})" for entity in entities[:5]])  # Show first 5 entities
+    
+    try:
+        async_add_entities(entities)
+        _LOGGER.info("Successfully registered %d entities with Home Assistant", len(entities))
+        
+        # Check if entities are actually in the entity registry
+        entity_registry = er.async_get(hass)
+        red_energy_entities = [entity for entity in entity_registry.entities.values() if entity.platform == DOMAIN]
+        _LOGGER.info("Found %d Red Energy entities in entity registry: %s", 
+                     len(red_energy_entities), 
+                     [entity.entity_id for entity in red_energy_entities[:10]])  # Show first 10
+        
+    except Exception as err:
+        _LOGGER.error("Failed to register entities with Home Assistant: %s", err, exc_info=True)
 
 
 class RedEnergyBaseSensor(CoordinatorEntity, SensorEntity):
@@ -172,11 +189,25 @@ class RedEnergyBaseSensor(CoordinatorEntity, SensorEntity):
     @property
     def available(self) -> bool:
         """Return if entity is available."""
-        return (
-            self.coordinator.last_update_success
-            and self.coordinator.data is not None
-            and self._property_id in self.coordinator.data.get("usage_data", {})
-        )
+        if not self.coordinator.last_update_success:
+            _LOGGER.debug("Sensor %s unavailable: coordinator last_update_success=False", self._attr_unique_id)
+            return False
+        
+        if self.coordinator.data is None:
+            _LOGGER.debug("Sensor %s unavailable: coordinator data is None", self._attr_unique_id)
+            return False
+        
+        usage_data = self.coordinator.data.get("usage_data", {})
+        property_id_str = str(self._property_id)
+        
+        if property_id_str not in usage_data:
+            _LOGGER.debug("Sensor %s unavailable: property_id %s not in usage_data keys: %s", 
+                         self._attr_unique_id, property_id_str, list(usage_data.keys()))
+            return False
+        
+        _LOGGER.debug("Sensor %s available: property_id %s found in usage_data", 
+                     self._attr_unique_id, property_id_str)
+        return True
 
     def _get_period_description(self) -> str:
         service_data = self.coordinator.get_service_usage(self._property_id, self._service_type)

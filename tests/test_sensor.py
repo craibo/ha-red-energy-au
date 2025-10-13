@@ -37,6 +37,8 @@ from custom_components.red_energy.sensor import (
     RedEnergyPeakImportUsageSensor,
     RedEnergyOffpeakImportUsageSensor,
     RedEnergyShoulderImportUsageSensor,
+    RedEnergyMaxDemandSensor,
+    RedEnergyMaxDemandTimeSensor,
 )
 
 
@@ -536,4 +538,140 @@ class TestGasSensors:
         
         assert sensor.device_class == SensorDeviceClass.ENERGY
         assert sensor.native_unit_of_measurement == "MJ"
+
+
+class TestMaxDemandSensors:
+    """Test max demand sensors."""
+
+    def test_max_demand_sensor_basic_properties(self):
+        """Test max demand sensor basic properties."""
+        coordinator = create_mock_coordinator()
+        config_entry = create_mock_config_entry()
+        
+        sensor = RedEnergyMaxDemandSensor(coordinator, config_entry, "prop-001", SERVICE_TYPE_ELECTRICITY)
+        
+        assert sensor.device_class == SensorDeviceClass.POWER
+        assert sensor.native_unit_of_measurement == "kW"
+        assert sensor.state_class == SensorStateClass.MEASUREMENT
+        assert sensor.icon == "mdi:lightning-bolt"
+
+    def test_max_demand_sensor_value(self):
+        """Test max demand sensor returns correct value."""
+        coordinator = create_mock_coordinator()
+        config_entry = create_mock_config_entry()
+        
+        sensor = RedEnergyMaxDemandSensor(coordinator, config_entry, "prop-001", SERVICE_TYPE_ELECTRICITY)
+        
+        # Test with mock data
+        assert sensor.native_value == 5.2
+        
+        # Test with no data
+        coordinator.get_max_demand_data = MagicMock(return_value=None)
+        sensor = RedEnergyMaxDemandSensor(coordinator, config_entry, "prop-001", SERVICE_TYPE_ELECTRICITY)
+        assert sensor.native_value is None
+
+    def test_max_demand_sensor_attributes(self):
+        """Test max demand sensor extra state attributes."""
+        coordinator = create_mock_coordinator()
+        config_entry = create_mock_config_entry()
+        
+        sensor = RedEnergyMaxDemandSensor(coordinator, config_entry, "prop-001", SERVICE_TYPE_ELECTRICITY)
+        attributes = sensor.extra_state_attributes
+        
+        assert attributes is not None
+        assert "max_demand_time" in attributes
+        assert "max_demand_date" in attributes
+        assert "period" in attributes
+        assert attributes["max_demand_time"] == "2024-01-15T18:30:00"
+        assert attributes["max_demand_date"] == "2024-01-15"
+
+    def test_max_demand_sensor_no_data_attributes(self):
+        """Test max demand sensor attributes when no data available."""
+        coordinator = create_mock_coordinator()
+        coordinator.get_max_demand_data = MagicMock(return_value=None)
+        config_entry = create_mock_config_entry()
+        
+        sensor = RedEnergyMaxDemandSensor(coordinator, config_entry, "prop-001", SERVICE_TYPE_ELECTRICITY)
+        attributes = sensor.extra_state_attributes
+        
+        assert attributes is None
+
+    def test_max_demand_time_sensor_basic_properties(self):
+        """Test max demand time sensor basic properties."""
+        coordinator = create_mock_coordinator()
+        config_entry = create_mock_config_entry()
+        
+        sensor = RedEnergyMaxDemandTimeSensor(coordinator, config_entry, "prop-001", SERVICE_TYPE_ELECTRICITY)
+        
+        assert sensor.device_class == SensorDeviceClass.TIMESTAMP
+        assert sensor.icon == "mdi:clock-alert"
+
+    def test_max_demand_time_sensor_value(self):
+        """Test max demand time sensor returns correct datetime value."""
+        coordinator = create_mock_coordinator()
+        config_entry = create_mock_config_entry()
+        
+        sensor = RedEnergyMaxDemandTimeSensor(coordinator, config_entry, "prop-001", SERVICE_TYPE_ELECTRICITY)
+        
+        # Test with valid datetime string
+        from datetime import datetime
+        expected_time = datetime.fromisoformat("2024-01-15T18:30:00")
+        assert sensor.native_value == expected_time
+        
+        # Test with no data
+        coordinator.get_max_demand_data = MagicMock(return_value=None)
+        sensor = RedEnergyMaxDemandTimeSensor(coordinator, config_entry, "prop-001", SERVICE_TYPE_ELECTRICITY)
+        assert sensor.native_value is None
+
+    def test_max_demand_time_sensor_invalid_datetime(self):
+        """Test max demand time sensor handles invalid datetime strings."""
+        coordinator = create_mock_coordinator()
+        config_entry = create_mock_config_entry()
+        
+        # Test with invalid datetime string
+        coordinator.get_max_demand_data = MagicMock(return_value={
+            "max_demand_kw": 5.2,
+            "max_demand_time": "invalid-datetime",
+            "max_demand_date": "2024-01-15"
+        })
+        
+        sensor = RedEnergyMaxDemandTimeSensor(coordinator, config_entry, "prop-001", SERVICE_TYPE_ELECTRICITY)
+        assert sensor.native_value is None
+
+    def test_max_demand_time_sensor_no_time_data(self):
+        """Test max demand time sensor when max_demand_time is None."""
+        coordinator = create_mock_coordinator()
+        config_entry = create_mock_config_entry()
+        
+        # Test with no time data
+        coordinator.get_max_demand_data = MagicMock(return_value={
+            "max_demand_kw": 5.2,
+            "max_demand_time": None,
+            "max_demand_date": "2024-01-15"
+        })
+        
+        sensor = RedEnergyMaxDemandTimeSensor(coordinator, config_entry, "prop-001", SERVICE_TYPE_ELECTRICITY)
+        assert sensor.native_value is None
+
+    def test_max_demand_sensors_with_real_api_data(self):
+        """Test max demand sensors with real API data structure from debug logs."""
+        coordinator = create_mock_coordinator()
+        config_entry = create_mock_config_entry()
+        
+        # Mock data based on the debug log structure
+        coordinator.get_max_demand_data = MagicMock(return_value={
+            "max_demand_kw": 0.014,
+            "max_demand_time": "2025-10-10T16:30:00+10:00",
+            "max_demand_date": "2025-10-10"
+        })
+        
+        # Test max demand sensor
+        max_demand_sensor = RedEnergyMaxDemandSensor(coordinator, config_entry, "prop-001", SERVICE_TYPE_ELECTRICITY)
+        assert max_demand_sensor.native_value == 0.014
+        
+        # Test max demand time sensor
+        max_demand_time_sensor = RedEnergyMaxDemandTimeSensor(coordinator, config_entry, "prop-001", SERVICE_TYPE_ELECTRICITY)
+        from datetime import datetime
+        expected_time = datetime.fromisoformat("2025-10-10T16:30:00+10:00")
+        assert max_demand_time_sensor.native_value == expected_time
 
