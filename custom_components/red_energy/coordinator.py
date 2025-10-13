@@ -125,6 +125,8 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
             _LOGGER.info("Total properties available: %d", len(self._properties))
             property_ids = [str(p.get("id")) for p in self._properties]
             _LOGGER.info("Available property IDs: %s (types: %s)", property_ids, [type(pid) for pid in property_ids])
+            _LOGGER.info("Selected accounts types: %s", [type(sa) for sa in self.selected_accounts])
+            _LOGGER.info("Property ID types: %s", [type(p.get("id")) for p in self._properties])
             _LOGGER.info("=" * 80)
             
             # Fetch usage data for selected accounts and services
@@ -255,6 +257,9 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
                     f"Available property IDs: {available_ids}"
                 )
                 _LOGGER.error(error_msg)
+                _LOGGER.error("DEBUG: selected_accounts types: %s", [type(sa) for sa in self.selected_accounts])
+                _LOGGER.error("DEBUG: property ID types: %s", [type(p.get('id')) for p in self._properties])
+                _LOGGER.error("DEBUG: string comparison test: %s", [str(sa) in available_ids for sa in self.selected_accounts])
                 raise UpdateFailed(error_msg)
             
             return {
