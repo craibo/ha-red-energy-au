@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
 
 from homeassistant.components.button import ButtonEntity
 from homeassistant.config_entries import ConfigEntry
@@ -31,7 +30,12 @@ async def async_setup_entry(
     entities: list[ButtonEntity] = []
     entities.append(RedEnergyRefreshMetadataButton(coordinator, config_entry))
 
-    async_add_entities(entities)
+    _LOGGER.info("About to register %d button entities with Home Assistant", len(entities))
+    try:
+        async_add_entities(entities)
+        _LOGGER.info("Successfully registered %d button entities with Home Assistant", len(entities))
+    except Exception as err:
+        _LOGGER.error("Failed to register button entities with Home Assistant: %s", err, exc_info=True)
 
 
 class RedEnergyRefreshMetadataButton(ButtonEntity):

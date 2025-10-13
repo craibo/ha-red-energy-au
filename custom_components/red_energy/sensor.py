@@ -128,7 +128,13 @@ async def async_setup_entry(
         len(selected_accounts) * len(services) * 22,  # Core sensors per account/service
         len(entities) - (len(selected_accounts) * len(services) * 22)  # Advanced sensors
     )
-    async_add_entities(entities)
+    
+    _LOGGER.info("About to register %d entities with Home Assistant", len(entities))
+    try:
+        async_add_entities(entities)
+        _LOGGER.info("Successfully registered %d entities with Home Assistant", len(entities))
+    except Exception as err:
+        _LOGGER.error("Failed to register entities with Home Assistant: %s", err, exc_info=True)
 
 
 class RedEnergyBaseSensor(CoordinatorEntity, SensorEntity):
