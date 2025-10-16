@@ -20,13 +20,8 @@ from .data_validation import (
 from .error_recovery import RedEnergyErrorRecoverySystem, ErrorType
 from .performance import PerformanceMonitor, DataProcessor
 from .const import (
-    CLIENT_ID,
-    CONF_PASSWORD,
-    CONF_USERNAME,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
-    SERVICE_TYPE_ELECTRICITY,
-    SERVICE_TYPE_GAS,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -118,16 +113,16 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
                 await self._async_refresh_metadata()
             
             # Log selected accounts configuration
-            _LOGGER.info("=" * 80)
-            _LOGGER.info("COORDINATOR CONFIGURATION:")
-            _LOGGER.info("Selected accounts: %s (type: %s)", self.selected_accounts, type(self.selected_accounts))
-            _LOGGER.info("Configured services: %s", self.services)
-            _LOGGER.info("Total properties available: %d", len(self._properties))
+            _LOGGER.debug("=" * 80)
+            _LOGGER.debug("COORDINATOR CONFIGURATION:")
+            _LOGGER.debug("Selected accounts: %s (type: %s)", self.selected_accounts, type(self.selected_accounts))
+            _LOGGER.debug("Configured services: %s", self.services)
+            _LOGGER.debug("Total properties available: %d", len(self._properties))
             property_ids = [str(p.get("id")) for p in self._properties]
-            _LOGGER.info("Available property IDs: %s (types: %s)", property_ids, [type(pid) for pid in property_ids])
-            _LOGGER.info("Selected accounts types: %s", [type(sa) for sa in self.selected_accounts])
-            _LOGGER.info("Property ID types: %s", [type(p.get("id")) for p in self._properties])
-            _LOGGER.info("=" * 80)
+            _LOGGER.debug("Available property IDs: %s (types: %s)", property_ids, [type(pid) for pid in property_ids])
+            _LOGGER.debug("Selected accounts types: %s", [type(sa) for sa in self.selected_accounts])
+            _LOGGER.debug("Property ID types: %s", [type(p.get("id")) for p in self._properties])
+            _LOGGER.debug("=" * 80)
             
             # Fetch usage data for selected accounts and services
             usage_data = {}
@@ -139,7 +134,7 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
                 property_id = property_data.get("id")
                 property_name = property_data.get("name", "Unknown")
                 
-                _LOGGER.info("Processing property: ID='%s' (type: %s), Name='%s'", property_id, type(property_id), property_name)
+                _LOGGER.debug("Processing property: ID='%s' (type: %s), Name='%s'", property_id, type(property_id), property_name)
                 
                 # Convert to string for comparison since selected_accounts are strings
                 property_id_str = str(property_id)
@@ -152,10 +147,10 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
                     continue
                 
                 matched_properties += 1
-                _LOGGER.info("Property '%s' (ID: %s) MATCHED - fetching usage data", property_name, property_id_str)
+                _LOGGER.debug("Property '%s' (ID: %s) MATCHED - fetching usage data", property_name, property_id_str)
                 
                 property_services = property_data.get("services", [])
-                _LOGGER.info("  Property has %d services: %s", 
+                _LOGGER.debug("  Property has %d services: %s", 
                             len(property_services),
                             [s.get("type") for s in property_services])
                 property_usage = {}
@@ -165,7 +160,7 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
                     consumer_number = service.get("consumer_number")
                     is_active = service.get("active", True)
                     
-                    _LOGGER.info("  Processing service: type=%s, consumer_number=%s, active=%s", 
+                    _LOGGER.debug("  Processing service: type=%s, consumer_number=%s, active=%s", 
                                 service_type, consumer_number, is_active)
                     
                     if not consumer_number:
@@ -173,28 +168,41 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
                         continue
                     
                     if service_type not in self.services:
-                        _LOGGER.info("    Service %s not in configured services %s - SKIPPING", 
+                        _LOGGER.debug("    Service %s not in configured services %s - SKIPPING", 
                                     service_type, self.services)
                         continue
                     
                     if not is_active:
-                        _LOGGER.info("    Service %s is inactive - SKIPPING", service_type)
+                        _LOGGER.debug("    Service %s is inactive - SKIPPING", service_type)
                         continue
                     
-                    _LOGGER.info("    Service %s MATCHED - fetching usage data", service_type)
+                    _LOGGER.debug("    Service %s MATCHED - fetching usage data", service_type)
                     
                     try:
                         start_date, end_date = self._get_usage_period_dates(service)
                         
-                        _LOGGER.info("    Calling API get_usage_data: consumer=%s, from=%s, to=%s",
+                        _LOGGER.debug("    Calling API get_usage_data: consumer=%s, from=%s, to=%s",
                                     consumer_number, start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d'))
                         
                         raw_usage = await self.api.get_usage_data(
                             consumer_number, start_date, end_date
                         )
                         
-                        _LOGGER.info("    Raw usage API response type: %s", type(raw_usage))
-                        _LOGGER.info("    Raw usage API response: %s", raw_usage)
+                        _LOGGER.debug("    Raw usage API response type: %s", type(raw_usage))
+                        _LOGGER.debug("    Raw usage API response: %s", raw_usage)
+                        
+                        # Check if API returned an error response
+                        if isinstance(raw_usage, dict) and raw_usage.get("error"):
+                            _LOGGER.warning(
+                                "API returned error for %s service (consumer %s): %s - %s. "
+                                "Skipping this service but continuing with others.",
+                                service_type,
+                                consumer_number,
+                                raw_usage.get("error_message", "Unknown error"),
+                                raw_usage.get("error_details", "No details")
+                            )
+                            # Skip this service but continue with others
+                            continue
                         
                         # Validate usage data
                         validated_usage = validate_usage_data(raw_usage)
@@ -211,7 +219,7 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
                         }
                         
                         _LOGGER.info(
-                            "    ✓ Successfully fetched %s usage for property %s: %s total usage, %s total cost",
+                            "    Successfully fetched %s usage for property %s: %s total usage, %s total cost",
                             service_type,
                             property_id,
                             validated_usage.get("total_usage", 0),
@@ -220,7 +228,7 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
                         
                     except (RedEnergyAPIError, DataValidationError) as err:
                         _LOGGER.error(
-                            "    ✗ Failed to fetch/validate %s usage for property %s: %s",
+                            "    Failed to fetch/validate %s usage for property %s: %s",
                             service_type,
                             property_id,
                             err,
@@ -234,18 +242,18 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
                         "property": property_data,
                         "services": property_usage,
                     }
-                    _LOGGER.info("✓ Successfully collected usage data for property '%s' with %d services", 
+                    _LOGGER.info("Successfully collected usage data for property '%s' with %d services", 
                                 property_name, len(property_usage))
                 else:
-                    _LOGGER.warning("✗ No usage data collected for property '%s'", property_name)
+                    _LOGGER.warning("No usage data collected for property '%s'", property_name)
             
-            _LOGGER.info("=" * 80)
-            _LOGGER.info("DATA COLLECTION SUMMARY:")
-            _LOGGER.info("Total properties processed: %d", len(self._properties))
-            _LOGGER.info("Properties matched: %d", matched_properties)
-            _LOGGER.info("Properties skipped: %d", skipped_properties)
-            _LOGGER.info("Properties with usage data: %d", len(usage_data))
-            _LOGGER.info("=" * 80)
+            _LOGGER.debug("=" * 80)
+            _LOGGER.debug("DATA COLLECTION SUMMARY:")
+            _LOGGER.debug("Total properties processed: %d", len(self._properties))
+            _LOGGER.debug("Properties matched: %d", matched_properties)
+            _LOGGER.debug("Properties skipped: %d", skipped_properties)
+            _LOGGER.debug("Properties with usage data: %d", len(usage_data))
+            _LOGGER.debug("=" * 80)
             
             if not usage_data:
                 available_ids = [str(p.get('id')) for p in self._properties]
@@ -290,26 +298,26 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
         """Refresh customer and properties metadata and update last refresh date."""
         _LOGGER.info("Refreshing Red Energy metadata (customer and properties)")
         raw_customer_data = await self.api.get_customer_data()
-        _LOGGER.info("=" * 80)
-        _LOGGER.info("RAW CUSTOMER API RESPONSE:")
-        _LOGGER.info("Type: %s", type(raw_customer_data))
-        _LOGGER.info("Data: %s", raw_customer_data)
-        _LOGGER.info("=" * 80)
+        _LOGGER.debug("=" * 80)
+        _LOGGER.debug("RAW CUSTOMER API RESPONSE:")
+        _LOGGER.debug("Type: %s", type(raw_customer_data))
+        _LOGGER.debug("Data: %s", raw_customer_data)
+        _LOGGER.debug("=" * 80)
         self._customer_data = validate_customer_data(raw_customer_data)
         _LOGGER.info("Validated customer data - ID: %s, Name: %s", 
                     self._customer_data.get("id"), self._customer_data.get("name"))
 
         raw_properties = await self.api.get_properties()
-        _LOGGER.info("=" * 80)
-        _LOGGER.info("RAW PROPERTIES API RESPONSE:")
-        _LOGGER.info("Type: %s", type(raw_properties))
-        _LOGGER.info("Count: %d", len(raw_properties) if isinstance(raw_properties, list) else 0)
-        _LOGGER.info("Data: %s", raw_properties)
-        _LOGGER.info("=" * 80)
+        _LOGGER.debug("=" * 80)
+        _LOGGER.debug("RAW PROPERTIES API RESPONSE:")
+        _LOGGER.debug("Type: %s", type(raw_properties))
+        _LOGGER.debug("Count: %d", len(raw_properties) if isinstance(raw_properties, list) else 0)
+        _LOGGER.debug("Data: %s", raw_properties)
+        _LOGGER.debug("=" * 80)
         self._properties = validate_properties_data(raw_properties)
-        _LOGGER.info("Validated %d properties:", len(self._properties))
+        _LOGGER.info("Validated %d properties", len(self._properties))
         for prop in self._properties:
-            _LOGGER.info("  - Property ID: %s, Name: %s, Services: %s", 
+            _LOGGER.debug("  - Property ID: %s, Name: %s, Services: %s", 
                         prop.get("id"), prop.get("name"), 
                         [s.get("type") for s in prop.get("services", [])])
         self._last_metadata_refresh_date = datetime.now(timezone.utc).date()
@@ -333,13 +341,6 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
                 
                 raw_properties = await self.api.get_properties()
                 self._properties = validate_properties_data(raw_properties)
-            
-            # Use bulk processor for multiple accounts
-            usage_data = await self._data_processor.batch_process_properties(
-                {prop["id"]: {"property": prop, "services": {}} for prop in self._properties if prop["id"] in self.selected_accounts},
-                self.selected_accounts,
-                self.services
-            )
             
             # Fetch actual usage data concurrently
             usage_tasks = []
@@ -403,6 +404,19 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
                 raw_usage = await self.api.get_usage_data(
                     consumer_number, start_date, end_date
                 )
+                
+                # Check if API returned an error response
+                if isinstance(raw_usage, dict) and raw_usage.get("error"):
+                    _LOGGER.warning(
+                        "API returned error for %s service (consumer %s): %s - %s. "
+                        "Skipping this service but continuing with others.",
+                        service_type,
+                        consumer_number,
+                        raw_usage.get("error_message", "Unknown error"),
+                        raw_usage.get("error_details", "No details")
+                    )
+                    # Skip this service but continue with others
+                    continue
                 
                 validated_usage = validate_usage_data(raw_usage)
                 

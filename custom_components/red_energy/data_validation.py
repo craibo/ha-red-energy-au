@@ -50,15 +50,15 @@ def validate_properties_data(data: List[Dict[str, Any]]) -> List[Dict[str, Any]]
     if not data:
         raise DataValidationError("No properties found in response")
     
-    _LOGGER.info("Validating %d properties from API", len(data))
+        _LOGGER.debug("Validating %d properties from API", len(data))
     validated_properties = []
     
     for i, property_data in enumerate(data):
         try:
-            _LOGGER.info("Validating property %d: %s", i, property_data)
+            _LOGGER.debug("Validating property %d: %s", i, property_data)
             validated_property = validate_single_property(property_data)
             validated_properties.append(validated_property)
-            _LOGGER.info("  ✓ Property %d validated successfully: ID=%s, Name=%s", 
+            _LOGGER.debug("  Property %d validated successfully: ID=%s, Name=%s", 
                         i, validated_property.get("id"), validated_property.get("name"))
         except DataValidationError as err:
             _LOGGER.error("  ✗ Property %d validation failed: %s", i, err)
@@ -70,7 +70,7 @@ def validate_properties_data(data: List[Dict[str, Any]]) -> List[Dict[str, Any]]
         _LOGGER.error("No valid properties after validation! Original data: %s", data)
         raise DataValidationError("No valid properties after validation")
     
-    _LOGGER.info("Successfully validated %d of %d properties", len(validated_properties), len(data))
+    _LOGGER.debug("Successfully validated %d of %d properties", len(validated_properties), len(data))
     return validated_properties
 
 
@@ -129,7 +129,7 @@ def validate_single_property(data: Dict[str, Any]) -> Dict[str, Any]:
     
     # API can return either "services" or "consumers"
     services_data = data.get("services") or data.get("consumers", [])
-    _LOGGER.info("Property %s has %d services/consumers", property_id, len(services_data) if isinstance(services_data, list) else 0)
+    _LOGGER.debug("Property %s has %d services/consumers", property_id, len(services_data) if isinstance(services_data, list) else 0)
     
     validated_property = {
         "id": str(property_id),
@@ -138,7 +138,7 @@ def validate_single_property(data: Dict[str, Any]) -> Dict[str, Any]:
         "services": validate_services(services_data),
     }
     
-    _LOGGER.info("Validated property: %s (ID: %s) with %d services", 
+    _LOGGER.debug("Validated property: %s (ID: %s) with %d services", 
                 validated_property["name"], validated_property["id"], len(validated_property["services"]))
     return validated_property
 
@@ -267,6 +267,16 @@ def validate_usage_data(data: Dict[str, Any]) -> Dict[str, Any]:
     """Validate usage data from Red Energy API."""
     if not isinstance(data, dict):
         raise DataValidationError("Usage data must be a dictionary")
+    
+    # Check if this is an error response from the API
+    if data.get("error"):
+        _LOGGER.warning(
+            "Skipping validation for error response: %s - %s",
+            data.get("error_message", "Unknown error"),
+            data.get("error_details", "No details")
+        )
+        # Return the error response as-is for the coordinator to handle
+        return data
     
     # Required fields
     required_fields = ["consumer_number", "usage_data"]
