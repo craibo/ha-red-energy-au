@@ -315,6 +315,40 @@ class RedEnergyAPI:
         
         async with async_timeout.timeout(API_TIMEOUT):
             async with self._session.get(url, headers=headers, params=params) as response:
+                # Handle 400 Bad Request errors gracefully
+                if response.status == 400:
+                    try:
+                        error_data = await response.json()
+                        error_message = error_data.get('message', 'Bad Request')
+                        error_details = error_data.get('details', 'No additional details')
+                    except Exception:
+                        error_message = 'Bad Request'
+                        error_details = 'Unable to parse error response'
+                    
+                    _LOGGER.error(
+                        "400 Bad Request for usage data - Consumer: %s, Date Range: %s to %s, "
+                        "Error: %s, Details: %s, URL: %s",
+                        consumer_number, 
+                        from_date.strftime('%Y-%m-%d'), 
+                        to_date.strftime('%Y-%m-%d'),
+                        error_message, 
+                        error_details,
+                        response.url
+                    )
+                    
+                    # Return error response structure instead of raising exception
+                    return {
+                        "error": True,
+                        "error_type": "bad_request",
+                        "error_message": error_message,
+                        "error_details": error_details,
+                        "consumer_number": str(consumer_number),
+                        "from_date": from_date.strftime('%Y-%m-%d'),
+                        "to_date": to_date.strftime('%Y-%m-%d'),
+                        "usage_data": []
+                    }
+                
+                # For other HTTP errors, still raise the exception
                 response.raise_for_status()
                 raw_data = await response.json()
                 
