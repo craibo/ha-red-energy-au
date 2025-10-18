@@ -130,8 +130,8 @@ async def async_setup_entry(
         len(entities) - (len(selected_accounts) * len(services) * 22)  # Advanced sensors
     )
     
-    _LOGGER.info("About to register %d entities with Home Assistant", len(entities))
-    _LOGGER.info("Entity details: %s", [f"{entity.__class__.__name__}({entity.unique_id})" for entity in entities[:5]])  # Show first 5 entities
+    _LOGGER.debug("About to register %d entities with Home Assistant", len(entities))
+    _LOGGER.debug("Entity details: %s", [f"{entity.__class__.__name__}({entity.unique_id})" for entity in entities[:5]])  # Show first 5 entities
     
     try:
         async_add_entities(entities)
@@ -140,7 +140,7 @@ async def async_setup_entry(
         # Check if entities are actually in the entity registry
         entity_registry = er.async_get(hass)
         red_energy_entities = [entity for entity in entity_registry.entities.values() if entity.platform == DOMAIN]
-        _LOGGER.info("Found %d Red Energy entities in entity registry: %s", 
+        _LOGGER.debug("Found %d Red Energy entities in entity registry: %s", 
                      len(red_energy_entities), 
                      [entity.entity_id for entity in red_energy_entities[:10]])  # Show first 10
         
