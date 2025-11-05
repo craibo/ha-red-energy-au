@@ -1,0 +1,1184 @@
+# Red Energy Breakdown Sensors Implementation Plan
+
+> Created: 2025-10-06
+> Status: Approved - Ready for Implementation
+> Branch: breakdown-usage-and-cost-sensors
+
+## Overview
+
+This plan details the implementation of comprehensive cost and usage breakdown sensors for the Red Energy Home Assistant integration. The breakdown leverages the rich interval data provided by the Red Energy API to give users detailed insights into their energy consumption, generation, costs, and environmental impact.
+
+---
+
+## Sensor Categories
+
+### **Core Sensors** (Always Enabled)
+These sensors provide fundamental breakdown information and are created for all users:
+
+1. **Daily Import Usage** - Current daily grid import (consumption)
+2. **Daily Export Usage** - Current daily solar export (generation)
+3. **Total Import Usage** (30-day) - Total grid import over period
+4. **Total Export Usage** (30-day) - Total solar export over period
+5. **Total Import Cost** - Total cost of imported energy (excl GST)
+6. **Total Export Credit** - Total credit from exported energy
+7. **Net Cost** - Actual cost after solar credits (Import Cost - Export Credit)
+
+### **Advanced Sensors** (Opt-in via Configuration)
+These sensors provide detailed analytics for power users:
+
+8. **Peak Import Usage** - Import during PEAK tariff periods
+9. **Offpeak Import Usage** - Import during OFFPEAK tariff periods
+10. **Shoulder Import Usage** - Import during SHOULDER tariff periods
+11. **Peak Export Usage** - Export during PEAK tariff periods
+12. **Offpeak Export Usage** - Export during OFFPEAK tariff periods
+13. **Shoulder Export Usage** - Export during SHOULDER tariff periods
+14. **Max Demand** - Maximum demand in kW over period
+15. **Max Demand Time** - Timestamp when max demand occurred
+16. **Carbon Emissions** - Total carbon emissions in tonnes CO₂
+
+---
+
+## API Data Structure
+
+From `red-energy-api-structure.md`, the Red Energy API provides:
+
+```json
+{
+  "usageDate": "2025-09-06",
+  "halfHours": [
+    {
+      "intervalStart": "2025-09-06T00:00:00+10:00",
+      "primaryConsumptionTariffComponent": "OFFPEAK",
+      "consumptionKwh": 0.128,
+      "consumptionDollar": 0.03,
+      "generationKwh": 0.0,
+      "generationDollar": 0.0,
+      "demandDetail": { ... }
+    }
+  ],
+  "maxDemandDetail": { ... },
+  "carbonEmissionTonne": 0.0057,
+  "consumptionDollar": 1.65,
+  "generationDollar": -0.3279
+}
+```
+
+**Key Fields Available**:
+- ✅ `primaryConsumptionTariffComponent` - PEAK/OFFPEAK/SHOULDER classification
+- ✅ `consumptionKwh` and `generationKwh` - Separate import/export per interval
+- ✅ `consumptionDollar` and `generationDollar` - Separate costs
+- ✅ `maxDemandDetail` - Demand charge information
+- ✅ `carbonEmissionTonne` - Daily carbon emissions
+
+---
+
+## Detailed Implementation Steps
+
+### **Step 1: Update Constants** (`const.py`)
+
+Add new sensor type constants:
+
+```python
+# Daily sensor types (CORE SENSORS)
+SENSOR_TYPE_DAILY_IMPORT_USAGE = "daily_import_usage"
+SENSOR_TYPE_DAILY_EXPORT_USAGE = "daily_export_usage"
+
+# Total usage breakdown (CORE SENSORS)
+SENSOR_TYPE_TOTAL_IMPORT_USAGE = "total_import_usage"
+SENSOR_TYPE_TOTAL_EXPORT_USAGE = "total_export_usage"
+
+# Cost breakdown (CORE SENSORS)
+SENSOR_TYPE_TOTAL_IMPORT_COST = "total_import_cost"
+SENSOR_TYPE_TOTAL_EXPORT_CREDIT = "total_export_credit"
+SENSOR_TYPE_NET_COST = "net_cost"
+
+# Time period import breakdown (ADVANCED SENSORS)
+SENSOR_TYPE_PEAK_IMPORT_USAGE = "peak_import_usage"
+SENSOR_TYPE_OFFPEAK_IMPORT_USAGE = "offpeak_import_usage"
+SENSOR_TYPE_SHOULDER_IMPORT_USAGE = "shoulder_import_usage"
+
+# Time period export breakdown (ADVANCED SENSORS)
+SENSOR_TYPE_PEAK_EXPORT_USAGE = "peak_export_usage"
+SENSOR_TYPE_OFFPEAK_EXPORT_USAGE = "offpeak_export_usage"
+SENSOR_TYPE_SHOULDER_EXPORT_USAGE = "shoulder_export_usage"
+
+# Demand and environmental (ADVANCED SENSORS)
+SENSOR_TYPE_MAX_DEMAND = "max_demand"
+SENSOR_TYPE_MAX_DEMAND_TIME = "max_demand_interval_start"
+SENSOR_TYPE_CARBON_EMISSION = "carbon_emission_tonne"
+
+# Time period values (from API)
+TIME_PERIOD_PEAK = "PEAK"
+TIME_PERIOD_OFFPEAK = "OFFPEAK"
+TIME_PERIOD_SHOULDER = "SHOULDER"
+```
+
+**File Modified**: `custom_components/red_energy/const.py`
+
+---
+
+### **Step 2: Enhance API Data Normalization** (`api.py`)
+
+#### **Modify `_normalize_usage_entry()` Method**
+
+Current implementation sums only `consumptionKwh`. Enhanced version extracts comprehensive breakdown:
+
+**New Data Structure Returned**:
+```python
+{
+    # Backward compatibility (keep existing)
+    "date": "2025-09-06",
+    "usage": 10.5,      # Net usage (import - export) for compatibility
+    "cost": 1.32,       # Net cost for compatibility
+    "unit": "kWh",
+    
+    # New breakdown fields
+    "import_usage": 12.5,           # Sum of all consumptionKwh
+    "export_usage": 2.0,            # Sum of all generationKwh
+    "import_cost": 1.65,            # consumptionDollar (excl GST)
+    "export_credit": 0.33,          # abs(generationDollar)
+    "net_cost": 1.32,               # import_cost - export_credit
+    
+    # Time period import breakdowns
+    "peak_import_usage": 5.0,
+    "offpeak_import_usage": 6.0,
+    "shoulder_import_usage": 1.5,
+    
+    # Time period export breakdowns
+    "peak_export_usage": 0.5,
+    "offpeak_export_usage": 1.0,
+    "shoulder_export_usage": 0.5,
+    
+    # Demand and environmental
+    "max_demand_kw": 4.5,
+    "max_demand_time": "2025-09-06T14:30:00+10:00",
+    "carbon_emission_tonne": 0.0057
+}
+```
+
+**Implementation**:
+
+```python
+def _normalize_usage_entry(self, entry: Any) -> Dict[str, Any]:
+    """Normalize a single usage entry with comprehensive breakdowns.
+    
+    Extracts detailed breakdown data from halfHours array including:
+    - Separate import (consumption) and export (generation) totals
+    - Time period breakdowns (PEAK/OFFPEAK/SHOULDER)
+    - Max demand tracking
+    - Carbon emissions
+    """
+    if not isinstance(entry, dict):
+        _LOGGER.warning("Usage entry is not a dict: %s, returning empty entry", type(entry))
+        return self._empty_entry()
+    
+    date_value = entry.get("usageDate", "")
+    half_hours = entry.get("halfHours", [])
+    
+    # Initialize accumulators
+    import_usage = 0.0
+    export_usage = 0.0
+    
+    # Time period breakdowns
+    peak_import = 0.0
+    offpeak_import = 0.0
+    shoulder_import = 0.0
+    peak_export = 0.0
+    offpeak_export = 0.0
+    shoulder_export = 0.0
+    
+    # Max demand tracking
+    max_demand_kw = 0.0
+    max_demand_time = None
+    
+    # Process each 30-minute interval (48 per day)
+    for interval in half_hours:
+        if not isinstance(interval, dict):
+            continue
+        
+        # Extract interval data
+        consumption = float(interval.get("consumptionKwh", 0.0))
+        generation = float(interval.get("generationKwh", 0.0))
+        period = interval.get("primaryConsumptionTariffComponent", "").upper()
+        
+        # Accumulate totals
+        import_usage += consumption
+        export_usage += generation
+        
+        # Accumulate by time period
+        if period == "PEAK":
+            peak_import += consumption
+            peak_export += generation
+        elif period == "OFFPEAK":
+            offpeak_import += consumption
+            offpeak_export += generation
+        elif period == "SHOULDER":
+            shoulder_import += consumption
+            shoulder_export += generation
+        
+        # Track max demand from interval detail
+        demand_detail = interval.get("demandDetail", {})
+        if isinstance(demand_detail, dict):
+            demand_kw = float(demand_detail.get("demandKw", 0.0))
+            if demand_kw > max_demand_kw:
+                max_demand_kw = demand_kw
+                max_demand_time = interval.get("intervalStart")
+    
+    # Extract daily costs from summary
+    import_cost = float(entry.get("consumptionDollar", 0.0))
+    generation_dollar = float(entry.get("generationDollar", 0.0))
+    export_credit = abs(generation_dollar)  # Convert to positive value
+    net_cost = import_cost - export_credit
+    
+    # Extract carbon emissions from daily summary
+    carbon_emission = float(entry.get("carbonEmissionTonne", 0.0))
+    
+    # Check for max demand from daily summary (may be more accurate)
+    max_demand_detail = entry.get("maxDemandDetail", {})
+    if isinstance(max_demand_detail, dict) and max_demand_detail:
+        daily_max_demand = float(max_demand_detail.get("demandKw", 0.0))
+        if daily_max_demand > max_demand_kw:
+            max_demand_kw = daily_max_demand
+            max_demand_time = max_demand_detail.get("intervalStart")
+    
+    _LOGGER.debug(
+        "Normalized entry for %s: import=%.3f kWh, export=%.3f kWh, "
+        "import_cost=$%.2f, export_credit=$%.2f, net=$%.2f, "
+        "peak_import=%.3f, offpeak_import=%.3f, shoulder_import=%.3f",
+        date_value, import_usage, export_usage,
+        import_cost, export_credit, net_cost,
+        peak_import, offpeak_import, shoulder_import
+    )
+    
+    return {
+        # Backward compatibility
+        "date": str(date_value),
+        "usage": round(import_usage - export_usage, 3),  # Net usage
+        "cost": round(net_cost, 2),
+        "unit": "kWh",
+        
+        # Import/Export totals
+        "import_usage": round(import_usage, 3),
+        "export_usage": round(export_usage, 3),
+        "import_cost": round(import_cost, 2),
+        "export_credit": round(export_credit, 2),
+        "net_cost": round(net_cost, 2),
+        
+        # Time period import breakdowns
+        "peak_import_usage": round(peak_import, 3),
+        "offpeak_import_usage": round(offpeak_import, 3),
+        "shoulder_import_usage": round(shoulder_import, 3),
+        
+        # Time period export breakdowns
+        "peak_export_usage": round(peak_export, 3),
+        "offpeak_export_usage": round(offpeak_export, 3),
+        "shoulder_export_usage": round(shoulder_export, 3),
+        
+        # Demand and environmental
+        "max_demand_kw": round(max_demand_kw, 3),
+        "max_demand_time": max_demand_time,
+        "carbon_emission_tonne": round(carbon_emission, 6)
+    }
+
+def _empty_entry(self) -> Dict[str, Any]:
+    """Return an empty entry structure with all fields initialized to zero."""
+    return {
+        "date": "",
+        "usage": 0.0,
+        "cost": 0.0,
+        "unit": "kWh",
+        "import_usage": 0.0,
+        "export_usage": 0.0,
+        "import_cost": 0.0,
+        "export_credit": 0.0,
+        "net_cost": 0.0,
+        "peak_import_usage": 0.0,
+        "offpeak_import_usage": 0.0,
+        "shoulder_import_usage": 0.0,
+        "peak_export_usage": 0.0,
+        "offpeak_export_usage": 0.0,
+        "shoulder_export_usage": 0.0,
+        "max_demand_kw": 0.0,
+        "max_demand_time": None,
+        "carbon_emission_tonne": 0.0
+    }
+```
+
+**File Modified**: `custom_components/red_energy/api.py`
+
+---
+
+### **Step 3: Update Data Validation** (`data_validation.py`)
+
+Add validation for new breakdown fields:
+
+```python
+def validate_usage_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
+    """Validate a single usage entry with breakdown data."""
+    
+    if not isinstance(entry, dict):
+        raise DataValidationError("Usage entry must be a dictionary")
+    
+    # Required fields (backward compatibility)
+    if "date" not in entry:
+        raise DataValidationError("Usage entry missing date")
+    
+    # Validate numeric fields
+    numeric_fields = [
+        "usage", "cost",
+        "import_usage", "export_usage",
+        "import_cost", "export_credit", "net_cost",
+        "peak_import_usage", "offpeak_import_usage", "shoulder_import_usage",
+        "peak_export_usage", "offpeak_export_usage", "shoulder_export_usage",
+        "max_demand_kw", "carbon_emission_tonne"
+    ]
+    
+    for field in numeric_fields:
+        if field in entry:
+            try:
+                value = float(entry[field])
+                if value < 0 and field not in ["cost", "net_cost"]:
+                    _LOGGER.warning("Negative value for %s: %.3f", field, value)
+            except (ValueError, TypeError):
+                raise DataValidationError(f"Invalid {field}: {entry.get(field)}")
+    
+    # Validate breakdown sums (with tolerance for floating point)
+    if "import_usage" in entry:
+        period_sum = (
+            entry.get("peak_import_usage", 0) +
+            entry.get("offpeak_import_usage", 0) +
+            entry.get("shoulder_import_usage", 0)
+        )
+        tolerance = 0.01  # 10 Wh tolerance
+        if abs(period_sum - entry["import_usage"]) > tolerance:
+            _LOGGER.warning(
+                "Import usage breakdown mismatch for %s: total=%.3f, sum=%.3f (diff=%.3f)",
+                entry.get("date"), entry["import_usage"], period_sum,
+                abs(period_sum - entry["import_usage"])
+            )
+    
+    # Validate cost calculation
+    if all(k in entry for k in ["import_cost", "export_credit", "net_cost"]):
+        calculated_net = entry["import_cost"] - entry["export_credit"]
+        if abs(calculated_net - entry["net_cost"]) > 0.01:
+            _LOGGER.warning(
+                "Net cost mismatch for %s: calculated=%.2f, stored=%.2f",
+                entry.get("date"), calculated_net, entry["net_cost"]
+            )
+    
+    return entry
+```
+
+**File Modified**: `custom_components/red_energy/data_validation.py`
+
+---
+
+### **Step 4: Add Aggregation Methods to Coordinator** (`coordinator.py`)
+
+Add helper methods to aggregate breakdown data across all daily entries:
+
+```python
+def get_latest_import_usage(self, property_id: str, service_type: str) -> Optional[float]:
+    """Get the most recent daily import usage."""
+    service_data = self.get_service_usage(property_id, service_type)
+    if not service_data or "usage_data" not in service_data:
+        return None
+    
+    usage_data = service_data["usage_data"].get("usage_data", [])
+    if not usage_data:
+        return None
+    
+    return usage_data[-1].get("import_usage", 0.0)
+
+def get_latest_export_usage(self, property_id: str, service_type: str) -> Optional[float]:
+    """Get the most recent daily export usage."""
+    service_data = self.get_service_usage(property_id, service_type)
+    if not service_data or "usage_data" not in service_data:
+        return None
+    
+    usage_data = service_data["usage_data"].get("usage_data", [])
+    if not usage_data:
+        return None
+    
+    return usage_data[-1].get("export_usage", 0.0)
+
+def get_total_import_usage(self, property_id: str, service_type: str) -> Optional[float]:
+    """Get total import usage over period."""
+    service_data = self.get_service_usage(property_id, service_type)
+    if not service_data or "usage_data" not in service_data:
+        return None
+    
+    usage_data = service_data["usage_data"].get("usage_data", [])
+    return sum(entry.get("import_usage", 0) for entry in usage_data)
+
+def get_total_export_usage(self, property_id: str, service_type: str) -> Optional[float]:
+    """Get total export usage over period."""
+    service_data = self.get_service_usage(property_id, service_type)
+    if not service_data or "usage_data" not in service_data:
+        return None
+    
+    usage_data = service_data["usage_data"].get("usage_data", [])
+    return sum(entry.get("export_usage", 0) for entry in usage_data)
+
+def get_period_import_usage(self, property_id: str, service_type: str, period: str) -> Optional[float]:
+    """Get total import usage for specific time period (PEAK/OFFPEAK/SHOULDER)."""
+    service_data = self.get_service_usage(property_id, service_type)
+    if not service_data or "usage_data" not in service_data:
+        return None
+    
+    usage_data = service_data["usage_data"].get("usage_data", [])
+    field_name = f"{period.lower()}_import_usage"
+    return sum(entry.get(field_name, 0) for entry in usage_data)
+
+def get_period_export_usage(self, property_id: str, service_type: str, period: str) -> Optional[float]:
+    """Get total export usage for specific time period (PEAK/OFFPEAK/SHOULDER)."""
+    service_data = self.get_service_usage(property_id, service_type)
+    if not service_data or "usage_data" not in service_data:
+        return None
+    
+    usage_data = service_data["usage_data"].get("usage_data", [])
+    field_name = f"{period.lower()}_export_usage"
+    return sum(entry.get(field_name, 0) for entry in usage_data)
+
+def get_total_import_cost(self, property_id: str, service_type: str) -> Optional[float]:
+    """Get total import cost over period."""
+    service_data = self.get_service_usage(property_id, service_type)
+    if not service_data or "usage_data" not in service_data:
+        return None
+    
+    usage_data = service_data["usage_data"].get("usage_data", [])
+    return sum(entry.get("import_cost", 0) for entry in usage_data)
+
+def get_total_export_credit(self, property_id: str, service_type: str) -> Optional[float]:
+    """Get total export credit over period."""
+    service_data = self.get_service_usage(property_id, service_type)
+    if not service_data or "usage_data" not in service_data:
+        return None
+    
+    usage_data = service_data["usage_data"].get("usage_data", [])
+    return sum(entry.get("export_credit", 0) for entry in usage_data)
+
+def get_net_total_cost(self, property_id: str, service_type: str) -> Optional[float]:
+    """Get net total cost (import - export) over period."""
+    import_cost = self.get_total_import_cost(property_id, service_type)
+    export_credit = self.get_total_export_credit(property_id, service_type)
+    
+    if import_cost is None or export_credit is None:
+        return None
+    
+    return import_cost - export_credit
+
+def get_max_demand_data(self, property_id: str, service_type: str) -> Optional[Dict[str, Any]]:
+    """Get maximum demand data (kW and timestamp)."""
+    service_data = self.get_service_usage(property_id, service_type)
+    if not service_data or "usage_data" not in service_data:
+        return None
+    
+    usage_data = service_data["usage_data"].get("usage_data", [])
+    if not usage_data:
+        return None
+    
+    max_demand_kw = 0.0
+    max_demand_time = None
+    max_demand_date = None
+    
+    for entry in usage_data:
+        demand = entry.get("max_demand_kw", 0.0)
+        if demand > max_demand_kw:
+            max_demand_kw = demand
+            max_demand_time = entry.get("max_demand_time")
+            max_demand_date = entry.get("date")
+    
+    return {
+        "max_demand_kw": max_demand_kw,
+        "max_demand_time": max_demand_time,
+        "max_demand_date": max_demand_date
+    }
+
+def get_total_carbon_emission(self, property_id: str, service_type: str) -> Optional[float]:
+    """Get total carbon emissions over period."""
+    service_data = self.get_service_usage(property_id, service_type)
+    if not service_data or "usage_data" not in service_data:
+        return None
+    
+    usage_data = service_data["usage_data"].get("usage_data", [])
+    return sum(entry.get("carbon_emission_tonne", 0) for entry in usage_data)
+```
+
+**File Modified**: `custom_components/red_energy/coordinator.py`
+
+---
+
+### **Step 5: Create New Sensor Classes** (`sensor.py`)
+
+#### **5.1 Core Sensors - Daily Import/Export**
+
+```python
+class RedEnergyDailyImportUsageSensor(RedEnergyBaseSensor):
+    """Red Energy daily import usage sensor (grid consumption)."""
+
+    def __init__(self, coordinator, config_entry, property_id, service_type):
+        super().__init__(coordinator, config_entry, property_id, service_type, "daily_import_usage")
+        
+        if service_type == SERVICE_TYPE_ELECTRICITY:
+            self._attr_device_class = SensorDeviceClass.ENERGY
+            self._attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
+            self._attr_state_class = SensorStateClass.TOTAL_INCREASING
+        elif service_type == SERVICE_TYPE_GAS:
+            self._attr_device_class = SensorDeviceClass.ENERGY
+            self._attr_native_unit_of_measurement = "MJ"
+            self._attr_state_class = SensorStateClass.TOTAL_INCREASING
+
+    @property
+    def native_value(self) -> Optional[float]:
+        return self.coordinator.get_latest_import_usage(self._property_id, self._service_type)
+
+    @property
+    def extra_state_attributes(self) -> Optional[dict[str, Any]]:
+        service_data = self.coordinator.get_service_usage(self._property_id, self._service_type)
+        if not service_data:
+            return None
+        
+        return {
+            "consumer_number": service_data.get("consumer_number"),
+            "last_updated": service_data.get("last_updated"),
+            "service_type": self._service_type,
+            "description": "Grid import (consumption)"
+        }
+
+
+class RedEnergyDailyExportUsageSensor(RedEnergyBaseSensor):
+    """Red Energy daily export usage sensor (solar generation)."""
+
+    def __init__(self, coordinator, config_entry, property_id, service_type):
+        super().__init__(coordinator, config_entry, property_id, service_type, "daily_export_usage")
+        
+        if service_type == SERVICE_TYPE_ELECTRICITY:
+            self._attr_device_class = SensorDeviceClass.ENERGY
+            self._attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
+            self._attr_state_class = SensorStateClass.TOTAL_INCREASING
+            self._attr_icon = "mdi:solar-power"
+        elif service_type == SERVICE_TYPE_GAS:
+            self._attr_device_class = SensorDeviceClass.ENERGY
+            self._attr_native_unit_of_measurement = "MJ"
+            self._attr_state_class = SensorStateClass.TOTAL_INCREASING
+
+    @property
+    def native_value(self) -> Optional[float]:
+        return self.coordinator.get_latest_export_usage(self._property_id, self._service_type)
+
+    @property
+    def extra_state_attributes(self) -> Optional[dict[str, Any]]:
+        service_data = self.coordinator.get_service_usage(self._property_id, self._service_type)
+        if not service_data:
+            return None
+        
+        return {
+            "consumer_number": service_data.get("consumer_number"),
+            "last_updated": service_data.get("last_updated"),
+            "service_type": self._service_type,
+            "description": "Solar export (generation)"
+        }
+```
+
+#### **5.2 Core Sensors - Total Import/Export**
+
+```python
+class RedEnergyTotalImportUsageSensor(RedEnergyBaseSensor):
+    """Red Energy total import usage sensor (30-day period)."""
+
+    def __init__(self, coordinator, config_entry, property_id, service_type):
+        super().__init__(coordinator, config_entry, property_id, service_type, "total_import_usage")
+        
+        if service_type == SERVICE_TYPE_ELECTRICITY:
+            self._attr_device_class = SensorDeviceClass.ENERGY
+            self._attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
+        elif service_type == SERVICE_TYPE_GAS:
+            self._attr_device_class = SensorDeviceClass.ENERGY
+            self._attr_native_unit_of_measurement = "MJ"
+            
+        self._attr_state_class = SensorStateClass.TOTAL
+
+    @property
+    def native_value(self) -> Optional[float]:
+        return self.coordinator.get_total_import_usage(self._property_id, self._service_type)
+
+    @property
+    def extra_state_attributes(self) -> Optional[dict[str, Any]]:
+        service_data = self.coordinator.get_service_usage(self._property_id, self._service_type)
+        if not service_data:
+            return None
+        
+        usage_data = service_data.get("usage_data", {})
+        daily_data = usage_data.get("usage_data", [])
+        
+        return {
+            "consumer_number": service_data.get("consumer_number"),
+            "last_updated": service_data.get("last_updated"),
+            "service_type": self._service_type,
+            "period": "30 days",
+            "daily_count": len(daily_data),
+            "from_date": usage_data.get("from_date"),
+            "to_date": usage_data.get("to_date"),
+            "description": "Total grid import"
+        }
+
+
+class RedEnergyTotalExportUsageSensor(RedEnergyBaseSensor):
+    """Red Energy total export usage sensor (30-day period)."""
+
+    def __init__(self, coordinator, config_entry, property_id, service_type):
+        super().__init__(coordinator, config_entry, property_id, service_type, "total_export_usage")
+        
+        if service_type == SERVICE_TYPE_ELECTRICITY:
+            self._attr_device_class = SensorDeviceClass.ENERGY
+            self._attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
+            self._attr_icon = "mdi:solar-power"
+        elif service_type == SERVICE_TYPE_GAS:
+            self._attr_device_class = SensorDeviceClass.ENERGY
+            self._attr_native_unit_of_measurement = "MJ"
+            
+        self._attr_state_class = SensorStateClass.TOTAL
+
+    @property
+    def native_value(self) -> Optional[float]:
+        return self.coordinator.get_total_export_usage(self._property_id, self._service_type)
+
+    @property
+    def extra_state_attributes(self) -> Optional[dict[str, Any]]:
+        service_data = self.coordinator.get_service_usage(self._property_id, self._service_type)
+        if not service_data:
+            return None
+        
+        usage_data = service_data.get("usage_data", {})
+        daily_data = usage_data.get("usage_data", [])
+        
+        return {
+            "consumer_number": service_data.get("consumer_number"),
+            "last_updated": service_data.get("last_updated"),
+            "service_type": self._service_type,
+            "period": "30 days",
+            "daily_count": len(daily_data),
+            "from_date": usage_data.get("from_date"),
+            "to_date": usage_data.get("to_date"),
+            "description": "Total solar export"
+        }
+```
+
+#### **5.3 Core Sensors - Cost Breakdown**
+
+```python
+class RedEnergyTotalImportCostSensor(RedEnergyBaseSensor):
+    """Red Energy total import cost sensor."""
+
+    def __init__(self, coordinator, config_entry, property_id, service_type):
+        super().__init__(coordinator, config_entry, property_id, service_type, "total_import_cost")
+        
+        self._attr_device_class = SensorDeviceClass.MONETARY
+        self._attr_native_unit_of_measurement = "AUD"
+        self._attr_state_class = SensorStateClass.TOTAL
+
+    @property
+    def native_value(self) -> Optional[float]:
+        return self.coordinator.get_total_import_cost(self._property_id, self._service_type)
+
+    @property
+    def extra_state_attributes(self) -> Optional[dict[str, Any]]:
+        service_data = self.coordinator.get_service_usage(self._property_id, self._service_type)
+        if not service_data:
+            return None
+        
+        return {
+            "consumer_number": service_data.get("consumer_number"),
+            "last_updated": service_data.get("last_updated"),
+            "service_type": self._service_type,
+            "period": "30 days",
+            "gst_inclusive": False,
+            "description": "Total cost of grid import"
+        }
+
+
+class RedEnergyTotalExportCreditSensor(RedEnergyBaseSensor):
+    """Red Energy total export credit sensor."""
+
+    def __init__(self, coordinator, config_entry, property_id, service_type):
+        super().__init__(coordinator, config_entry, property_id, service_type, "total_export_credit")
+        
+        self._attr_device_class = SensorDeviceClass.MONETARY
+        self._attr_native_unit_of_measurement = "AUD"
+        self._attr_state_class = SensorStateClass.TOTAL
+        self._attr_icon = "mdi:solar-power"
+
+    @property
+    def native_value(self) -> Optional[float]:
+        return self.coordinator.get_total_export_credit(self._property_id, self._service_type)
+
+    @property
+    def extra_state_attributes(self) -> Optional[dict[str, Any]]:
+        service_data = self.coordinator.get_service_usage(self._property_id, self._service_type)
+        if not service_data:
+            return None
+        
+        return {
+            "consumer_number": service_data.get("consumer_number"),
+            "last_updated": service_data.get("last_updated"),
+            "service_type": self._service_type,
+            "period": "30 days",
+            "description": "Total credit from solar export"
+        }
+
+
+class RedEnergyNetCostSensor(RedEnergyBaseSensor):
+    """Red Energy net cost sensor (import cost - export credit)."""
+
+    def __init__(self, coordinator, config_entry, property_id, service_type):
+        super().__init__(coordinator, config_entry, property_id, service_type, "net_cost")
+        
+        self._attr_device_class = SensorDeviceClass.MONETARY
+        self._attr_native_unit_of_measurement = "AUD"
+        self._attr_state_class = SensorStateClass.TOTAL
+
+    @property
+    def native_value(self) -> Optional[float]:
+        return self.coordinator.get_net_total_cost(self._property_id, self._service_type)
+
+    @property
+    def extra_state_attributes(self) -> Optional[dict[str, Any]]:
+        import_cost = self.coordinator.get_total_import_cost(self._property_id, self._service_type)
+        export_credit = self.coordinator.get_total_export_credit(self._property_id, self._service_type)
+        
+        return {
+            "import_cost": import_cost,
+            "export_credit": export_credit,
+            "calculation": "import_cost - export_credit",
+            "period": "30 days",
+            "description": "Actual cost after solar credits"
+        }
+```
+
+#### **5.4 Advanced Sensors - Time Period Breakdowns**
+
+```python
+class RedEnergyPeriodImportUsageSensor(RedEnergyBaseSensor):
+    """Base class for time period import usage sensors."""
+    
+    def __init__(self, coordinator, config_entry, property_id, service_type, period: str):
+        self._period = period
+        sensor_type = f"{period.lower()}_import_usage"
+        super().__init__(coordinator, config_entry, property_id, service_type, sensor_type)
+        
+        if service_type == SERVICE_TYPE_ELECTRICITY:
+            self._attr_device_class = SensorDeviceClass.ENERGY
+            self._attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
+            self._attr_state_class = SensorStateClass.TOTAL
+
+    @property
+    def native_value(self) -> Optional[float]:
+        return self.coordinator.get_period_import_usage(
+            self._property_id, self._service_type, self._period
+        )
+
+    @property
+    def extra_state_attributes(self) -> Optional[dict[str, Any]]:
+        service_data = self.coordinator.get_service_usage(self._property_id, self._service_type)
+        if not service_data:
+            return None
+        
+        total_import = self.coordinator.get_total_import_usage(
+            self._property_id, self._service_type
+        )
+        percentage = (self.native_value / total_import * 100) if total_import else 0
+        
+        return {
+            "consumer_number": service_data.get("consumer_number"),
+            "time_period": self._period,
+            "percentage_of_total": round(percentage, 1),
+            "period": "30 days"
+        }
+
+
+class RedEnergyPeakImportUsageSensor(RedEnergyPeriodImportUsageSensor):
+    def __init__(self, coordinator, config_entry, property_id, service_type):
+        super().__init__(coordinator, config_entry, property_id, service_type, "peak")
+
+
+class RedEnergyOffpeakImportUsageSensor(RedEnergyPeriodImportUsageSensor):
+    def __init__(self, coordinator, config_entry, property_id, service_type):
+        super().__init__(coordinator, config_entry, property_id, service_type, "offpeak")
+
+
+class RedEnergyShoulderImportUsageSensor(RedEnergyPeriodImportUsageSensor):
+    def __init__(self, coordinator, config_entry, property_id, service_type):
+        super().__init__(coordinator, config_entry, property_id, service_type, "shoulder")
+
+
+class RedEnergyPeriodExportUsageSensor(RedEnergyBaseSensor):
+    """Base class for time period export usage sensors."""
+    
+    def __init__(self, coordinator, config_entry, property_id, service_type, period: str):
+        self._period = period
+        sensor_type = f"{period.lower()}_export_usage"
+        super().__init__(coordinator, config_entry, property_id, service_type, sensor_type)
+        
+        if service_type == SERVICE_TYPE_ELECTRICITY:
+            self._attr_device_class = SensorDeviceClass.ENERGY
+            self._attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
+            self._attr_state_class = SensorStateClass.TOTAL
+            self._attr_icon = "mdi:solar-power"
+
+    @property
+    def native_value(self) -> Optional[float]:
+        return self.coordinator.get_period_export_usage(
+            self._property_id, self._service_type, self._period
+        )
+
+    @property
+    def extra_state_attributes(self) -> Optional[dict[str, Any]]:
+        service_data = self.coordinator.get_service_usage(self._property_id, self._service_type)
+        if not service_data:
+            return None
+        
+        total_export = self.coordinator.get_total_export_usage(
+            self._property_id, self._service_type
+        )
+        percentage = (self.native_value / total_export * 100) if total_export else 0
+        
+        return {
+            "consumer_number": service_data.get("consumer_number"),
+            "time_period": self._period,
+            "percentage_of_total": round(percentage, 1),
+            "period": "30 days",
+            "description": "Solar export during this tariff period"
+        }
+
+
+class RedEnergyPeakExportUsageSensor(RedEnergyPeriodExportUsageSensor):
+    def __init__(self, coordinator, config_entry, property_id, service_type):
+        super().__init__(coordinator, config_entry, property_id, service_type, "peak")
+
+
+class RedEnergyOffpeakExportUsageSensor(RedEnergyPeriodExportUsageSensor):
+    def __init__(self, coordinator, config_entry, property_id, service_type):
+        super().__init__(coordinator, config_entry, property_id, service_type, "offpeak")
+
+
+class RedEnergyShoulderExportUsageSensor(RedEnergyPeriodExportUsageSensor):
+    def __init__(self, coordinator, config_entry, property_id, service_type):
+        super().__init__(coordinator, config_entry, property_id, service_type, "shoulder")
+```
+
+#### **5.5 Advanced Sensors - Demand and Environmental**
+
+```python
+class RedEnergyMaxDemandSensor(RedEnergyBaseSensor):
+    """Red Energy maximum demand sensor."""
+
+    def __init__(self, coordinator, config_entry, property_id, service_type):
+        super().__init__(coordinator, config_entry, property_id, service_type, "max_demand")
+        
+        self._attr_device_class = SensorDeviceClass.POWER
+        self._attr_native_unit_of_measurement = UnitOfPower.KILO_WATT
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_icon = "mdi:lightning-bolt"
+
+    @property
+    def native_value(self) -> Optional[float]:
+        data = self.coordinator.get_max_demand_data(self._property_id, self._service_type)
+        return data.get("max_demand_kw") if data else None
+
+    @property
+    def extra_state_attributes(self) -> Optional[dict[str, Any]]:
+        data = self.coordinator.get_max_demand_data(self._property_id, self._service_type)
+        if not data:
+            return None
+        
+        return {
+            "max_demand_time": data.get("max_demand_time"),
+            "max_demand_date": data.get("max_demand_date"),
+            "period": "30 days"
+        }
+
+
+class RedEnergyMaxDemandTimeSensor(RedEnergyBaseSensor):
+    """Red Energy maximum demand timestamp sensor."""
+
+    def __init__(self, coordinator, config_entry, property_id, service_type):
+        super().__init__(coordinator, config_entry, property_id, service_type, "max_demand_interval_start")
+        
+        self._attr_device_class = SensorDeviceClass.TIMESTAMP
+        self._attr_icon = "mdi:clock-alert"
+
+    @property
+    def native_value(self) -> Optional[datetime]:
+        data = self.coordinator.get_max_demand_data(self._property_id, self._service_type)
+        if not data or not data.get("max_demand_time"):
+            return None
+        
+        try:
+            return datetime.fromisoformat(data["max_demand_time"])
+        except (ValueError, TypeError):
+            return None
+
+
+class RedEnergyCarbonEmissionSensor(RedEnergyBaseSensor):
+    """Red Energy carbon emission sensor."""
+
+    def __init__(self, coordinator, config_entry, property_id, service_type):
+        super().__init__(coordinator, config_entry, property_id, service_type, "carbon_emission_tonne")
+        
+        self._attr_native_unit_of_measurement = "t CO₂"
+        self._attr_state_class = SensorStateClass.TOTAL
+        self._attr_icon = "mdi:molecule-co2"
+
+    @property
+    def native_value(self) -> Optional[float]:
+        return self.coordinator.get_total_carbon_emission(self._property_id, self._service_type)
+
+    @property
+    def extra_state_attributes(self) -> Optional[dict[str, Any]]:
+        total_import = self.coordinator.get_total_import_usage(self._property_id, self._service_type)
+        emission = self.native_value
+        
+        # Calculate emission factor (kg CO2 per kWh)
+        emission_factor = (emission / total_import * 1000) if total_import and emission else 0
+        
+        return {
+            "emission_factor_kg_per_kwh": round(emission_factor, 3),
+            "period": "30 days",
+            "description": "Total carbon emissions from grid consumption"
+        }
+```
+
+**File Modified**: `custom_components/red_energy/sensor.py`
+
+---
+
+### **Step 6: Update Sensor Setup Logic** (`sensor.py`)
+
+Modify `async_setup_entry()` to include the new sensors:
+
+```python
+async def async_setup_entry(
+    hass: HomeAssistant,
+    config_entry: ConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
+    """Set up Red Energy sensors based on a config entry."""
+    _LOGGER.debug("Setting up Red Energy sensors for config entry %s", config_entry.entry_id)
+    
+    entry_data = hass.data[DOMAIN][config_entry.entry_id]
+    coordinator: RedEnergyDataCoordinator = entry_data["coordinator"]
+    selected_accounts = entry_data["selected_accounts"]
+    services = entry_data["services"]
+    
+    # Check if advanced sensors are enabled
+    advanced_sensors_enabled = config_entry.options.get(CONF_ENABLE_ADVANCED_SENSORS, False)
+    
+    entities = []
+    
+    # Create sensors for each selected account and service
+    for account_id in selected_accounts:
+        for service_type in services:
+            # Core sensors (always created) - 20 sensors
+            entities.extend([
+                # Original core sensors
+                RedEnergyUsageSensor(coordinator, config_entry, account_id, service_type),
+                RedEnergyCostSensor(coordinator, config_entry, account_id, service_type),
+                RedEnergyTotalUsageSensor(coordinator, config_entry, account_id, service_type),
+                RedEnergyNmiSensor(coordinator, config_entry, account_id, service_type),
+                RedEnergyMeterTypeSensor(coordinator, config_entry, account_id, service_type),
+                RedEnergySolarSensor(coordinator, config_entry, account_id, service_type),
+                RedEnergyProductNameSensor(coordinator, config_entry, account_id, service_type),
+                RedEnergyDistributorSensor(coordinator, config_entry, account_id, service_type),
+                RedEnergyBalanceSensor(coordinator, config_entry, account_id, service_type),
+                RedEnergyArrearsSensor(coordinator, config_entry, account_id, service_type),
+                RedEnergyLastBillDateSensor(coordinator, config_entry, account_id, service_type),
+                RedEnergyNextBillDateSensor(coordinator, config_entry, account_id, service_type),
+                RedEnergyBillingFrequencySensor(coordinator, config_entry, account_id, service_type),
+                
+                # NEW: Daily import/export breakdown (CORE)
+                RedEnergyDailyImportUsageSensor(coordinator, config_entry, account_id, service_type),
+                RedEnergyDailyExportUsageSensor(coordinator, config_entry, account_id, service_type),
+                
+                # NEW: Total import/export breakdown (CORE)
+                RedEnergyTotalImportUsageSensor(coordinator, config_entry, account_id, service_type),
+                RedEnergyTotalExportUsageSensor(coordinator, config_entry, account_id, service_type),
+                
+                # NEW: Cost breakdown (CORE)
+                RedEnergyTotalImportCostSensor(coordinator, config_entry, account_id, service_type),
+                RedEnergyTotalExportCreditSensor(coordinator, config_entry, account_id, service_type),
+                RedEnergyNetCostSensor(coordinator, config_entry, account_id, service_type),
+            ])
+            
+            # Advanced sensors (optional) - 13 sensors
+            if advanced_sensors_enabled:
+                entities.extend([
+                    # Existing advanced sensors
+                    RedEnergyDailyAverageSensor(coordinator, config_entry, account_id, service_type),
+                    RedEnergyMonthlyAverageSensor(coordinator, config_entry, account_id, service_type),
+                    RedEnergyPeakUsageSensor(coordinator, config_entry, account_id, service_type),
+                    RedEnergyEfficiencySensor(coordinator, config_entry, account_id, service_type),
+                    
+                    # NEW: Time period import breakdown (ADVANCED)
+                    RedEnergyPeakImportUsageSensor(coordinator, config_entry, account_id, service_type),
+                    RedEnergyOffpeakImportUsageSensor(coordinator, config_entry, account_id, service_type),
+                    RedEnergyShoulderImportUsageSensor(coordinator, config_entry, account_id, service_type),
+                    
+                    # NEW: Time period export breakdown (ADVANCED)
+                    RedEnergyPeakExportUsageSensor(coordinator, config_entry, account_id, service_type),
+                    RedEnergyOffpeakExportUsageSensor(coordinator, config_entry, account_id, service_type),
+                    RedEnergyShoulderExportUsageSensor(coordinator, config_entry, account_id, service_type),
+                    
+                    # NEW: Demand and environmental (ADVANCED)
+                    RedEnergyMaxDemandSensor(coordinator, config_entry, account_id, service_type),
+                    RedEnergyMaxDemandTimeSensor(coordinator, config_entry, account_id, service_type),
+                    RedEnergyCarbonEmissionSensor(coordinator, config_entry, account_id, service_type),
+                ])
+    
+    _LOGGER.debug(
+        "Created %d sensors (%d core, %d advanced) for Red Energy integration", 
+        len(entities),
+        len(selected_accounts) * len(services) * 20,  # Core sensors
+        len(entities) - (len(selected_accounts) * len(services) * 20)  # Advanced sensors
+    )
+    async_add_entities(entities)
+```
+
+**Entity Count Summary**:
+- **Core sensors**: 20 per service (was 13, added 7)
+- **Advanced sensors**: 13 per service (was 4, added 9)
+- **Total with advanced enabled**: 33 per service
+
+**File Modified**: `custom_components/red_energy/sensor.py`
+
+---
+
+### **Step 7: Update Translations** (`en.json`)
+
+Add friendly names and descriptions for all new sensors.
+
+**File Modified**: `custom_components/red_energy/translations/en.json`
+
+---
+
+### **Step 8: Write Unit Tests**
+
+Create comprehensive unit tests in `tests/test_breakdown_sensors.py`.
+
+**Test Coverage**:
+1. API normalization extracts all breakdown fields correctly
+2. Coordinator aggregation methods return correct totals
+3. Each sensor class returns expected values
+4. Time period calculations are accurate
+5. Cost calculations (net cost = import - export)
+6. Max demand tracking across days
+7. Carbon emission totals
+8. Handles missing data gracefully
+9. Backward compatibility maintained
+
+**File Created**: `tests/test_breakdown_sensors.py`
+
+---
+
+### **Step 9: Update Documentation**
+
+**Files Modified**:
+- `README.md` - Update sensor counts and capabilities
+- `info.md` - Add new sensors to feature list
+- Consider creating `BREAKDOWN_SENSORS.md` with usage examples
+
+---
+
+## Entity Count Impact
+
+### Before
+- **Core**: 13 sensors per service
+- **With Advanced**: 17 sensors per service
+
+### After
+- **Core**: 20 sensors per service (+7)
+- **With Advanced**: 33 sensors per service (+16)
+
+### Example Setup (1 property, electricity only)
+- **Before**: 13 core + 4 advanced = 17 entities
+- **After**: 20 core + 13 advanced = 33 entities
+
+---
+
+## Backward Compatibility
+
+All changes maintain backward compatibility:
+- ✅ Existing `daily_usage` sensor unchanged
+- ✅ Existing `total_cost` sensor unchanged
+- ✅ Existing `total_usage` sensor unchanged
+- ✅ New fields added to normalized data without removing old fields
+- ✅ Entity IDs remain consistent
+
+---
+
+## Key Design Decisions
+
+1. **Core vs Advanced Split**:
+   - Core: Import/export usage and cost breakdowns (fundamental data)
+   - Advanced: Time period breakdowns, demand, emissions (analytics)
+
+2. **Export Credit as Positive**: Store export credit as positive number for clarity in UI
+
+3. **Net Cost Calculation**: Import Cost - Export Credit
+
+4. **Sensor Names**: Clear, descriptive names (e.g., "daily_import_usage" not just "import")
+
+5. **Icons**: Solar sensors get "mdi:solar-power" icon for visual distinction
+
+6. **Time Period Classification**: Use API's `primaryConsumptionTariffComponent` field
+
+7. **Max Demand**: Track both from intervals and daily summary, use highest value
+
+---
+
+## Implementation Checklist
+
+- [ ] Step 1: Update constants
+- [ ] Step 2: Enhance API normalization
+- [ ] Step 3: Update data validation
+- [ ] Step 4: Add coordinator methods
+- [ ] Step 5: Create sensor classes
+- [ ] Step 6: Update sensor setup
+- [ ] Step 7: Update translations
+- [ ] Step 8: Write unit tests
+- [ ] Step 9: Update documentation
+- [ ] Run tests and verify
+- [ ] Test with real API data
+- [ ] Prepare commit
+
+---
+
+## Success Criteria
+
+1. ✅ All 20 core sensors created for each service
+2. ✅ All 13 advanced sensors created when enabled
+3. ✅ API correctly extracts breakdown data from halfHours array
+4. ✅ Coordinator aggregates data correctly
+5. ✅ Sensors display correct values in Home Assistant
+6. ✅ Unit tests pass with 100% coverage for new code
+7. ✅ Backward compatibility maintained
+8. ✅ Documentation updated
+
+---
+
+## Future Enhancements
+
+Potential additions for future versions:
+1. Cost breakdown by time period (PEAK cost, OFFPEAK cost, etc.)
+2. Daily cost import/export sensors
+3. Historical trend sensors
+4. Predictive usage sensors
+5. Efficiency comparison sensors
+6. Environmental impact visualizations
+
+---
+
+**Plan Status**: ✅ Approved - Ready for Implementation
+
+**Next Step**: Move to ACT mode and implement all changes.
+
