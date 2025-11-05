@@ -1,0 +1,470 @@
+# Red Energy Authentication Reference
+
+## Purpose
+
+Developer reference for implementing and maintaining OAuth2 PKCE authentication with Red Energy's Okta-based API. This document provides implementation details, code references, and patterns for working with the authentication system.
+
+**Use this reference when:**
+- Implementing authentication flows
+- Debugging authentication issues
+- Understanding token lifecycle management
+- Modifying credential handling
+- Implementing error recovery
+
+## Authentication Architecture
+
+### Flow Overview
+
+The Red Energy API uses a 5-step OAuth2 PKCE (Proof Key for Code Exchange) authentication flow:
+
+```
+1. Username/Password → Okta Session Token
+2. Session Token → OAuth2 Authorization URL (with PKCE challenge)
+3. Authorization Redirect → Extract Authorization Code
+4. Authorization Code + PKCE Verifier → Access/Refresh Tokens
+5. Access Token → API Calls (Bearer Authentication)
+```
+
+### Implementation Location
+
+**Primary Implementation**: `custom_components/red_energy/api.py`
+
+```python
+class RedEnergyAPI:
+    """Main authentication flow in authenticate() method (lines 46-83)"""
+```
+
+### State Management
+
+Authentication state is managed through instance variables in `RedEnergyAPI`:
+
+```python
+self._access_token: Optional[str]      # Bearer token for API calls
+self._refresh_token: Optional[str]     # Token for refreshing access
+self._token_expires: Optional[datetime] # Expiration timestamp
+```
+
+**Lines**: 41-43 in `api.py`
+
+## Authentication Steps - Implementation Details
+
+### Step 1: Okta Session Token
+
+**Method**: `_get_session_token(username: str, password: str) -> tuple[str, str]`  
+**Lines**: 104-146 in `api.py`
+
+**Implementation**:
+```python
+# POST to Okta with username/password
+payload = {
+    "username": username,
+    "password": password,
+    "options": {
+        "warnBeforePasswordExpired": False,
+        "multiOptionalFactorEnroll": False
+    }
+}
+# Returns: (session_token, expires_at)
+```
+
+**Endpoint**: `https://redenergy.okta.com/api/v1/authn`  
+**Constant**: `RedEnergyAPI.OKTA_AUTH_URL` (line 36)
+
+**Error Handling**:
+- HTTP != 200: Parse Okta error response, raise `RedEnergyAuthError`
+- Status != "SUCCESS": Handle MFA/locked account scenarios
+- All errors logged with full context for debugging
+
+### Step 2: OAuth2 Discovery
+
+**Method**: `_get_discovery_data() -> Dict[str, Any]`  
+**Lines**: 85-90 in `api.py`
+
+**Endpoint**: `https://login.redenergy.com.au/oauth2/default/.well-known/openid-configuration`  
+**Constant**: `RedEnergyAPI.DISCOVERY_URL` (line 33)
+
+**Returns**:
+- `authorization_endpoint`: URL for authorization code request
+- `token_endpoint`: URL for token exchange
+
+### Step 3: PKCE Parameters
+
+**Code Verifier Generation**:  
+**Method**: `_generate_code_verifier() -> str`  
+**Lines**: 92-97 in `api.py`
+
+```python
+# Generates 48-character random string
+# Character set: [a-zA-Z0-9\-\.\_\~] per RFC 7636
+alphabet = string.ascii_letters + string.digits + '-._~'
+return ''.join(secrets.choice(alphabet) for _ in range(48))
+```
+
+**Code Challenge Generation**:  
+**Method**: `_generate_code_challenge(verifier: str) -> str`  
+**Lines**: 99-102 in `api.py`
+
+```python
+# SHA256 hash of verifier, base64url encoded
+digest = hashlib.sha256(verifier.encode()).digest()
+return base64.urlsafe_b64encode(digest).decode().rstrip('=')
+```
+
+### Step 4: Authorization Code Retrieval
+
+**Method**: `_get_authorization_code(...) -> str`  
+**Lines**: 148-223 in `api.py` (approximate)
+
+**Process**:
+1. Build authorization URL with session token, client_id, PKCE challenge
+2. Follow redirects to capture authorization code
+3. Parse code from redirect URL query parameters
+
+**Redirect URI**: `au.com.redenergy://callback`  
+**Constant**: `RedEnergyAPI.REDIRECT_URI` (line 34)
+
+### Step 5: Token Exchange
+
+**Method**: `_exchange_code_for_tokens(...) -> None`  
+**Lines**: 225-259 in `api.py` (approximate)
+
+**Token Exchange Parameters**:
+```python
+{
+    'grant_type': 'authorization_code',
+    'code': auth_code,
+    'redirect_uri': REDIRECT_URI,
+    'client_id': client_id,
+    'code_verifier': code_verifier  # PKCE verifier
+}
+```
+
+**Sets State Variables**:
+- `self._access_token` - Used for API authentication
+- `self._refresh_token` - Used for token refresh
+- `self._token_expires` - Calculated from `expires_in` (default 3600s)
+
+## Token Lifecycle Management
+
+### Token Expiration
+
+**Default Expiration**: 1 hour (3600 seconds)
+
+**Expiration Check**: Before every API call  
+**Method**: `_ensure_authenticated() -> None`  
+**Lines**: 370-380 in `api.py` (approximate)
+
+```python
+if self._token_expires and datetime.now() >= self._token_expires:
+    if self._refresh_token:
+        await self._refresh_access_token()
+    else:
+        raise RedEnergyAuthError("Token expired and no refresh token available")
+```
+
+### Token Refresh
+
+**Method**: `_refresh_access_token() -> None`  
+**Lines**: 382-415 in `api.py`
+
+**Process**:
+1. Get token endpoint from discovery URL
+2. POST with `grant_type=refresh_token` and refresh token
+3. Update `_access_token`, `_refresh_token`, and `_token_expires`
+
+**Refresh Parameters**:
+```python
+{
+    'grant_type': 'refresh_token',
+    'refresh_token': self._refresh_token
+}
+```
+
+**Error Handling**:
+- No refresh token: Raise `RedEnergyAuthError`
+- Refresh fails: Log error with full response context
+- Success: Log token refresh with new expiration
+
+## Configuration Flow Integration
+
+### Entry Point
+
+**File**: `custom_components/red_energy/config_flow.py`  
+**Function**: `validate_input(hass: HomeAssistant, data: dict) -> dict`  
+**Lines**: 51-107 in `config_flow.py`
+
+### Validation Process
+
+```python
+# 1. Validate configuration data format
+validate_config_data(data)
+
+# 2. Test credentials with full authentication
+api = RedEnergyAPI(session)
+auth_success = await api.test_credentials(
+    data[CONF_USERNAME],
+    data[CONF_PASSWORD],
+    data[CONF_CLIENT_ID]
+)
+
+# 3. Fetch customer data and properties
+raw_customer_data = await api.get_customer_data()
+raw_properties = await api.get_properties()
+
+# 4. Validate and return data
+customer_data = validate_customer_data(raw_customer_data)
+properties = validate_properties_data(raw_properties)
+```
+
+### Credential Testing
+
+**Method**: `test_credentials(username, password, client_id) -> bool`  
+**Lines**: 261-269 in `api.py`
+
+**Implementation**:
+- Performs full `authenticate()` flow
+- Catches `RedEnergyAuthError` and returns `False`
+- Returns `True` only if full authentication succeeds
+
+## API Endpoints Reference
+
+### Authentication Endpoints
+
+| Purpose | URL | Constant |
+|---------|-----|----------|
+| Discovery | `https://login.redenergy.com.au/oauth2/default/.well-known/openid-configuration` | `DISCOVERY_URL` |
+| Okta Auth | `https://redenergy.okta.com/api/v1/authn` | `OKTA_AUTH_URL` |
+| Redirect | `au.com.redenergy://callback` | `REDIRECT_URI` |
+
+### Resource Endpoints
+
+**Base URL**: `https://selfservice.services.retail.energy/v1`  
+**Constant**: `RedEnergyAPI.BASE_API_URL` (line 35)
+
+| Endpoint | Purpose |
+|----------|---------|
+| `/customers/current` | Customer account data |
+| `/properties` | Properties/accounts list |
+| `/usage/interval` | Usage interval data |
+
+## Security Considerations
+
+### Credential Storage
+
+**Username/Password**:
+- Stored in Home Assistant config entry
+- Used only for initial authentication and re-authentication
+- Never logged (except sanitized username in debug logs)
+
+**Client ID**:
+- Must be captured from Red Energy mobile app
+- Specific to Red Energy's Okta application
+- Stored in config entry: `CONF_CLIENT_ID`
+- Required for OAuth2 flow
+
+**Access Token**:
+- Stored in API instance (`self._access_token`)
+- Used as Bearer token: `Authorization: Bearer {token}`
+- Expires after 1 hour
+- Not persisted between restarts
+
+**Refresh Token**:
+- Stored in API instance (`self._refresh_token`)
+- Used to obtain new access tokens
+- Not persisted between restarts
+- Requires re-authentication on HA restart
+
+### Transport Security
+
+- All endpoints use HTTPS
+- Certificate validation enabled by default
+- Uses `aiohttp.ClientSession` from Home Assistant
+- Timeout: 30 seconds (defined in `const.py` as `API_TIMEOUT`)
+
+### Error Exposure
+
+Authentication errors are logged with context but sanitized:
+- Full Okta error responses in debug logs
+- Client ID truncated in logs: `{client_id[:10]}...`
+- Passwords never logged
+- Username logged in debug context only
+
+## Error Handling Patterns
+
+### Exception Hierarchy
+
+```python
+RedEnergyAPIError            # Base exception
+└── RedEnergyAuthError       # Authentication-specific errors
+```
+
+**Defined**: Lines 22-27 in `api.py`
+
+### Authentication Error Scenarios
+
+| Error | Cause | Handling |
+|-------|-------|----------|
+| Invalid credentials | Wrong username/password | Raise `RedEnergyAuthError` with Okta error |
+| Invalid client_id | Wrong/expired client ID | Raise `RedEnergyAuthError` from token exchange |
+| Token expired | Access token > 1 hour old | Automatic refresh via `_refresh_access_token()` |
+| Refresh failed | Invalid refresh token | Raise `RedEnergyAuthError`, requires re-auth |
+| Network timeout | API unreachable | `async_timeout.timeout(API_TIMEOUT)` raises |
+| MFA required | Account has MFA enabled | Status != "SUCCESS" in Okta response |
+
+### Logging Strategy
+
+**Debug Level**:
+- Full authentication flow steps
+- Token expiration timestamps
+- PKCE parameters (verifier/challenge)
+- API endpoint calls
+
+**Error Level**:
+- Authentication failures with full context
+- Token refresh failures
+- Unexpected errors with stack traces
+
+**Example Debug Logs**:
+```python
+_LOGGER.debug("Starting Red Energy authentication")
+_LOGGER.debug("Obtained session token, expires: %s", session_expires)
+_LOGGER.debug("Generated PKCE - Verifier: %s, Challenge: %s", ...)
+_LOGGER.debug("Red Energy authentication successful - access token acquired")
+```
+
+## Common Implementation Patterns
+
+### Pattern 1: API Request with Authentication
+
+```python
+# Every API method should call this first
+await self._ensure_authenticated()
+
+# Then make API call with bearer token
+headers = {"Authorization": f"Bearer {self._access_token}"}
+async with self._session.get(url, headers=headers) as response:
+    response.raise_for_status()
+    return await response.json()
+```
+
+### Pattern 2: Token Refresh on Expiration
+
+```python
+# Automatic in _ensure_authenticated()
+if self._token_expires and datetime.now() >= self._token_expires:
+    if self._refresh_token:
+        await self._refresh_access_token()
+    else:
+        raise RedEnergyAuthError("Token expired")
+```
+
+### Pattern 3: Full Re-authentication
+
+```python
+# When refresh fails or no refresh token available
+try:
+    await api.authenticate(username, password, client_id)
+except RedEnergyAuthError as err:
+    _LOGGER.error("Re-authentication failed: %s", err)
+    # Handle failure (update config entry state, notify user)
+```
+
+## Troubleshooting for Developers
+
+### Debugging Authentication Failures
+
+**Enable Debug Logging** (`configuration.yaml`):
+```yaml
+logger:
+  logs:
+    custom_components.red_energy: debug
+```
+
+**Check Log Patterns**:
+1. "Starting Red Energy authentication" - Flow initiated
+2. "Obtained session token" - Step 1 success
+3. "Generated PKCE" - Step 3 success
+4. "Red Energy authentication successful" - Full success
+
+**Common Failure Points**:
+- **Step 1**: Invalid credentials → Check Okta error response in logs
+- **Step 4**: Authorization code failure → Check session token validity
+- **Step 5**: Token exchange failure → Check client_id, PKCE verifier
+
+### Testing Authentication Flow
+
+**Manual Test**:
+```python
+from custom_components.red_energy.api import RedEnergyAPI
+import aiohttp
+
+async def test():
+    async with aiohttp.ClientSession() as session:
+        api = RedEnergyAPI(session)
+        success = await api.test_credentials(username, password, client_id)
+        print(f"Auth success: {success}")
+```
+
+**Integration Test**:
+```python
+# tests/test_config_flow_basic.py contains comprehensive auth tests
+# Tests cover: valid credentials, invalid credentials, network errors
+```
+
+### Common Developer Errors
+
+**Issue**: "Token expired and no refresh token available"  
+**Cause**: API instance didn't persist through coordinator restart  
+**Fix**: Coordinator should maintain API instance or re-authenticate
+
+**Issue**: "Invalid client ID"  
+**Cause**: Client ID changed by Red Energy or incorrectly captured  
+**Fix**: User must re-capture client_id from mobile app
+
+**Issue**: Authentication succeeds but API calls fail  
+**Cause**: Forgot to call `_ensure_authenticated()` before API request  
+**Fix**: Add `await self._ensure_authenticated()` before all API calls
+
+## Related Files
+
+### Core Implementation
+- `custom_components/red_energy/api.py` - Main authentication logic
+- `custom_components/red_energy/config_flow.py` - Setup flow integration
+- `custom_components/red_energy/const.py` - Constants and configuration keys
+
+### Validation
+- `custom_components/red_energy/data_validation.py` - Config data validation
+
+### Testing
+- `tests/test_config_flow_basic.py` - Authentication tests
+- `tests/test_config_flow.py` - Integration tests
+
+## Version History
+
+### Authentication Changes
+
+**v1.0.0** - Initial OAuth2 PKCE implementation
+- Full 5-step authentication flow
+- Automatic token refresh
+- Error recovery patterns
+
+**v2.0.0** - Enhanced error handling
+- Detailed Okta error logging
+- Improved timeout handling
+- Better MFA detection
+
+## Additional Resources
+
+### External Documentation
+- [RFC 7636 - PKCE](https://tools.ietf.org/html/rfc7636) - PKCE specification
+- [Okta Authentication API](https://developer.okta.com/docs/reference/api/authn/) - Okta session token flow
+- [OAuth 2.0 RFC 6749](https://tools.ietf.org/html/rfc6749) - OAuth2 specification
+
+### Red Energy Specific
+- [Red-Energy-API Project](https://github.com/craibo/Red-Energy-API) - Reference implementation
+- Mobile app network traffic - Source of client_id
+
+## Last Updated
+
+2025-10-06 - Initial authentication reference created
+
