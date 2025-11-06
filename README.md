@@ -31,7 +31,7 @@ A comprehensive Home Assistant custom integration for Red Energy (Australian ene
 
 ### 🔧 **Configuration & Management**
 - **UI-First Setup**: Complete configuration through Home Assistant UI
-- **Flexible Polling**: Configurable update intervals (1min to 1hour)
+- **Flexible Polling**: Configurable update intervals (15min to 4hours)
 - **Service Calls**: Manual refresh, credential updates, and data export
 - **Energy Dashboard Integration**: Native Home Assistant Energy dashboard support
 - **Health Monitoring**: Comprehensive diagnostics and performance metrics
@@ -70,6 +70,16 @@ A comprehensive Home Assistant custom integration for Red Energy (Australian ene
 5. Configure advanced options if desired
 
 ⚠️ **Important**: This integration uses the real Red Energy API. You must have valid Red Energy account credentials to use this integration.
+
+## Important: Data Update Limitations
+
+⚠️ **Red Energy Data Update Schedule**: Red Energy only updates usage data on their platform once per day, typically around 3am AEST (Australian Eastern Standard Time). This means:
+
+- **Usage data is not updated every polling interval** - The integration can check for updates at your configured interval (15 minutes, 30 minutes, etc.), but the actual usage data from Red Energy will only change once per day after their daily update.
+- **Polling intervals affect API checks, not data freshness** - Setting a shorter polling interval (e.g., 15 minutes) means the integration will check Red Energy's API more frequently, but it will continue to see the same usage data until the next daily update.
+- **Recommended polling intervals** - Since data updates daily, longer polling intervals (30 minutes to 4 hours) are recommended to reduce unnecessary API calls while still ensuring you receive updates shortly after Red Energy's daily data refresh.
+
+This limitation is inherent to Red Energy's platform and cannot be changed by this integration. The integration will automatically detect and display new data once Red Energy updates it.
 
 ## Sensors Created
 
@@ -222,10 +232,12 @@ The integration includes 11 comprehensive automation examples in `AUTOMATION_EXA
 ## Configuration Options
 
 ### Basic Options
-- **Polling Interval**: 1min, 5min, 15min, 30min (default), 1hour
+- **Polling Interval**: 15min, 30min (default), 1hour, 2hours, 4hours
 - **Advanced Sensors**: Enable additional calculated sensors
 - **Selected Accounts**: Choose which properties to monitor
 - **Services**: Select electricity, gas, or both per property
+
+**Note**: Red Energy updates usage data once daily around 3am AEST. Polling intervals control how often the integration checks for updates, but usage data will only change once per day after Red Energy's daily refresh.
 
 ### Advanced Options (Stage 5+)
 - **Performance Monitoring**: Track operation timing and efficiency
