@@ -1,3 +1,7 @@
+---
+alwaysApply: true
+---
+
 # Red Energy Integration Rules & Documentation
 
 This directory contains project-specific rules, patterns, and documentation for the Red Energy Home Assistant integration.
@@ -6,7 +10,7 @@ This directory contains project-specific rules, patterns, and documentation for 
 
 ### 📋 API Documentation
 
-- **[red-energy-api-structure.md](./red-energy-api-structure.md)** - Complete API response structure reference
+- **[red-energy-api-structure.md](./red-energy-api-structure.mdc)** - Complete API response structure reference
   - Property/Account response format
   - Consumer/Service data structure
   - Address field mappings
@@ -16,7 +20,7 @@ This directory contains project-specific rules, patterns, and documentation for 
 
 ### 🔐 Authentication
 
-- **[red-energy-authentication.md](./red-energy-authentication.md)** - OAuth2 PKCE authentication reference
+- **[red-energy-authentication.md](./red-energy-authentication.mdc)** - OAuth2 PKCE authentication reference
   - Authentication flow architecture
   - Token lifecycle management
   - Implementation details with code references
@@ -26,7 +30,7 @@ This directory contains project-specific rules, patterns, and documentation for 
 
 ### 🏪 HACS Configuration
 
-- **[hacs-topics.md](./hacs-topics.md)** - HACS repository topics and validation reference
+- **[hacs-topics.md](./hacs-topics.mdc)** - HACS repository topics and validation reference
   - Required and recommended topics
   - HACS validation requirements
   - hacs.json valid keys
@@ -58,8 +62,8 @@ The Red Energy API uses non-standard field names:
 
 When working with this integration:
 
-1. **API Structure**: Always refer to `red-energy-api-structure.md` before modifying API response handling
-2. **Authentication**: Review `red-energy-authentication.md` when working with auth flows or token management
+1. **API Structure**: Always refer to `red-energy-api-structure.mdc` before modifying API response handling
+2. **Authentication**: Review `red-energy-authentication.mdc` when working with auth flows or token management
 3. **Testing**: Test with actual API responses, not mock data
 4. **Documentation**: Update version history when making structural changes
 5. **Validation**: Add new mappings/patterns to documentation when discovered
@@ -69,10 +73,10 @@ When working with this integration:
 
 ```
 .cursor/rules/
-├── README.md                       # This file
-├── hacs-topics.md                  # HACS configuration reference
-├── red-energy-api-structure.md     # API structure reference
-└── red-energy-authentication.md    # OAuth2 authentication reference
+├── index.mdc                       # This file
+├── hacs-topics.mdc                 # HACS configuration reference
+├── red-energy-api-structure.mdc    # API structure reference
+└── red-energy-authentication.mdc   # OAuth2 authentication reference
 ```
 
 ## Related Files
