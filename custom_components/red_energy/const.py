@@ -19,11 +19,11 @@ MANUFACTURER: Final = "Red Energy"
 
 # Polling intervals (seconds)
 SCAN_INTERVAL_OPTIONS: Final = {
-    "1min": 60,
-    "5min": 300,
     "15min": 900,
     "30min": 1800,
     "1hour": 3600,
+    "2hour": 7200,
+    "4hour": 14400,
 }
 
 # Advanced sensor types

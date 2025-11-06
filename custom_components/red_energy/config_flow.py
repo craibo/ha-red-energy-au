@@ -281,16 +281,16 @@ class RedEnergyOptionsFlowHandler(config_entries.OptionsFlow):
         # Create interval display options
         interval_options = {}
         for key, seconds in SCAN_INTERVAL_OPTIONS.items():
-            if seconds == 60:
-                interval_options[key] = "1 minute"
-            elif seconds == 300:
-                interval_options[key] = "5 minutes"
-            elif seconds == 900:
+            if seconds == 900:
                 interval_options[key] = "15 minutes"
             elif seconds == 1800:
                 interval_options[key] = "30 minutes (default)"  
             elif seconds == 3600:
                 interval_options[key] = "1 hour"
+            elif seconds == 7200:
+                interval_options[key] = "2 hours"
+            elif seconds == 14400:
+                interval_options[key] = "4 hours"
         
         schema = vol.Schema({
             vol.Required("services", default=current_services): cv.multi_select(service_options),

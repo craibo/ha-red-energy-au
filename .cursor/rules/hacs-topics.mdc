@@ -1,0 +1,114 @@
+# HACS Repository Topics Reference
+
+## Purpose
+
+GitHub repository topics are required for HACS (Home Assistant Community Store) validation. These topics help users discover the integration and allow HACS to properly categorize and validate the custom component.
+
+**When this matters:**
+- Initial HACS submission
+- HACS validation workflow execution
+- Repository discoverability in GitHub search
+- HACS integration categorization
+
+## Required Topics
+
+The following topics must be present on the GitHub repository for HACS validation to pass:
+
+### Core Topics (Mandatory)
+- `home-assistant`
+- `homeassistant` 
+- `custom-component`
+- `integration`
+
+### Domain-Specific Topics (Recommended)
+- `energy`
+- `australia`
+- `red-energy`
+- `python`
+
+## HACS Validation Requirements
+
+### hacs.json Valid Keys
+HACS strictly validates the `hacs.json` file. Only the following keys are allowed:
+
+**Allowed:**
+- ✅ `name` (required) - Display name of the integration
+- ✅ `country` (optional) - Country codes where applicable (e.g., "AU")
+- ✅ `homeassistant` (optional) - Minimum Home Assistant version
+
+**Not Allowed:**
+- ❌ `domains` - Must be defined as repository topics instead
+- ❌ `iot_class` - Must be defined in manifest.json instead
+
+### Topics vs Manifest
+- **Topics** are set at the GitHub repository level
+- **Domains and IoT class** belong in `manifest.json`
+- HACS will fail validation if these are incorrectly placed in `hacs.json`
+
+## How to Verify Current Topics
+
+### Via GitHub Web Interface
+1. Navigate to https://github.com/craibo/ha-red-energy-au
+2. Check the "About" section on the right side
+3. Topics are displayed as clickable tags
+
+### Via GitHub CLI
+```bash
+gh repo view craibo/ha-red-energy-au --json repositoryTopics -q .repositoryTopics.nodes[].topic.name
+```
+
+### Via GitHub API
+```bash
+curl -H "Accept: application/vnd.github.mercy-preview+json" \
+  https://api.github.com/repos/craibo/ha-red-energy-au/topics
+```
+
+## How to Add or Update Topics
+
+### Method 1: GitHub Web Interface
+1. Navigate to repository main page
+2. Click the settings gear icon next to "About" section
+3. Add topics in the "Topics" field (separated by spaces or commas)
+4. Click "Save changes"
+
+### Method 2: GitHub CLI
+```bash
+gh repo edit craibo/ha-red-energy-au \
+  --add-topic "home-assistant" \
+  --add-topic "homeassistant" \
+  --add-topic "custom-component" \
+  --add-topic "integration" \
+  --add-topic "energy" \
+  --add-topic "australia" \
+  --add-topic "red-energy" \
+  --add-topic "python"
+```
+
+### Method 3: GitHub API
+```bash
+curl -X PUT \
+  -H "Authorization: token YOUR_TOKEN" \
+  -H "Accept: application/vnd.github.mercy-preview+json" \
+  https://api.github.com/repos/craibo/ha-red-energy-au/topics \
+  -d '{"names":["home-assistant","homeassistant","custom-component","integration","energy","australia","red-energy","python"]}'
+```
+
+## Expected Outcomes
+
+After correctly configuring topics:
+1. ✅ HACS topic validation passes
+2. ✅ HACS validation workflow completes successfully
+3. ✅ Integration becomes eligible for HACS inclusion
+4. ✅ Improved discoverability in GitHub search
+
+## Troubleshooting
+
+**Issue**: HACS validation fails with "Repository has no topics"
+**Solution**: Add at minimum the four core mandatory topics
+
+**Issue**: HACS validation fails with "Invalid keys in hacs.json"
+**Solution**: Remove `domains` and `iot_class` from hacs.json; ensure they're in manifest.json instead
+
+**Issue**: Topics added but validation still fails
+**Solution**: Wait a few minutes for GitHub API to update, then re-run HACS validation
+

@@ -45,6 +45,8 @@ A comprehensive Home Assistant custom integration for Red Energy (Australian ene
 
 ⚠️ **Important**: Authentication and token renewal will **not** work if you are connected to a VPN. Ensure your VPN is disabled for the domains `redenergy.okta.com` and `login.redenergy.com.au`
 
+⚠️ **Data Update Limitation**: Red Energy only updates usage data on their platform once per day, typically around 3am AEST. This means usage data is not updated every polling interval - the integration checks Red Energy's API at your configured interval, but usage data will only change once per day after Red Energy's daily update. Longer polling intervals (30 minutes to 4 hours) are recommended to reduce unnecessary API calls.
+
 ### Configuration Steps
 
 1. Enter your Red Energy credentials:
@@ -57,10 +59,12 @@ A comprehensive Home Assistant custom integration for Red Energy (Australian ene
 
 ## Configuration Options
 
-- **Polling Intervals**: 1min, 5min, 15min, 30min (default), 1hour
+- **Polling Intervals**: 15min, 30min (default), 1hour, 2hours, 4hours
 - **Advanced Sensors**: Enable detailed usage analytics
 - **Performance Monitoring**: Track operation timing and efficiency
 - **Memory Optimization**: Reduce resource usage for large setups
+
+**Note**: Red Energy updates usage data once daily around 3am AEST. Polling intervals control how often the integration checks for updates, but usage data will only change once per day after Red Energy's daily refresh.
 
 ## Real-World Benefits
 
