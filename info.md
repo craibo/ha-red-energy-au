@@ -1,5 +1,9 @@
 # Red Energy Home Assistant Integration
 
+[![GitHub Release](https://img.shields.io/github/v/release/craibo/ha-red-energy-au?color=41BDF5&style=for-the-badge)](https://github.com/craibo/ha-red-energy-au/releases/latest)
+[![hacs](https://img.shields.io/badge/HACS-Custom-41BDF5.svg?style=for-the-badge)](https://github.com/hacs/integration)
+[![Integration Usage](https://img.shields.io/badge/dynamic/json?color=41BDF5&style=for-the-badge&logo=home-assistant&label=usage&suffix=%20installs&cacheSeconds=15600&url=https://analytics.home-assistant.io/custom_integrations.json&query=$.red_energy.total)](https://analytics.home-assistant.io/)
+
 A comprehensive Home Assistant custom integration for Red Energy (Australian energy provider) that provides real-time energy monitoring, advanced analytics, and automation capabilities.
 
 ---
