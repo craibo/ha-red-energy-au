@@ -366,33 +366,54 @@ def validate_usage_entry(data: Dict[str, Any]) -> Dict[str, Any]:
                 raise DataValidationError(f"Invalid {field} value: {data.get(field)}") from err
     
     # Validate breakdown sums (with tolerance for floating point)
+    # Only validate if breakdown data was available from API
+    breakdown_available = validated_data.get("_breakdown_available", True)
+    
     if "import_usage" in validated_data:
-        period_sum = (
-            validated_data.get("peak_import_usage", 0) +
-            validated_data.get("offpeak_import_usage", 0) +
-            validated_data.get("shoulder_import_usage", 0)
-        )
-        tolerance = 0.01  # 10 Wh tolerance
-        if abs(period_sum - validated_data["import_usage"]) > tolerance:
-            _LOGGER.warning(
-                "Import usage breakdown mismatch for %s: total=%.3f, sum=%.3f (diff=%.3f)",
-                date_str, validated_data["import_usage"], period_sum,
-                abs(period_sum - validated_data["import_usage"])
+        peak_import = validated_data.get("peak_import_usage", 0)
+        offpeak_import = validated_data.get("offpeak_import_usage", 0)
+        shoulder_import = validated_data.get("shoulder_import_usage", 0)
+        period_sum = peak_import + offpeak_import + shoulder_import
+        
+        # Only validate if breakdown data was available from API
+        if breakdown_available:
+            tolerance = 0.01  # 10 Wh tolerance
+            if abs(period_sum - validated_data["import_usage"]) > tolerance:
+                _LOGGER.warning(
+                    "Import usage breakdown mismatch for %s: total=%.3f, sum=%.3f (diff=%.3f)",
+                    date_str, validated_data["import_usage"], period_sum,
+                    abs(period_sum - validated_data["import_usage"])
+                )
+        elif period_sum == 0.0 and validated_data["import_usage"] > 0:
+            # Breakdown data not available - this is expected, log at debug level
+            _LOGGER.debug(
+                "Import usage breakdown unavailable for %s: total=%.3f, breakdown sum=0.000 "
+                "(time period data not provided by API)",
+                date_str, validated_data["import_usage"]
             )
     
     # Validate export breakdown sums
     if "export_usage" in validated_data:
-        period_sum = (
-            validated_data.get("peak_export_usage", 0) +
-            validated_data.get("offpeak_export_usage", 0) +
-            validated_data.get("shoulder_export_usage", 0)
-        )
-        tolerance = 0.01
-        if abs(period_sum - validated_data["export_usage"]) > tolerance:
-            _LOGGER.warning(
-                "Export usage breakdown mismatch for %s: total=%.3f, sum=%.3f (diff=%.3f)",
-                date_str, validated_data["export_usage"], period_sum,
-                abs(period_sum - validated_data["export_usage"])
+        peak_export = validated_data.get("peak_export_usage", 0)
+        offpeak_export = validated_data.get("offpeak_export_usage", 0)
+        shoulder_export = validated_data.get("shoulder_export_usage", 0)
+        period_sum = peak_export + offpeak_export + shoulder_export
+        
+        # Only validate if breakdown data was available from API
+        if breakdown_available:
+            tolerance = 0.01
+            if abs(period_sum - validated_data["export_usage"]) > tolerance:
+                _LOGGER.warning(
+                    "Export usage breakdown mismatch for %s: total=%.3f, sum=%.3f (diff=%.3f)",
+                    date_str, validated_data["export_usage"], period_sum,
+                    abs(period_sum - validated_data["export_usage"])
+                )
+        elif period_sum == 0.0 and validated_data["export_usage"] > 0:
+            # Breakdown data not available - this is expected, log at debug level
+            _LOGGER.debug(
+                "Export usage breakdown unavailable for %s: total=%.3f, breakdown sum=0.000 "
+                "(time period data not provided by API)",
+                date_str, validated_data["export_usage"]
             )
     
     # Validate cost calculation
@@ -403,6 +424,9 @@ def validate_usage_entry(data: Dict[str, Any]) -> Dict[str, Any]:
                 "Net cost mismatch for %s: calculated=%.2f, stored=%.2f",
                 date_str, calculated_net, validated_data["net_cost"]
             )
+    
+    # Remove internal metadata before returning
+    validated_data.pop("_breakdown_available", None)
     
     return validated_data
 

@@ -591,21 +591,58 @@ class RedEnergyAPI:
         max_demand_time = None
         
         # Process each 30-minute interval (48 per day)
+        breakdown_available = False
+        period_field_found = None
+        first_interval_logged = False
+        
+        # Field names to check for time period data (fallback support)
+        period_field_candidates = [
+            "primaryConsumptionTariffComponent",
+            "tariffComponent",
+            "period",
+            "timePeriod",
+            "consumptionTariffComponent",
+            "primaryTariffComponent"
+        ]
+        
         if isinstance(half_hours, list):
-            for interval in half_hours:
+            for idx, interval in enumerate(half_hours):
                 if not isinstance(interval, dict):
                     continue
+                
+                # Log first interval structure for debugging
+                if not first_interval_logged and idx == 0:
+                    _LOGGER.debug(
+                        "First interval keys for %s: %s",
+                        date_value,
+                        list(interval.keys())
+                    )
+                    first_interval_logged = True
                 
                 # Extract interval data
                 consumption = float(interval.get("consumptionKwh", 0.0))
                 generation = float(interval.get("generationKwh", 0.0))
-                period = interval.get("primaryConsumptionTariffComponent", "").upper()
+                
+                # Try multiple field names for time period (fallback support)
+                period = ""
+                
+                for field_name in period_field_candidates:
+                    period_value = interval.get(field_name)
+                    if period_value:
+                        period = str(period_value).upper().strip()
+                        if not period_field_found:
+                            period_field_found = field_name
+                        break
+                
+                # If period field found, mark breakdown as available
+                if period:
+                    breakdown_available = True
                 
                 # Accumulate totals
                 import_usage += consumption
                 export_usage += generation
                 
-                # Accumulate by time period
+                # Accumulate by time period (only if period is identified)
                 if period == "PEAK":
                     peak_import += consumption
                     peak_export += generation
@@ -615,6 +652,12 @@ class RedEnergyAPI:
                 elif period == "SHOULDER":
                     shoulder_import += consumption
                     shoulder_export += generation
+                elif period and idx < 3:
+                    # Log unexpected period values for first few intervals
+                    _LOGGER.debug(
+                        "Unexpected period value '%s' in interval %d for %s (field: %s)",
+                        period, idx, date_value, period_field_found or "unknown"
+                    )
                 
                 # Track max demand from interval detail
                 demand_detail = interval.get("demandDetail", {})
@@ -623,6 +666,21 @@ class RedEnergyAPI:
                     if demand_kw > max_demand_kw:
                         max_demand_kw = demand_kw
                         max_demand_time = interval.get("intervalStart")
+        
+        # Log breakdown availability status
+        if not breakdown_available and len(half_hours) > 0:
+            _LOGGER.debug(
+                "Breakdown data unavailable for %s: time period field not found in intervals. "
+                "Checked fields: %s",
+                date_value,
+                ", ".join(period_field_candidates)
+            )
+        elif period_field_found:
+            _LOGGER.debug(
+                "Breakdown data available for %s: using field '%s'",
+                date_value,
+                period_field_found
+            )
         
         # Extract daily costs from summary
         import_cost = float(entry.get("consumptionDollar", 0.0))
@@ -651,7 +709,7 @@ class RedEnergyAPI:
             peak_import, offpeak_import, shoulder_import
         )
         
-        return {
+        result = {
             # Backward compatibility
             "date": str(date_value),
             "usage": round(import_usage - export_usage, 3),  # Net usage
@@ -678,8 +736,13 @@ class RedEnergyAPI:
             # Demand and environmental
             "max_demand_kw": round(max_demand_kw, 3),
             "max_demand_time": max_demand_time,
-            "carbon_emission_tonne": round(carbon_emission, 6)
+            "carbon_emission_tonne": round(carbon_emission, 6),
+            
+            # Metadata: indicate if breakdown data was available
+            "_breakdown_available": breakdown_available
         }
+        
+        return result
     
     def _empty_entry(self) -> Dict[str, Any]:
         """Return an empty entry structure with all fields initialized to zero."""
