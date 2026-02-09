@@ -2,6 +2,8 @@
 import pytest
 from custom_components.red_energy.data_validation import (
     validate_usage_data,
+    validate_address,
+    validate_properties_data,
     DataValidationError
 )
 
@@ -229,3 +231,66 @@ def test_validate_usage_data_error_response_with_missing_error_fields_logging(ca
     assert "Skipping validation for error response" in caplog.text
     assert "Unknown error" in caplog.text
     assert "No details" in caplog.text
+
+
+def test_validate_address_handles_none_values():
+    """Test that address with null/None fields does not raise AttributeError."""
+    address_with_nulls = {
+        "house": None,
+        "street": None,
+        "suburb": None,
+        "city": None,
+        "state": None,
+        "postcode": None,
+    }
+    result = validate_address(address_with_nulls)
+    assert result["street"] == ""
+    assert result["city"] == ""
+    assert result["state"] == ""
+    assert result["postcode"] == ""
+
+
+def test_validate_address_handles_partial_none_values():
+    """Test address with some None and some string values."""
+    address = {
+        "house": None,
+        "street": "SUNNYSIDE CRES",
+        "suburb": "CASTLECRAG",
+        "state": "NSW",
+        "postcode": "2068",
+    }
+    result = validate_address(address)
+    assert result["street"] == "SUNNYSIDE CRES"
+    assert result["city"] == "CASTLECRAG"
+    assert result["state"] == "NSW"
+    assert result["postcode"] == "2068"
+
+
+def test_validate_properties_data_handles_address_with_none_house():
+    """Test property validation when API returns house: null (e.g. unit-only address)."""
+    raw_properties = [
+        {
+            "accountNumber": 8490263,
+            "address": {
+                "house": None,
+                "street": "SUNNYSIDE CRES",
+                "suburb": "CASTLECRAG",
+                "state": "NSW",
+                "postcode": "2068",
+            },
+            "consumers": [
+                {
+                    "consumerNumber": 4235478511,
+                    "utility": "E",
+                    "status": "ON",
+                }
+            ],
+        }
+    ]
+    result = validate_properties_data(raw_properties)
+    assert len(result) == 1
+    assert result[0]["id"] == "8490263"
+    assert result[0]["address"]["street"] == "SUNNYSIDE CRES"
+    assert result[0]["address"]["city"] == "CASTLECRAG"
+    assert result[0]["address"]["state"] == "NSW"
+    assert result[0]["address"]["postcode"] == "2068"
