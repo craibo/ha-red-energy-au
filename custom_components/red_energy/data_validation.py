@@ -115,9 +115,9 @@ def validate_single_property(data: Dict[str, Any]) -> Dict[str, Any]:
             
             # Fall back to building from address parts
             if not property_name:
-                house = address_data.get("house", "").strip()
-                street = address_data.get("street", "").strip()
-                suburb = address_data.get("suburb", "").strip()
+                house = (address_data.get("house") or "").strip()
+                street = (address_data.get("street") or "").strip()
+                suburb = (address_data.get("suburb") or "").strip()
                 if house and street and suburb:
                     property_name = f"{house} {street}, {suburb}"
                 elif street and suburb:
@@ -148,12 +148,10 @@ def validate_address(data: Dict[str, Any]) -> Dict[str, Any]:
     if not isinstance(data, dict):
         data = {}
     
-    # Build full street address from house + street
-    house = data.get("house", "").strip()
-    street = data.get("street", "").strip()
+    house = (data.get("house") or "").strip()
+    street = (data.get("street") or "").strip()
     
     if house and street:
-        # Combine house number with street name
         full_street = f"{house} {street}"
     elif street:
         full_street = street
@@ -162,16 +160,15 @@ def validate_address(data: Dict[str, Any]) -> Dict[str, Any]:
     else:
         full_street = ""
     
-    # API uses "suburb" instead of "city"
-    city = data.get("city", "").strip()
+    city = (data.get("city") or "").strip()
     if not city:
-        city = data.get("suburb", "").strip()
+        city = (data.get("suburb") or "").strip()
     
     return {
         "street": full_street,
         "city": city,
-        "state": data.get("state", "").strip(),
-        "postcode": data.get("postcode", "").strip(),
+        "state": (data.get("state") or "").strip(),
+        "postcode": (data.get("postcode") or "").strip(),
     }
 
 

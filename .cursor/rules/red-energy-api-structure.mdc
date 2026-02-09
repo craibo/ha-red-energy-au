@@ -173,11 +173,15 @@ The integration looks for property ID in this order:
 }
 ```
 
+### Nullable Fields
+
+Address fields can be `null` in the API (e.g. unit-only, PO Box, or incomplete data). Validation must use `(data.get("field") or "").strip()` so that `None` does not cause `AttributeError: 'NoneType' object has no attribute 'strip'`.
+
 ### Field Mappings
 
 | API Field | Our Internal Field | Transformation |
 |-----------|-------------------|----------------|
-| `house` + `street` | `street` | Combined: `"27 SUNNYSIDE CRES"` |
+| `house` + `street` | `street` | Combined: `"27 SUNNYSIDE CRES"` (handle null) |
 | `suburb` | `city` | Direct mapping |
 | `state` | `state` | Direct mapping |
 | `postcode` | `postcode` | Direct mapping |
@@ -451,6 +455,14 @@ elif utility == "G":
 
 **Fixed in:** 2025-10-06
 
+### Issue 6: "'NoneType' object has no attribute 'strip'" during validation
+
+**Cause:** The API returns `null` for address fields (e.g. `house`, `street`, `suburb`) when the key is present but the value is missing. Using `data.get("house", "").strip()` returns the default only when the key is absent; when the key exists with value `None`, `.strip()` is called on `None`.
+
+**Solution:** Use `(data.get("house") or "").strip()` (and same pattern for other address fields) so both missing keys and `None` values become empty strings before `.strip()`.
+
+**Fixed in:** 2025-02-10
+
 ---
 
 ## 8. Data Transformation Examples
@@ -513,6 +525,10 @@ elif utility == "G":
 ---
 
 ## 9. Version History
+
+### v5 (2025-02-10)
+- ✅ Address validation handles `null` values from API (`house`, `street`, `suburb`, `city`, `state`, `postcode`)
+- ✅ Prevents `AttributeError: 'NoneType' object has no attribute 'strip'` during config flow validation
 
 ### v4 (2025-10-06)
 - ✅ Added support for `consumers` array (vs `services`)
