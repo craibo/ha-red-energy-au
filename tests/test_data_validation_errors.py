@@ -2,6 +2,7 @@
 import pytest
 from custom_components.red_energy.data_validation import (
     validate_usage_data,
+    validate_usage_entry,
     validate_address,
     validate_properties_data,
     DataValidationError
@@ -264,6 +265,60 @@ def test_validate_address_handles_partial_none_values():
     assert result["city"] == "CASTLECRAG"
     assert result["state"] == "NSW"
     assert result["postcode"] == "2068"
+
+
+def test_validate_usage_entry_allday_tariff_no_warning(caplog):
+    """ALLDAY (Anytime) tariff has no ToU breakdown — no WARNING should be logged."""
+    entry = {
+        "date": "2026-03-24",
+        "usage": 13.538,
+        "cost": 3.79,
+        "import_usage": 13.538,
+        "export_usage": 0.0,
+        "import_cost": 3.79,
+        "export_credit": 0.0,
+        "net_cost": 3.79,
+        "peak_import_usage": 0.0,
+        "offpeak_import_usage": 0.0,
+        "shoulder_import_usage": 0.0,
+        "peak_export_usage": 0.0,
+        "offpeak_export_usage": 0.0,
+        "shoulder_export_usage": 0.0,
+        "_breakdown_available": False,
+    }
+    import logging
+    with caplog.at_level(logging.WARNING, logger="custom_components.red_energy.data_validation"):
+        validate_usage_entry(entry)
+
+    warning_records = [r for r in caplog.records if r.levelno >= logging.WARNING]
+    assert not warning_records, f"Unexpected WARNING(s) for ALLDAY tariff: {[r.message for r in warning_records]}"
+
+
+def test_validate_usage_entry_tou_mismatch_still_warns(caplog):
+    """A genuine ToU breakdown mismatch (breakdown_available=True) must still log a WARNING."""
+    entry = {
+        "date": "2026-03-24",
+        "usage": 13.538,
+        "cost": 3.79,
+        "import_usage": 13.538,
+        "export_usage": 0.0,
+        "import_cost": 3.79,
+        "export_credit": 0.0,
+        "net_cost": 3.79,
+        # Deliberately wrong sum (5.0 != 13.538)
+        "peak_import_usage": 2.0,
+        "offpeak_import_usage": 2.0,
+        "shoulder_import_usage": 1.0,
+        "peak_export_usage": 0.0,
+        "offpeak_export_usage": 0.0,
+        "shoulder_export_usage": 0.0,
+        "_breakdown_available": True,
+    }
+    import logging
+    with caplog.at_level(logging.WARNING, logger="custom_components.red_energy.data_validation"):
+        validate_usage_entry(entry)
+
+    assert any("breakdown mismatch" in r.message for r in caplog.records if r.levelno >= logging.WARNING)
 
 
 def test_validate_properties_data_handles_address_with_none_house():
