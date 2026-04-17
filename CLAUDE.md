@@ -8,7 +8,7 @@ A Home Assistant custom integration for Red Energy (Australian energy provider) 
 
 ## Branch Workflow
 
-When starting a new branch, always bump the `version` field in `custom_components/red_energy/manifest.json` as the first commit.
+When starting a new branch, always bump the `version` field in `custom_components/red_energy/manifest.json` as the first commit, following semantic versioning (MAJOR.MINOR.PATCH): PATCH for bug fixes, MINOR for new features, MAJOR for breaking changes.
 
 ## Commands
 
