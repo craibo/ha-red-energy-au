@@ -6,6 +6,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A Home Assistant custom integration for Red Energy (Australian energy provider) that polls a private API for electricity and gas usage data. Deployed via HACS. Current version: 1.7.5.
 
+## Branch Workflow
+
+When starting a new branch, always bump the `version` field in `custom_components/red_energy/manifest.json` as the first commit.
+
 ## Commands
 
 ```bash
