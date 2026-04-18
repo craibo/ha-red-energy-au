@@ -634,8 +634,8 @@ class RedEnergyAPI:
                             period_field_found = field_name
                         break
                 
-                # If period field found, mark breakdown as available
-                if period:
+                # Only mark breakdown available for known ToU periods (ALLDAY = anytime tariff, no breakdown)
+                if period in ("PEAK", "OFFPEAK", "SHOULDER"):
                     breakdown_available = True
                 
                 # Accumulate totals
