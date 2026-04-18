@@ -364,7 +364,7 @@ def validate_usage_entry(data: Dict[str, Any]) -> Dict[str, Any]:
     
     # Validate breakdown sums (with tolerance for floating point)
     # Only validate if breakdown data was available from API
-    breakdown_available = validated_data.get("_breakdown_available", True)
+    breakdown_available = data.get("_breakdown_available", False)
     
     if "import_usage" in validated_data:
         peak_import = validated_data.get("peak_import_usage", 0)
