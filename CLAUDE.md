@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Is
 
-A Home Assistant custom integration for Red Energy (Australian energy provider) that polls a private API for electricity and gas usage data. Deployed via HACS. Current version: 1.7.5.
+A Home Assistant custom integration for Red Energy (Australian energy provider) that polls a private API for electricity and gas usage data. Deployed via HACS. Current version: 1.7.6.
 
 ## Branch Workflow
 
@@ -106,6 +106,8 @@ Tests use pytest with mocks; no live API calls. Key test infrastructure:
 - `tests/test_mocks.py` — mock API responses and fake property/usage data
 
 When adding sensors, update both `sensor.py` and the corresponding sensor tests. When changing API response handling, update `data_validation.py` and `test_data_validation_errors.py`.
+
+The `button.py` platform exposes refresh/export/credential-update actions as HA button entities (distinct from the `services.py` service calls).
 
 ## Developer Reference
 
