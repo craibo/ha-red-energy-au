@@ -213,12 +213,25 @@ class RedEnergyBaseSensor(CoordinatorEntity, SensorEntity):
         service_data = self.coordinator.get_service_usage(self._property_id, self._service_type)
         if not service_data:
             return "30 days"
-        
+
         period_days = service_data.get("period_days")
         if period_days is None:
             return "30 days"
-        
+
         return f"{period_days} days (since last bill)"
+
+    def _get_last_bill_reset(self) -> Optional[datetime]:
+        """Return the last bill date as a UTC datetime for last_reset."""
+        metadata = self.coordinator.get_service_metadata(self._property_id, self._service_type)
+        if not metadata:
+            return None
+        last_bill = metadata.get("lastBillDate")
+        if not last_bill:
+            return None
+        try:
+            return dt_util.as_utc(datetime.strptime(last_bill, "%Y-%m-%d"))
+        except (ValueError, TypeError):
+            return None
 
 
 class RedEnergyCostSensor(RedEnergyBaseSensor):
@@ -961,15 +974,20 @@ class RedEnergyTotalImportUsageSensor(RedEnergyBaseSensor):
     ) -> None:
         """Initialize the total import usage sensor."""
         super().__init__(coordinator, config_entry, property_id, service_type, "total_import_usage")
-        
+
         if service_type == SERVICE_TYPE_ELECTRICITY:
             self._attr_device_class = SensorDeviceClass.ENERGY
             self._attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
         elif service_type == SERVICE_TYPE_GAS:
             self._attr_device_class = SensorDeviceClass.ENERGY
             self._attr_native_unit_of_measurement = "MJ"
-            
+
         self._attr_state_class = SensorStateClass.TOTAL
+
+    @property
+    def last_reset(self) -> Optional[datetime]:
+        """Return the billing period start date so HA statistics reset correctly."""
+        return self._get_last_bill_reset()
 
     @property
     def native_value(self) -> Optional[float]:
@@ -1010,7 +1028,7 @@ class RedEnergyTotalExportUsageSensor(RedEnergyBaseSensor):
     ) -> None:
         """Initialize the total export usage sensor."""
         super().__init__(coordinator, config_entry, property_id, service_type, "total_export_usage")
-        
+
         if service_type == SERVICE_TYPE_ELECTRICITY:
             self._attr_device_class = SensorDeviceClass.ENERGY
             self._attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
@@ -1018,8 +1036,13 @@ class RedEnergyTotalExportUsageSensor(RedEnergyBaseSensor):
         elif service_type == SERVICE_TYPE_GAS:
             self._attr_device_class = SensorDeviceClass.ENERGY
             self._attr_native_unit_of_measurement = "MJ"
-            
+
         self._attr_state_class = SensorStateClass.TOTAL
+
+    @property
+    def last_reset(self) -> Optional[datetime]:
+        """Return the billing period start date so HA statistics reset correctly."""
+        return self._get_last_bill_reset()
 
     @property
     def native_value(self) -> Optional[float]:
@@ -1060,10 +1083,15 @@ class RedEnergyTotalImportCostSensor(RedEnergyBaseSensor):
     ) -> None:
         """Initialize the total import cost sensor."""
         super().__init__(coordinator, config_entry, property_id, service_type, "total_import_cost")
-        
+
         self._attr_device_class = SensorDeviceClass.MONETARY
         self._attr_native_unit_of_measurement = "AUD"
         self._attr_state_class = SensorStateClass.TOTAL
+
+    @property
+    def last_reset(self) -> Optional[datetime]:
+        """Return the billing period start date so HA statistics reset correctly."""
+        return self._get_last_bill_reset()
 
     @property
     def native_value(self) -> Optional[float]:
@@ -1099,11 +1127,16 @@ class RedEnergyTotalExportCreditSensor(RedEnergyBaseSensor):
     ) -> None:
         """Initialize the total export credit sensor."""
         super().__init__(coordinator, config_entry, property_id, service_type, "total_export_credit")
-        
+
         self._attr_device_class = SensorDeviceClass.MONETARY
         self._attr_native_unit_of_measurement = "AUD"
         self._attr_state_class = SensorStateClass.TOTAL
         self._attr_icon = "mdi:solar-power"
+
+    @property
+    def last_reset(self) -> Optional[datetime]:
+        """Return the billing period start date so HA statistics reset correctly."""
+        return self._get_last_bill_reset()
 
     @property
     def native_value(self) -> Optional[float]:
