@@ -414,9 +414,10 @@ def validate_usage_entry(data: Dict[str, Any]) -> Dict[str, Any]:
             )
     
     # Validate cost calculation
+    # Tolerance of 0.015 absorbs floating-point rounding on cent-level API values
     if all(k in validated_data for k in ["import_cost", "export_credit", "net_cost"]):
         calculated_net = validated_data["import_cost"] - validated_data["export_credit"]
-        if abs(calculated_net - validated_data["net_cost"]) > 0.01:
+        if abs(calculated_net - validated_data["net_cost"]) > 0.015:
             _LOGGER.warning(
                 "Net cost mismatch for %s: calculated=%.2f, stored=%.2f",
                 date_str, calculated_net, validated_data["net_cost"]

@@ -1,6 +1,7 @@
 """Red Energy API client for Home Assistant integration."""
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import secrets
@@ -42,9 +43,19 @@ class RedEnergyAPI:
         self._refresh_token: Optional[str] = None
         self._token_expires: Optional[datetime] = None
         self._logged_entry_mapping: bool = False
-        
+        self._auth_lock = asyncio.Lock()
+
     async def authenticate(self, username: str, password: str) -> bool:
-        """Authenticate with Red Energy using Okta session token and OAuth2 PKCE flow."""
+        """Authenticate with Red Energy using Okta session token and OAuth2 PKCE flow.
+
+        Serialized by a lock: the Okta authorization flow shares this client's
+        aiohttp session, so overlapping flows can corrupt Okta's session/cookie
+        state and cause the authorization redirect to fail.
+        """
+        async with self._auth_lock:
+            return await self._authenticate_locked(username, password)
+
+    async def _authenticate_locked(self, username: str, password: str) -> bool:
         try:
             _LOGGER.debug("Starting Red Energy authentication")
             
