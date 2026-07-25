@@ -336,13 +336,18 @@ class RedEnergyAPI:
                         error_message = 'Bad Request'
                         error_details = 'Unable to parse error response'
                     
-                    _LOGGER.error(
+                    # BASIC/manual-read gas meters don't have half-hourly interval
+                    # usage - Red Energy's API returns this as a 400 for every
+                    # request, which is expected behaviour, not a failure.
+                    is_no_interval_usage = "does not have interval usages" in error_message
+                    log_method = _LOGGER.debug if is_no_interval_usage else _LOGGER.error
+                    log_method(
                         "400 Bad Request for usage data - Consumer: %s, Date Range: %s to %s, "
                         "Error: %s, Details: %s, URL: %s",
-                        consumer_number, 
-                        from_date.strftime('%Y-%m-%d'), 
+                        consumer_number,
+                        from_date.strftime('%Y-%m-%d'),
                         to_date.strftime('%Y-%m-%d'),
-                        error_message, 
+                        error_message,
                         error_details,
                         response.url
                     )

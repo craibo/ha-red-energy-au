@@ -193,9 +193,11 @@ async def test_integration_all_services_fail_for_one_property(coordinator_with_m
     # Call the update method
     result = await coordinator_with_multiple_properties._async_update_data()
     
-    # Verify property 1 has no usage data (all services failed)
-    assert "prop1" not in result["usage_data"]
-    
+    # Verify property 1 is still present (metadata-only) even though every
+    # service failed - a usage failure must not drop the property/device
+    assert "prop1" in result["usage_data"]
+    assert result["usage_data"]["prop1"]["services"] == {}
+
     # Verify other properties have data
     assert "prop2" in result["usage_data"]
     assert "prop3" in result["usage_data"]
@@ -310,11 +312,14 @@ async def test_integration_graceful_degradation_with_minimal_data(coordinator_wi
     # Call the update method
     result = await coordinator_with_multiple_properties._async_update_data()
     
-    # Verify we still get some data (graceful degradation)
+    # Verify we still get some data (graceful degradation), and properties
+    # whose services all failed are still present as metadata-only entries
     assert "usage_data" in result
     assert "prop3" in result["usage_data"]
-    assert "prop1" not in result["usage_data"]
-    assert "prop2" not in result["usage_data"]
+    assert "prop1" in result["usage_data"]
+    assert result["usage_data"]["prop1"]["services"] == {}
+    assert "prop2" in result["usage_data"]
+    assert result["usage_data"]["prop2"]["services"] == {}
     
     # Verify property 3 has electricity data
     prop3_data = result["usage_data"]["prop3"]

@@ -237,15 +237,23 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
                         # Don't fail the entire update for one service error
                         continue
                 
+                # Always record the property, even if no service returned usage
+                # data (e.g. a BASIC/manual-read gas meter, which never has
+                # interval usage). Its metadata (NMI, balance, bill dates, etc.)
+                # is still valid, so the device and metadata-only sensors must
+                # still be created - only usage-dependent sensors go unavailable.
+                usage_data[property_id_str] = {
+                    "property": property_data,
+                    "services": property_usage,
+                }
                 if property_usage:
-                    usage_data[property_id_str] = {
-                        "property": property_data,
-                        "services": property_usage,
-                    }
-                    _LOGGER.info("Successfully collected usage data for property '%s' with %d services", 
+                    _LOGGER.info("Successfully collected usage data for property '%s' with %d services",
                                 property_name, len(property_usage))
                 else:
-                    _LOGGER.warning("No usage data collected for property '%s'", property_name)
+                    _LOGGER.info(
+                        "No usage data collected for property '%s' - metadata-only sensors will still be created",
+                        property_name,
+                    )
             
             _LOGGER.debug("=" * 80)
             _LOGGER.debug("DATA COLLECTION SUMMARY:")
