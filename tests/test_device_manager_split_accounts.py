@@ -56,10 +56,8 @@ async def test_split_accounts_at_same_address_get_distinct_device_names():
     )
 
     assert electricity_device.name != gas_device.name
-    assert "8490263" in electricity_device.name
-    assert "7471493" in gas_device.name
-    assert "Electricity" in electricity_device.name
-    assert "Gas" in gas_device.name
+    assert electricity_device.name == "8490263 - Electricity"
+    assert gas_device.name == "7471493 - Gas"
 
 
 @pytest.mark.asyncio

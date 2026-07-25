@@ -63,9 +63,8 @@ class RedEnergyDeviceManager:
         account_services = [
             s.get("type") for s in property_info.get("services", []) if s.get("type")
         ] or services
-        property_name = property_info.get("name", f"Property {account_id}")
         service_label = "/".join(s.title() for s in account_services)
-        device_name = f"{property_name} ({service_label}) - {account_id}" if service_label else f"{property_name} - {account_id}"
+        device_name = f"{account_id} - {service_label}" if service_label else str(account_id)
         address = property_info.get("address", {})
 
         # Create comprehensive device identifiers
