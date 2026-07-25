@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 from custom_components.red_energy.const import DATA_SELECTED_ACCOUNTS, DOMAIN
 from custom_components.red_energy.config_flow import RedEnergyOptionsFlowHandler
@@ -48,27 +48,25 @@ def _make_config_entry():
     return entry
 
 
+def _make_hass(entry, properties=MOCK_PROPERTIES_RESPONSE):
+    coordinator = MagicMock(update_interval=MagicMock(total_seconds=lambda: 1800))
+    coordinator.api.get_properties = AsyncMock(return_value=properties)
+    hass = MagicMock()
+    hass.data = {DOMAIN: {entry.entry_id: {"coordinator": coordinator}}}
+    return hass
+
+
 @pytest.mark.asyncio
 async def test_options_init_form_lists_newly_discovered_account():
     """The options form must offer the newly-appeared account, not just the originally selected one."""
     entry = _make_config_entry()
-    hass = MagicMock()
-    hass.data = {DOMAIN: {entry.entry_id: {"coordinator": MagicMock(update_interval=MagicMock(total_seconds=lambda: 1800))}}}
+    hass = _make_hass(entry)
 
     flow = RedEnergyOptionsFlowHandler()
     flow.hass = hass
     flow._config_entry = entry
 
-    with patch(
-        "custom_components.red_energy.config_flow.async_get_clientsession"
-    ), patch(
-        "custom_components.red_energy.config_flow.RedEnergyAPI"
-    ) as mock_api_cls:
-        mock_api = mock_api_cls.return_value
-        mock_api.test_credentials = AsyncMock(return_value=True)
-        mock_api.get_properties = AsyncMock(return_value=MOCK_PROPERTIES_RESPONSE)
-
-        result = await flow.async_step_init()
+    result = await flow.async_step_init()
 
     assert result["type"] == "form"
     # The selector's option values should include the newly-discovered gas account
@@ -85,8 +83,7 @@ async def test_options_init_form_lists_newly_discovered_account():
 async def test_options_submit_adds_new_account_and_reloads():
     """Selecting the new account in options must persist it and trigger a reload."""
     entry = _make_config_entry()
-    hass = MagicMock()
-    hass.data = {DOMAIN: {entry.entry_id: {"coordinator": MagicMock(update_interval=MagicMock(total_seconds=lambda: 1800))}}}
+    hass = _make_hass(entry)
     hass.config_entries = MagicMock()
     hass.config_entries.async_update_entry = MagicMock()
     hass.config_entries.async_reload = AsyncMock()
@@ -102,22 +99,36 @@ async def test_options_submit_adds_new_account_and_reloads():
         "enable_advanced_sensors": False,
     }
 
-    with patch(
-        "custom_components.red_energy.config_flow.async_get_clientsession"
-    ), patch(
-        "custom_components.red_energy.config_flow.RedEnergyAPI"
-    ) as mock_api_cls:
-        mock_api = mock_api_cls.return_value
-        mock_api.test_credentials = AsyncMock(return_value=True)
-        mock_api.get_properties = AsyncMock(return_value=MOCK_PROPERTIES_RESPONSE)
-
-        result = await flow.async_step_init(user_input)
+    result = await flow.async_step_init(user_input)
 
     assert result["type"] == "create_entry"
     hass.config_entries.async_update_entry.assert_called_once()
     _, kwargs = hass.config_entries.async_update_entry.call_args
     assert kwargs["data"][DATA_SELECTED_ACCOUNTS] == ["1000001", "2000002"]
     hass.config_entries.async_reload.assert_awaited_once_with(entry.entry_id)
+
+
+@pytest.mark.asyncio
+async def test_options_init_reuses_coordinator_api_not_a_new_client():
+    """The options flow must not construct its own RedEnergyAPI.
+
+    A second, independently-locked RedEnergyAPI sharing the coordinator's
+    aiohttp session can race the coordinator's in-flight authenticate() call
+    at Okta's /authorize step, causing "No redirect location found in
+    authorization response". Reusing coordinator.api avoids the race and an
+    unnecessary duplicate login entirely.
+    """
+    entry = _make_config_entry()
+    hass = _make_hass(entry)
+
+    flow = RedEnergyOptionsFlowHandler()
+    flow.hass = hass
+    flow._config_entry = entry
+
+    await flow.async_step_init()
+
+    coordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
+    coordinator.api.get_properties.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -129,8 +140,7 @@ async def test_options_submit_enabling_gas_service_persists_and_reloads():
     entry.data and reload — otherwise the checkbox is a no-op.
     """
     entry = _make_config_entry()
-    hass = MagicMock()
-    hass.data = {DOMAIN: {entry.entry_id: {"coordinator": MagicMock(update_interval=MagicMock(total_seconds=lambda: 1800))}}}
+    hass = _make_hass(entry)
     hass.config_entries = MagicMock()
     hass.config_entries.async_update_entry = MagicMock()
     hass.config_entries.async_reload = AsyncMock()
@@ -146,16 +156,7 @@ async def test_options_submit_enabling_gas_service_persists_and_reloads():
         "enable_advanced_sensors": False,
     }
 
-    with patch(
-        "custom_components.red_energy.config_flow.async_get_clientsession"
-    ), patch(
-        "custom_components.red_energy.config_flow.RedEnergyAPI"
-    ) as mock_api_cls:
-        mock_api = mock_api_cls.return_value
-        mock_api.test_credentials = AsyncMock(return_value=True)
-        mock_api.get_properties = AsyncMock(return_value=MOCK_PROPERTIES_RESPONSE)
-
-        await flow.async_step_init(user_input)
+    await flow.async_step_init(user_input)
 
     hass.config_entries.async_update_entry.assert_called_once()
     _, kwargs = hass.config_entries.async_update_entry.call_args
