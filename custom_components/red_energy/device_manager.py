@@ -50,24 +50,32 @@ class RedEnergyDeviceManager:
         return devices
 
     async def _create_property_device(
-        self, 
-        account_id: str, 
+        self,
+        account_id: str,
         property_info: Dict[str, Any],
         services: List[str]
     ) -> Optional[DeviceEntry]:
         """Create or update a device for a property."""
-        property_name = property_info.get("name", f"Property {account_id}")
+        # Red Energy can split a single address across multiple accounts
+        # (e.g. electricity and gas billed separately), so the account's own
+        # service type(s) - not the global services toggle - must drive the
+        # device name/model to keep devices distinguishable per account.
+        account_services = [
+            s.get("type") for s in property_info.get("services", []) if s.get("type")
+        ] or services
+        service_label = "/".join(s.title() for s in account_services)
+        device_name = f"{account_id} - {service_label}" if service_label else str(account_id)
         address = property_info.get("address", {})
-        
+
         # Create comprehensive device identifiers
         identifiers = {(DOMAIN, account_id)}
-        
+
         # Enhanced device information
         device_info = {
             "identifiers": identifiers,
-            "name": property_name,
+            "name": device_name,
             "manufacturer": MANUFACTURER,
-            "model": self._get_device_model(services),
+            "model": self._get_device_model(account_services),
             "sw_version": self._get_software_version(),
             "configuration_url": "https://www.redenergy.com.au/login",
         }
@@ -92,7 +100,7 @@ class RedEnergyDeviceManager:
         )
         
         # Update device attributes if needed
-        await self._update_device_attributes(device, property_info, services)
+        await self._update_device_attributes(device, property_info, account_services)
         
         return device
 

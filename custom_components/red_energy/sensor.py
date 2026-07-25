@@ -68,9 +68,19 @@ async def async_setup_entry(
     
     entities = []
     
-    # Create sensors for each selected account and service
+    # Create sensors for each selected account and service. An account only
+    # ever bills one service (Red Energy splits electricity and gas onto
+    # separate accounts), so skip any service the account doesn't actually
+    # have rather than creating permanently-unavailable entities for it.
     for account_id in selected_accounts:
         for service_type in services:
+            if coordinator.get_service_metadata(account_id, service_type) is None:
+                _LOGGER.debug(
+                    "Account %s has no %s service - skipping entity creation",
+                    account_id, service_type
+                )
+                continue
+
             # Core sensors (always created)
             entities.extend([
                 RedEnergyCostSensor(coordinator, config_entry, account_id, service_type),
@@ -124,10 +134,8 @@ async def async_setup_entry(
                 ])
     
     _LOGGER.debug(
-        "Created %d sensors (%d core, %d advanced) for Red Energy integration", 
+        "Created %d sensors for Red Energy integration",
         len(entities),
-        len(selected_accounts) * len(services) * 22,  # Core sensors per account/service
-        len(entities) - (len(selected_accounts) * len(services) * 22)  # Advanced sensors
     )
     
     _LOGGER.debug("About to register %d entities with Home Assistant", len(entities))
@@ -166,19 +174,10 @@ class RedEnergyBaseSensor(CoordinatorEntity, SensorEntity):
         self._property_id = property_id
         self._service_type = service_type
         self._sensor_type = sensor_type
-        
-        # Get property info for naming
-        property_data = None
-        if coordinator.data and "usage_data" in coordinator.data:
-            property_data = coordinator.data["usage_data"].get(property_id, {}).get("property")
-        
-        property_name = "Unknown Property"
-        if property_data:
-            property_name = property_data.get("name", f"Property {property_id}")
-            
+
         service_display = service_type.title()
-        
-        self._attr_name = f"{property_name} {service_display} {sensor_type.replace('_', ' ').title()}"
+
+        self._attr_name = f"{property_id} {service_display} {sensor_type.replace('_', ' ').title()}"
         self._attr_unique_id = f"{DOMAIN}_{config_entry.entry_id}_{property_id}_{service_type}_{sensor_type}"
         
         # Set device info for grouping (device_manager handles full device metadata)
