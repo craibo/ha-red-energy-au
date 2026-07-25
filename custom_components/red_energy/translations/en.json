@@ -31,8 +31,9 @@
     "step": {
       "init": {
         "title": "Red Energy Options",
-        "description": "Configure which services to monitor.",
+        "description": "Configure which accounts and services to monitor.",
         "data": {
+          "accounts": "Accounts to Monitor",
           "services": "Services to Monitor",
           "scan_interval": "Scan Interval",
           "enable_advanced_sensors": "Enable Advanced Sensors"

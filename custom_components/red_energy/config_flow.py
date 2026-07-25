@@ -15,7 +15,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers import config_validation as cv
 
 from .api import RedEnergyAPI, RedEnergyAPIError, RedEnergyAuthError
-from .data_validation import validate_config_data, DataValidationError
+from .data_validation import validate_config_data, validate_properties_data, DataValidationError
 from .const import (
     CLIENT_ID,
     CONF_ENABLE_ADVANCED_SENSORS,
@@ -249,61 +249,115 @@ class RedEnergyOptionsFlowHandler(config_entries.OptionsFlow):
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         """Manage the options."""
+        entry = self.config_entry
+        current_selected_accounts = entry.data.get(DATA_SELECTED_ACCOUNTS, [])
+
+        # Fetch the current list of properties/accounts from the API so newly
+        # added accounts (e.g. a gas service added after initial setup) can
+        # be selected, not just the ones that existed at setup time.
+        account_options: dict[str, str] = {}
+        try:
+            session = async_get_clientsession(self.hass)
+            api = RedEnergyAPI(session)
+            await api.test_credentials(
+                entry.data[CONF_USERNAME], entry.data[CONF_PASSWORD]
+            )
+            raw_properties = await api.get_properties()
+            for account in validate_properties_data(raw_properties):
+                account_options[account["id"]] = account.get("name", account["id"])
+        except Exception as err:
+            _LOGGER.warning("Could not refresh account list for options flow: %s", err)
+            # Fall back to the accounts already known to the config entry so the
+            # form can still be shown even if the API is temporarily unreachable.
+            account_options = {
+                account_id: account_id for account_id in current_selected_accounts
+            }
+
         if user_input is not None:
+            current_services = entry.data.get("services", [SERVICE_TYPE_ELECTRICITY])
+            new_selected_accounts = user_input.get(
+                "accounts", current_selected_accounts
+            )
+            new_services = user_input.get("services", current_services)
+
+            # entry.data (not entry.options) is what the coordinator reads, so
+            # account/service changes must be written there to take effect.
+            if set(new_selected_accounts) != set(current_selected_accounts) or set(
+                new_services
+            ) != set(current_services):
+                self.hass.config_entries.async_update_entry(
+                    entry,
+                    data={
+                        **entry.data,
+                        DATA_SELECTED_ACCOUNTS: new_selected_accounts,
+                        "services": new_services,
+                    },
+                )
+                await self.hass.config_entries.async_reload(entry.entry_id)
+
             # Update coordinator polling interval if changed
-            entry_data = self.hass.data[DOMAIN][self.config_entry.entry_id]
+            entry_data = self.hass.data[DOMAIN][entry.entry_id]
             coordinator = entry_data["coordinator"]
-            
+
             new_interval_key = user_input.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
             # Convert string key to seconds value
             if isinstance(new_interval_key, str):
                 new_interval_seconds = SCAN_INTERVAL_OPTIONS.get(new_interval_key, DEFAULT_SCAN_INTERVAL)
             else:
                 new_interval_seconds = new_interval_key
-            
+
             if new_interval_seconds != coordinator.update_interval.total_seconds():
                 coordinator.update_interval = timedelta(seconds=new_interval_seconds)
                 _LOGGER.info("Updated polling interval to %d seconds", new_interval_seconds)
-            
+
             return self.async_create_entry(title="", data=user_input)
 
         # Get current configuration
-        current_services = self.config_entry.data.get("services", [SERVICE_TYPE_ELECTRICITY])
-        current_options = self.config_entry.options
+        current_services = entry.data.get("services", [SERVICE_TYPE_ELECTRICITY])
+        current_options = entry.options
         current_scan_interval = current_options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
         current_advanced_sensors = current_options.get(CONF_ENABLE_ADVANCED_SENSORS, False)
-        
+
         service_options = {
             SERVICE_TYPE_ELECTRICITY: "Electricity",
             SERVICE_TYPE_GAS: "Gas",
         }
-        
+
         # Create interval display options
         interval_options = {}
         for key, seconds in SCAN_INTERVAL_OPTIONS.items():
             if seconds == 900:
                 interval_options[key] = "15 minutes"
             elif seconds == 1800:
-                interval_options[key] = "30 minutes (default)"  
+                interval_options[key] = "30 minutes (default)"
             elif seconds == 3600:
                 interval_options[key] = "1 hour"
             elif seconds == 7200:
                 interval_options[key] = "2 hours"
             elif seconds == 14400:
                 interval_options[key] = "4 hours"
-        
+
+        # Default selection includes accounts already selected, even if the
+        # API call above failed to confirm they still exist.
+        accounts_default = [
+            account_id
+            for account_id in current_selected_accounts
+            if account_id in account_options
+        ] or current_selected_accounts
+
         schema = vol.Schema({
+            vol.Required("accounts", default=accounts_default): cv.multi_select(account_options),
             vol.Required("services", default=current_services): cv.multi_select(service_options),
             vol.Required(CONF_SCAN_INTERVAL, default=current_scan_interval): vol.In(interval_options),
             vol.Required(CONF_ENABLE_ADVANCED_SENSORS, default=current_advanced_sensors): bool,
         })
-        
+
         # Convert current_scan_interval to minutes for display
         if isinstance(current_scan_interval, str):
             current_scan_interval_seconds = SCAN_INTERVAL_OPTIONS.get(current_scan_interval, DEFAULT_SCAN_INTERVAL)
         else:
             current_scan_interval_seconds = current_scan_interval
-        
+
         current_interval_minutes = current_scan_interval_seconds // 60
 
         return self.async_show_form(
