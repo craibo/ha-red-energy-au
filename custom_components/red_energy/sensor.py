@@ -144,13 +144,27 @@ async def async_setup_entry(
     try:
         async_add_entities(entities)
         _LOGGER.info("Successfully registered %d entities with Home Assistant", len(entities))
-        
+
         # Check if entities are actually in the entity registry
         entity_registry = er.async_get(hass)
         red_energy_entities = [entity for entity in entity_registry.entities.values() if entity.platform == DOMAIN]
-        _LOGGER.debug("Found %d Red Energy entities in entity registry: %s", 
-                     len(red_energy_entities), 
+        _LOGGER.debug("Found %d Red Energy entities in entity registry: %s",
+                     len(red_energy_entities),
                      [entity.entity_id for entity in red_energy_entities[:10]])  # Show first 10
+
+        # Remove stale entities left over from a previous account/service
+        # selection (e.g. a service later removed from an account, or a
+        # deselected account). These stay "Unavailable" forever otherwise -
+        # HA doesn't auto-purge merely-unavailable entities, and the device
+        # itself is untouched so device-based orphan cleanup won't catch them.
+        current_unique_ids = {entity.unique_id for entity in entities}
+        for entity in er.async_entries_for_config_entry(entity_registry, config_entry.entry_id):
+            if entity.unique_id not in current_unique_ids:
+                _LOGGER.info(
+                    "Removing stale entity no longer produced by current configuration: %s",
+                    entity.entity_id,
+                )
+                entity_registry.async_remove(entity.entity_id)
         
     except Exception as err:
         _LOGGER.error("Failed to register entities with Home Assistant: %s", err, exc_info=True)
