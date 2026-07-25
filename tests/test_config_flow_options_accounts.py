@@ -190,3 +190,34 @@ async def test_options_submit_enabling_gas_service_persists_and_reloads():
     _, kwargs = hass.config_entries.async_update_entry.call_args
     assert kwargs["data"]["services"] == ["electricity", "gas"]
     hass.config_entries.async_reload.assert_awaited_once_with(entry.entry_id)
+
+
+@pytest.mark.asyncio
+async def test_options_submit_does_not_crash_when_coordinator_not_loaded():
+    """Submitting options must not crash if the integration failed to set up.
+
+    If setup failed (e.g. mid auth race) hass.data[DOMAIN] never gets
+    populated. The options form must still save without raising KeyError -
+    the polling-interval live-update is simply skipped in that case.
+    """
+    entry = _make_config_entry()
+    hass = MagicMock()
+    hass.data = {}  # DOMAIN key absent entirely - integration never set up
+    hass.config_entries = MagicMock()
+    hass.config_entries.async_update_entry = MagicMock()
+    hass.config_entries.async_reload = AsyncMock()
+
+    flow = RedEnergyOptionsFlowHandler()
+    flow.hass = hass
+    flow._config_entry = entry
+
+    user_input = {
+        "accounts": ["8490263"],
+        "services": ["electricity"],
+        "scan_interval": "30min",
+        "enable_advanced_sensors": False,
+    }
+
+    result = await flow.async_step_init(user_input)
+
+    assert result["type"] == "create_entry"
