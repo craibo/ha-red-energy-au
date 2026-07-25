@@ -96,10 +96,13 @@ async def test_coordinator_handles_400_error_gracefully(coordinator, caplog):
     # Call the update method
     result = await coordinator._async_update_data()
     
-    # Verify the result contains data for the successful property only
+    # Verify the result contains data for the successful property, and the
+    # failed property is still present (metadata-only) rather than dropped -
+    # a usage failure must not remove the property/device entirely.
     assert "usage_data" in result
     assert "prop2" in result["usage_data"]  # Second property succeeded
-    assert "prop1" not in result["usage_data"]  # First property failed
+    assert "prop1" in result["usage_data"]  # First property present but empty
+    assert result["usage_data"]["prop1"]["services"] == {}
     
     # Verify warning was logged for the failed service
     assert "API returned error for electricity service (consumer 1234567890)" in caplog.text
@@ -112,7 +115,13 @@ async def test_coordinator_handles_400_error_gracefully(coordinator, caplog):
 
 @pytest.mark.asyncio
 async def test_coordinator_handles_all_services_failing(coordinator, caplog):
-    """Test coordinator behavior when all services return 400 errors."""
+    """Test coordinator behavior when all services return 400 errors.
+
+    A usage-fetch failure (e.g. a BASIC/manual-read gas meter that never has
+    interval usage) must not fail the whole update or drop the property -
+    metadata is still valid, so the device and metadata-only sensors must
+    still be created. Only a total absence of any property should raise.
+    """
     # Mock API to return 400 error for all properties
     coordinator.api.get_usage_data = AsyncMock(return_value={
         "error": True,
@@ -124,11 +133,15 @@ async def test_coordinator_handles_all_services_failing(coordinator, caplog):
         "to_date": "2024-01-02",
         "usage_data": []
     })
-    
-    # Call the update method
-    with pytest.raises(Exception):  # Should raise UpdateFailed
-        await coordinator._async_update_data()
-    
+
+    # Call the update method - must NOT raise despite every service failing
+    result = await coordinator._async_update_data()
+
+    assert "prop1" in result["usage_data"]
+    assert "prop2" in result["usage_data"]
+    assert result["usage_data"]["prop1"]["services"] == {}
+    assert result["usage_data"]["prop2"]["services"] == {}
+
     # Verify warnings were logged for all failed services
     assert "API returned error for electricity service" in caplog.text
     assert "Invalid consumer number" in caplog.text
@@ -167,11 +180,13 @@ async def test_coordinator_mixed_success_and_failure(coordinator, caplog):
     # Call the update method
     result = await coordinator._async_update_data()
     
-    # Verify we got data for the successful property
+    # Verify we got data for the successful property, and the failed
+    # property is present but with no services (metadata-only)
     assert "usage_data" in result
     assert "prop2" in result["usage_data"]
-    assert "prop1" not in result["usage_data"]
-    
+    assert "prop1" in result["usage_data"]
+    assert result["usage_data"]["prop1"]["services"] == {}
+
     # Verify the successful property has correct data
     prop2_data = result["usage_data"]["prop2"]
     assert "services" in prop2_data
@@ -204,10 +219,12 @@ async def test_coordinator_skips_inactive_services(coordinator):
     assert coordinator.api.get_usage_data.call_count == 1
     assert coordinator.api.get_usage_data.call_args[0][0] == "0987654321"  # Second property's consumer number
     
-    # Verify result contains only the active service
+    # Verify result contains the active service; the inactive-only property
+    # is still present (metadata-only), just with no services collected
     assert "usage_data" in result
     assert "prop2" in result["usage_data"]
-    assert "prop1" not in result["usage_data"]
+    assert "prop1" in result["usage_data"]
+    assert result["usage_data"]["prop1"]["services"] == {}
 
 
 @pytest.mark.asyncio

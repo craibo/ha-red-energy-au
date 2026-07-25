@@ -298,20 +298,31 @@ class RedEnergyOptionsFlowHandler(config_entries.OptionsFlow):
                 )
                 await self.hass.config_entries.async_reload(entry.entry_id)
 
-            # Update coordinator polling interval if changed
-            entry_data = self.hass.data[DOMAIN][entry.entry_id]
-            coordinator = entry_data["coordinator"]
+            # Update coordinator polling interval if changed. The coordinator
+            # may not be available (e.g. setup failed or is still retrying),
+            # in which case there's nothing running to update live - the
+            # entry data change above still applies on the next successful
+            # setup, so this must degrade gracefully rather than crash the
+            # options form.
+            coordinator = self.hass.data.get(DOMAIN, {}).get(entry.entry_id, {}).get("coordinator")
 
-            new_interval_key = user_input.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
-            # Convert string key to seconds value
-            if isinstance(new_interval_key, str):
-                new_interval_seconds = SCAN_INTERVAL_OPTIONS.get(new_interval_key, DEFAULT_SCAN_INTERVAL)
+            if coordinator is not None:
+                new_interval_key = user_input.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
+                # Convert string key to seconds value
+                if isinstance(new_interval_key, str):
+                    new_interval_seconds = SCAN_INTERVAL_OPTIONS.get(new_interval_key, DEFAULT_SCAN_INTERVAL)
+                else:
+                    new_interval_seconds = new_interval_key
+
+                if new_interval_seconds != coordinator.update_interval.total_seconds():
+                    coordinator.update_interval = timedelta(seconds=new_interval_seconds)
+                    _LOGGER.info("Updated polling interval to %d seconds", new_interval_seconds)
             else:
-                new_interval_seconds = new_interval_key
-
-            if new_interval_seconds != coordinator.update_interval.total_seconds():
-                coordinator.update_interval = timedelta(seconds=new_interval_seconds)
-                _LOGGER.info("Updated polling interval to %d seconds", new_interval_seconds)
+                _LOGGER.warning(
+                    "Coordinator not available for entry %s - options saved, "
+                    "polling interval will apply on next successful setup",
+                    entry.entry_id,
+                )
 
             return self.async_create_entry(title="", data=user_input)
 

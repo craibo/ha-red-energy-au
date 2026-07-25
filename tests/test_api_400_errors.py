@@ -1,4 +1,5 @@
 """Tests for API 400 error handling."""
+import logging
 import pytest
 from unittest.mock import AsyncMock, patch
 from datetime import datetime
@@ -199,3 +200,46 @@ async def test_get_usage_data_logging_on_400_error(api_client, caplog):
     assert "Error: Invalid consumer number" in caplog.text
     assert "Details: Consumer number 123 is not valid for this account" in caplog.text
     assert "URL: https://api.example.com/usage/interval" in caplog.text
+
+    # A genuine error (not the BASIC/gas no-interval-usage case) must still
+    # log at ERROR level so it's visible without enabling debug logging.
+    error_records = [r for r in caplog.records if r.levelno >= logging.ERROR]
+    assert error_records, "Genuine 400 errors must be logged at ERROR level"
+
+
+@pytest.mark.asyncio
+async def test_get_usage_data_basic_meter_400_logs_at_debug_not_error(api_client, caplog):
+    """A BASIC/manual-read gas meter's 400 is expected behaviour, not a failure.
+
+    Red Energy returns this same 400 on every request for a non-interval
+    meter - logging it at ERROR is misleading noise for something that will
+    never resolve differently, so it must log at debug instead.
+    """
+    mock_response = AsyncMock()
+    mock_response.status = 400
+    mock_response.url = "https://api.example.com/usage/interval?consumerNumber=4236257811&fromDate=2024-01-01&toDate=2024-01-02"
+
+    error_data = {
+        "message": (
+            "customerNumber=5545090, consumerNumber=4236257811 has a BASIC "
+            "meter or is for a Gas utility so does not have interval usages"
+        ),
+        "details": "No additional details",
+    }
+    mock_response.json = AsyncMock(return_value=error_data)
+
+    async def mock_context_manager(*args, **kwargs):
+        return mock_response
+
+    api_client._session.get.return_value.__aenter__ = mock_context_manager
+    api_client._session.get.return_value.__aexit__ = AsyncMock(return_value=None)
+    api_client._access_token = "test_token"
+
+    with caplog.at_level(logging.DEBUG, logger="custom_components.red_energy.api"):
+        result = await api_client.get_usage_data("4236257811", datetime(2024, 1, 1), datetime(2024, 1, 2))
+
+    assert result["error"] is True
+
+    error_records = [r for r in caplog.records if r.levelno >= logging.ERROR]
+    assert not error_records, f"Expected no ERROR logs, got: {[r.message for r in error_records]}"
+    assert "does not have interval usages" in caplog.text
