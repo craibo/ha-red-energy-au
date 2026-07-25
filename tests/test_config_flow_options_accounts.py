@@ -118,3 +118,46 @@ async def test_options_submit_adds_new_account_and_reloads():
     _, kwargs = hass.config_entries.async_update_entry.call_args
     assert kwargs["data"][DATA_SELECTED_ACCOUNTS] == ["8490263", "7471493"]
     hass.config_entries.async_reload.assert_awaited_once_with(entry.entry_id)
+
+
+@pytest.mark.asyncio
+async def test_options_submit_enabling_gas_service_persists_and_reloads():
+    """Turning on the Gas service checkbox must actually take effect.
+
+    entry.data["services"] is what the coordinator reads (entry.options is
+    never consulted), so toggling "gas" on in the options form must update
+    entry.data and reload — otherwise the checkbox is a no-op.
+    """
+    entry = _make_config_entry()
+    hass = MagicMock()
+    hass.data = {DOMAIN: {entry.entry_id: {"coordinator": MagicMock(update_interval=MagicMock(total_seconds=lambda: 1800))}}}
+    hass.config_entries = MagicMock()
+    hass.config_entries.async_update_entry = MagicMock()
+    hass.config_entries.async_reload = AsyncMock()
+
+    flow = RedEnergyOptionsFlowHandler()
+    flow.hass = hass
+    flow._config_entry = entry
+
+    user_input = {
+        "accounts": ["8490263"],
+        "services": ["electricity", "gas"],
+        "scan_interval": "30min",
+        "enable_advanced_sensors": False,
+    }
+
+    with patch(
+        "custom_components.red_energy.config_flow.async_get_clientsession"
+    ), patch(
+        "custom_components.red_energy.config_flow.RedEnergyAPI"
+    ) as mock_api_cls:
+        mock_api = mock_api_cls.return_value
+        mock_api.test_credentials = AsyncMock(return_value=True)
+        mock_api.get_properties = AsyncMock(return_value=MOCK_PROPERTIES_RESPONSE)
+
+        await flow.async_step_init(user_input)
+
+    hass.config_entries.async_update_entry.assert_called_once()
+    _, kwargs = hass.config_entries.async_update_entry.call_args
+    assert kwargs["data"]["services"] == ["electricity", "gas"]
+    hass.config_entries.async_reload.assert_awaited_once_with(entry.entry_id)

@@ -274,14 +274,24 @@ class RedEnergyOptionsFlowHandler(config_entries.OptionsFlow):
             }
 
         if user_input is not None:
+            current_services = entry.data.get("services", [SERVICE_TYPE_ELECTRICITY])
             new_selected_accounts = user_input.get(
                 "accounts", current_selected_accounts
             )
+            new_services = user_input.get("services", current_services)
 
-            if set(new_selected_accounts) != set(current_selected_accounts):
+            # entry.data (not entry.options) is what the coordinator reads, so
+            # account/service changes must be written there to take effect.
+            if set(new_selected_accounts) != set(current_selected_accounts) or set(
+                new_services
+            ) != set(current_services):
                 self.hass.config_entries.async_update_entry(
                     entry,
-                    data={**entry.data, DATA_SELECTED_ACCOUNTS: new_selected_accounts},
+                    data={
+                        **entry.data,
+                        DATA_SELECTED_ACCOUNTS: new_selected_accounts,
+                        "services": new_services,
+                    },
                 )
                 await self.hass.config_entries.async_reload(entry.entry_id)
 
