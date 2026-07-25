@@ -261,7 +261,13 @@ class RedEnergyOptionsFlowHandler(config_entries.OptionsFlow):
             coordinator = self.hass.data[DOMAIN][entry.entry_id]["coordinator"]
             raw_properties = await coordinator.api.get_properties()
             for account in validate_properties_data(raw_properties):
-                account_options[account["id"]] = account.get("name", account["id"])
+                account_id = account["id"]
+                service_label = "/".join(
+                    s.get("type", "").title() for s in account.get("services", []) if s.get("type")
+                )
+                account_options[account_id] = (
+                    f"{account_id} - {service_label}" if service_label else account_id
+                )
         except Exception as err:
             _LOGGER.warning("Could not refresh account list for options flow: %s", err)
             # Fall back to the accounts already known to the config entry so the
