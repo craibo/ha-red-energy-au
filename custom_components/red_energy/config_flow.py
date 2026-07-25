@@ -252,17 +252,14 @@ class RedEnergyOptionsFlowHandler(config_entries.OptionsFlow):
         entry = self.config_entry
         current_selected_accounts = entry.data.get(DATA_SELECTED_ACCOUNTS, [])
 
-        # Fetch the current list of properties/accounts from the API so newly
-        # added accounts (e.g. a gas service added after initial setup) can
-        # be selected, not just the ones that existed at setup time.
+        # Reuse the coordinator's own RedEnergyAPI client rather than creating
+        # a new one. A separate client would share the same underlying aiohttp
+        # session/cookie jar but hold its own auth lock, so it could race the
+        # coordinator's in-flight authentication and break the Okta redirect.
         account_options: dict[str, str] = {}
         try:
-            session = async_get_clientsession(self.hass)
-            api = RedEnergyAPI(session)
-            await api.test_credentials(
-                entry.data[CONF_USERNAME], entry.data[CONF_PASSWORD]
-            )
-            raw_properties = await api.get_properties()
+            coordinator = self.hass.data[DOMAIN][entry.entry_id]["coordinator"]
+            raw_properties = await coordinator.api.get_properties()
             for account in validate_properties_data(raw_properties):
                 account_options[account["id"]] = account.get("name", account["id"])
         except Exception as err:
