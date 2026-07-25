@@ -142,6 +142,26 @@ class TestSensorDisplayNames:
         assert "Daily Import Usage" in sensor._attr_name
         assert "_" not in sensor._attr_name.split(" ")[-3:]  # Check last 3 words don't have underscores
 
+    def test_base_sensor_name_uses_property_id_not_property_display_name(self):
+        """Entity names use the account/property ID, not the address-derived property name.
+
+        Split accounts (e.g. electricity and gas billed separately) can share
+        the same address, so the address alone doesn't distinguish entities.
+        """
+        coordinator = create_mock_coordinator()
+        config_entry = create_mock_config_entry()
+
+        sensor = RedEnergyBaseSensor(
+            coordinator,
+            config_entry,
+            "prop-001",
+            SERVICE_TYPE_ELECTRICITY,
+            "daily_import_usage"
+        )
+
+        assert sensor._attr_name.startswith("prop-001")
+        assert "Test Property" not in sensor._attr_name
+
     def test_total_cost_sensor_display_name(self):
         """Test total_cost sensor display name."""
         coordinator = create_mock_coordinator()
