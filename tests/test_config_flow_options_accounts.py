@@ -80,6 +80,34 @@ async def test_options_init_form_lists_newly_discovered_account():
 
 
 @pytest.mark.asyncio
+async def test_options_account_labels_use_account_id_not_shared_address():
+    """Checkbox labels must disambiguate accounts sharing the same address.
+
+    Both mock properties share the display address "1 Example Street,
+    Testville" (electricity and gas billed on separate accounts) - the
+    label shown to the user must not be that address for both, or the
+    options screen is unusable (matches the reported UI screenshot).
+    """
+    entry = _make_config_entry()
+    hass = _make_hass(entry)
+
+    flow = RedEnergyOptionsFlowHandler()
+    flow.hass = hass
+    flow._config_entry = entry
+
+    result = await flow.async_step_init()
+
+    accounts_validator = next(
+        v for k, v in result["data_schema"].schema.items() if str(k) == "accounts"
+    )
+    labels = accounts_validator.options
+
+    assert labels["1000001"] == "1000001 - Electricity"
+    assert labels["2000002"] == "2000002 - Gas"
+    assert "1 Example Street, Testville" not in labels.values()
+
+
+@pytest.mark.asyncio
 async def test_options_submit_adds_new_account_and_reloads():
     """Selecting the new account in options must persist it and trigger a reload."""
     entry = _make_config_entry()
