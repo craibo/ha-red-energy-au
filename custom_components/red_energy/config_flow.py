@@ -32,7 +32,6 @@ from .const import (
     SCAN_INTERVAL_OPTIONS,
     SERVICE_TYPE_ELECTRICITY,
     SERVICE_TYPE_GAS,
-    STEP_SERVICE_SELECT,
     STEP_USER,
 )
 
@@ -186,51 +185,28 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     _LOGGER.error("No valid account IDs found in properties. Raw accounts: %s", self._accounts)
                     errors["base"] = ERROR_NO_ACCOUNTS
                 else:
-                    return await self.async_step_service_select()
+                    # Accounts are now selected individually and each only
+                    # ever bills one service, so there's nothing left for a
+                    # service-type toggle to do - always monitor both.
+                    config_data = {
+                        **self._user_data,
+                        DATA_SELECTED_ACCOUNTS: self._selected_accounts,
+                        "services": [SERVICE_TYPE_ELECTRICITY, SERVICE_TYPE_GAS],
+                    }
+
+                    title = self._customer_data.get("name", "Red Energy")
+                    if len(self._selected_accounts) > 1:
+                        title += f" ({len(self._selected_accounts)} properties)"
+
+                    return self.async_create_entry(
+                        title=title,
+                        data=config_data
+                    )
 
         return self.async_show_form(
             step_id=STEP_USER,
             data_schema=STEP_USER_DATA_SCHEMA,
             errors=errors
-        )
-
-    async def async_step_service_select(
-        self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
-        """Handle service type selection."""
-        if user_input is not None:
-            # Combine all configuration data
-            config_data = {
-                **self._user_data,
-                DATA_SELECTED_ACCOUNTS: self._selected_accounts,
-                "services": user_input.get("services", [SERVICE_TYPE_ELECTRICITY])
-            }
-            
-            title = self._customer_data.get("name", "Red Energy")
-            if len(self._selected_accounts) > 1:
-                title += f" ({len(self._selected_accounts)} properties)"
-                
-            return self.async_create_entry(
-                title=title,
-                data=config_data
-            )
-
-        # Service selection schema
-        service_options = {
-            SERVICE_TYPE_ELECTRICITY: "Electricity",
-            SERVICE_TYPE_GAS: "Gas",
-        }
-        
-        schema = vol.Schema({
-            vol.Required("services", default=[SERVICE_TYPE_ELECTRICITY]): cv.multi_select(service_options),
-        })
-
-        return self.async_show_form(
-            step_id=STEP_SERVICE_SELECT,
-            data_schema=schema,
-            description_placeholders={
-                "account_count": str(len(self._selected_accounts))
-            }
         )
 
     @staticmethod
@@ -277,23 +253,23 @@ class RedEnergyOptionsFlowHandler(config_entries.OptionsFlow):
             }
 
         if user_input is not None:
-            current_services = entry.data.get("services", [SERVICE_TYPE_ELECTRICITY])
             new_selected_accounts = user_input.get(
                 "accounts", current_selected_accounts
             )
-            new_services = user_input.get("services", current_services)
 
             # entry.data (not entry.options) is what the coordinator reads, so
-            # account/service changes must be written there to take effect.
-            if set(new_selected_accounts) != set(current_selected_accounts) or set(
-                new_services
-            ) != set(current_services):
+            # the account selection change must be written there to take
+            # effect. Services are no longer user-configurable here - each
+            # account only ever bills one service, so both are always
+            # requested and per-account filtering (see sensor.py) determines
+            # what's actually created.
+            if set(new_selected_accounts) != set(current_selected_accounts):
                 self.hass.config_entries.async_update_entry(
                     entry,
                     data={
                         **entry.data,
                         DATA_SELECTED_ACCOUNTS: new_selected_accounts,
-                        "services": new_services,
+                        "services": [SERVICE_TYPE_ELECTRICITY, SERVICE_TYPE_GAS],
                     },
                 )
                 await self.hass.config_entries.async_reload(entry.entry_id)
@@ -327,15 +303,9 @@ class RedEnergyOptionsFlowHandler(config_entries.OptionsFlow):
             return self.async_create_entry(title="", data=user_input)
 
         # Get current configuration
-        current_services = entry.data.get("services", [SERVICE_TYPE_ELECTRICITY])
         current_options = entry.options
         current_scan_interval = current_options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
         current_advanced_sensors = current_options.get(CONF_ENABLE_ADVANCED_SENSORS, False)
-
-        service_options = {
-            SERVICE_TYPE_ELECTRICITY: "Electricity",
-            SERVICE_TYPE_GAS: "Gas",
-        }
 
         # Create interval display options
         interval_options = {}
@@ -361,7 +331,6 @@ class RedEnergyOptionsFlowHandler(config_entries.OptionsFlow):
 
         schema = vol.Schema({
             vol.Required("accounts", default=accounts_default): cv.multi_select(account_options),
-            vol.Required("services", default=current_services): cv.multi_select(service_options),
             vol.Required(CONF_SCAN_INTERVAL, default=current_scan_interval): vol.In(interval_options),
             vol.Required(CONF_ENABLE_ADVANCED_SENSORS, default=current_advanced_sensors): bool,
         })

@@ -141,11 +141,17 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             device_manager = entry_data["device_manager"]
             await device_manager.async_cleanup_orphaned_entities()
         
-        # Stop coordinator
+        # Stop coordinator. Without this, its scheduled refresh timer keeps
+        # running after unload - if it fires (or is already mid-authenticate)
+        # while a fresh coordinator is being set up for the same reload, both
+        # race authenticate() on the same shared aiohttp session, breaking
+        # the Okta redirect ("No redirect location found in authorization
+        # response") until the next full Home Assistant restart clears it.
         if "coordinator" in entry_data:
             coordinator = entry_data["coordinator"]
-            # The coordinator will be garbage collected
-            
+            await coordinator.async_shutdown()
+
+
         # Remove domain data if empty
         if not hass.data[DOMAIN]:
             hass.data.pop(DOMAIN)
