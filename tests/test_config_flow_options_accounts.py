@@ -53,6 +53,7 @@ def _make_hass(entry, properties=MOCK_PROPERTIES_RESPONSE):
     coordinator.api.get_properties = AsyncMock(return_value=properties)
     hass = MagicMock()
     hass.data = {DOMAIN: {entry.entry_id: {"coordinator": coordinator}}}
+    hass.config_entries.async_get_known_entry = MagicMock(return_value=entry)
     return hass
 
 
@@ -64,7 +65,7 @@ async def test_options_init_form_lists_newly_discovered_account():
 
     flow = RedEnergyOptionsFlowHandler()
     flow.hass = hass
-    flow._config_entry = entry
+    flow.handler = entry.entry_id
 
     result = await flow.async_step_init()
 
@@ -92,7 +93,7 @@ async def test_options_account_labels_use_account_id_not_shared_address():
 
     flow = RedEnergyOptionsFlowHandler()
     flow.hass = hass
-    flow._config_entry = entry
+    flow.handler = entry.entry_id
 
     result = await flow.async_step_init()
 
@@ -111,13 +112,12 @@ async def test_options_submit_adds_new_account_and_reloads():
     """Selecting the new account in options must persist it and trigger a reload."""
     entry = _make_config_entry()
     hass = _make_hass(entry)
-    hass.config_entries = MagicMock()
     hass.config_entries.async_update_entry = MagicMock()
     hass.config_entries.async_reload = AsyncMock()
 
     flow = RedEnergyOptionsFlowHandler()
     flow.hass = hass
-    flow._config_entry = entry
+    flow.handler = entry.entry_id
 
     user_input = {
         "accounts": ["1000001", "2000002"],
@@ -149,7 +149,7 @@ async def test_options_init_reuses_coordinator_api_not_a_new_client():
 
     flow = RedEnergyOptionsFlowHandler()
     flow.hass = hass
-    flow._config_entry = entry
+    flow.handler = entry.entry_id
 
     await flow.async_step_init()
 
@@ -168,13 +168,12 @@ async def test_options_submit_always_keeps_both_services():
     """
     entry = _make_config_entry()
     hass = _make_hass(entry)
-    hass.config_entries = MagicMock()
     hass.config_entries.async_update_entry = MagicMock()
     hass.config_entries.async_reload = AsyncMock()
 
     flow = RedEnergyOptionsFlowHandler()
     flow.hass = hass
-    flow._config_entry = entry
+    flow.handler = entry.entry_id
 
     user_input = {
         "accounts": ["1000001", "2000002"],  # changed from entry's original ["1000001"]
@@ -201,12 +200,13 @@ async def test_options_submit_does_not_crash_when_coordinator_not_loaded():
     hass = MagicMock()
     hass.data = {}  # DOMAIN key absent entirely - integration never set up
     hass.config_entries = MagicMock()
+    hass.config_entries.async_get_known_entry = MagicMock(return_value=entry)
     hass.config_entries.async_update_entry = MagicMock()
     hass.config_entries.async_reload = AsyncMock()
 
     flow = RedEnergyOptionsFlowHandler()
     flow.hass = hass
-    flow._config_entry = entry
+    flow.handler = entry.entry_id
 
     user_input = {
         "accounts": ["1000001"],

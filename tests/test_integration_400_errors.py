@@ -1,9 +1,12 @@
 """Integration tests for 400 error handling scenarios."""
+import logging
 import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from custom_components.red_energy.coordinator import RedEnergyDataCoordinator
 from custom_components.red_energy.api import RedEnergyAPIError
+
+RECENT_BILL_DATE = (datetime.now() - timedelta(days=14)).strftime("%Y-%m-%d")
 
 
 @pytest.fixture
@@ -17,13 +20,17 @@ def mock_hass():
 @pytest.fixture
 def coordinator_with_multiple_properties(mock_hass):
     """Create coordinator with multiple properties and services."""
-    coordinator = RedEnergyDataCoordinator(
-        hass=mock_hass,
-        username="test_user",
-        password="test_pass",
-        selected_accounts=["prop1", "prop2", "prop3"],
-        services=["electricity", "gas"]
-    )
+    with patch(
+        "custom_components.red_energy.coordinator.async_get_clientsession",
+        return_value=MagicMock(),
+    ):
+        coordinator = RedEnergyDataCoordinator(
+            hass=mock_hass,
+            username="test_user",
+            password="test_pass",
+            selected_accounts=["prop1", "prop2", "prop3"],
+            services=["electricity", "gas"]
+        )
     
     # Mock the API
     coordinator.api = AsyncMock()
@@ -39,13 +46,13 @@ def coordinator_with_multiple_properties(mock_hass):
                     "type": "electricity",
                     "consumer_number": "elec1",
                     "active": True,
-                    "lastBillDate": "2024-01-01"
+                    "lastBillDate": RECENT_BILL_DATE
                 },
                 {
                     "type": "gas",
                     "consumer_number": "gas1",
                     "active": True,
-                    "lastBillDate": "2024-01-01"
+                    "lastBillDate": RECENT_BILL_DATE
                 }
             ]
         },
@@ -57,13 +64,13 @@ def coordinator_with_multiple_properties(mock_hass):
                     "type": "electricity",
                     "consumer_number": "elec2",
                     "active": True,
-                    "lastBillDate": "2024-01-01"
+                    "lastBillDate": RECENT_BILL_DATE
                 },
                 {
                     "type": "gas",
                     "consumer_number": "gas2",
                     "active": True,
-                    "lastBillDate": "2024-01-01"
+                    "lastBillDate": RECENT_BILL_DATE
                 }
             ]
         },
@@ -75,7 +82,7 @@ def coordinator_with_multiple_properties(mock_hass):
                     "type": "electricity",
                     "consumer_number": "elec3",
                     "active": True,
-                    "lastBillDate": "2024-01-01"
+                    "lastBillDate": RECENT_BILL_DATE
                 }
             ]
         }
@@ -83,13 +90,18 @@ def coordinator_with_multiple_properties(mock_hass):
     
     # Mock customer data
     coordinator._customer_data = {"id": "customer1", "name": "Test Customer"}
-    
+    # Prevent _async_update_data from triggering a metadata refresh (which would
+    # hit the AsyncMock'd get_customer_data/get_properties and fail validation).
+    coordinator._last_metadata_refresh_date = datetime.now(timezone.utc).date()
+
     return coordinator
 
 
 @pytest.mark.asyncio
 async def test_integration_mixed_success_failure_scenario(coordinator_with_multiple_properties, caplog):
     """Test integration with mixed success and failure across properties and services."""
+    caplog.set_level(logging.INFO)
+
     # Define which services should fail
     failing_services = {"elec1", "gas2"}  # Property 1 electricity and Property 2 gas
     
@@ -329,7 +341,7 @@ async def test_integration_graceful_degradation_with_minimal_data(coordinator_wi
     
     # Verify multiple error warnings were logged
     error_warnings = [record for record in caplog.records if "API returned error" in record.message]
-    assert len(error_warnings) == 5  # 5 services failed
+    assert len(error_warnings) == 4  # 4 of 5 services failed (elec3 succeeds)
 
 
 @pytest.mark.asyncio

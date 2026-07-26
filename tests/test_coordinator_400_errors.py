@@ -1,9 +1,12 @@
 """Tests for coordinator 400 error handling."""
+import logging
 import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from custom_components.red_energy.coordinator import RedEnergyDataCoordinator
 from custom_components.red_energy.api import RedEnergyAPIError
+
+RECENT_BILL_DATE = (datetime.now() - timedelta(days=14)).strftime("%Y-%m-%d")
 
 
 @pytest.fixture
@@ -17,13 +20,17 @@ def mock_hass():
 @pytest.fixture
 def coordinator(mock_hass):
     """Create coordinator for testing."""
-    coordinator = RedEnergyDataCoordinator(
-        hass=mock_hass,
-        username="test_user",
-        password="test_pass",
-        selected_accounts=["prop1", "prop2"],
-        services=["electricity"]
-    )
+    with patch(
+        "custom_components.red_energy.coordinator.async_get_clientsession",
+        return_value=MagicMock(),
+    ):
+        coordinator = RedEnergyDataCoordinator(
+            hass=mock_hass,
+            username="test_user",
+            password="test_pass",
+            selected_accounts=["prop1", "prop2"],
+            services=["electricity"]
+        )
     
     # Mock the API
     coordinator.api = AsyncMock()
@@ -39,7 +46,7 @@ def coordinator(mock_hass):
                     "type": "electricity",
                     "consumer_number": "1234567890",
                     "active": True,
-                    "lastBillDate": "2024-01-01"
+                    "lastBillDate": RECENT_BILL_DATE
                 }
             ]
         },
@@ -51,7 +58,7 @@ def coordinator(mock_hass):
                     "type": "electricity",
                     "consumer_number": "0987654321",
                     "active": True,
-                    "lastBillDate": "2024-01-01"
+                    "lastBillDate": RECENT_BILL_DATE
                 }
             ]
         }
@@ -59,13 +66,18 @@ def coordinator(mock_hass):
     
     # Mock customer data
     coordinator._customer_data = {"id": "customer1", "name": "Test Customer"}
-    
+    # Prevent _async_update_data from triggering a metadata refresh (which would
+    # hit the AsyncMock'd get_customer_data/get_properties and fail validation).
+    coordinator._last_metadata_refresh_date = datetime.now(timezone.utc).date()
+
     return coordinator
 
 
 @pytest.mark.asyncio
 async def test_coordinator_handles_400_error_gracefully(coordinator, caplog):
     """Test that coordinator handles 400 errors and continues processing."""
+    caplog.set_level(logging.INFO)
+
     # Mock API to return 400 error for first property, success for second
     def mock_get_usage_data(consumer_number, start_date, end_date):
         if consumer_number == "1234567890":
@@ -235,7 +247,7 @@ async def test_coordinator_skips_unconfigured_services(coordinator):
         "type": "gas",
         "consumer_number": "1111111111",
         "active": True,
-        "lastBillDate": "2024-01-01"
+        "lastBillDate": RECENT_BILL_DATE
     })
     
     # Mock API (should only be called for electricity service)

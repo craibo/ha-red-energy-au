@@ -4,8 +4,9 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import datetime, timedelta, timezone, date
-from typing import Any, Dict, List, Optional
+from typing import Any
 
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
@@ -35,39 +36,41 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
         hass: HomeAssistant,
         username: str,
         password: str,
-        selected_accounts: List[str],
-        services: List[str],
+        selected_accounts: list[str],
+        services: list[str],
+        config_entry: ConfigEntry | None = None,
     ) -> None:
         """Initialize the coordinator."""
         self.username = username
         self.password = password
         self.selected_accounts = selected_accounts
-        
+
         # Initialize Stage 5 enhancements
         self._error_recovery = RedEnergyErrorRecoverySystem(hass)
         self._performance_monitor = PerformanceMonitor(hass)
         self._data_processor = DataProcessor(self._performance_monitor)
         self.update_failures = 0
         self.services = services
-        
+
         # Initialize API client
         session = async_get_clientsession(hass)
         # Use real Red Energy API
         self.api = RedEnergyAPI(session)
-        
-        self._customer_data: Optional[Dict[str, Any]] = None
-        self._properties: List[Dict[str, Any]] = []
+
+        self._customer_data: dict[str, Any] | None = None
+        self._properties: list[dict[str, Any]] = []
         # Track last calendar day we refreshed metadata (customer/properties)
-        self._last_metadata_refresh_date: Optional[date] = None
-        
+        self._last_metadata_refresh_date: date | None = None
+
         super().__init__(
             hass,
             _LOGGER,
+            config_entry=config_entry,
             name=DOMAIN,
             update_interval=timedelta(seconds=DEFAULT_SCAN_INTERVAL),
         )
 
-    def _get_usage_period_dates(self, service: Dict[str, Any]) -> tuple[datetime, datetime]:
+    def _get_usage_period_dates(self, service: dict[str, Any]) -> tuple[datetime, datetime]:
         end_date = datetime.now()
         start_date = None
         
@@ -100,7 +103,7 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
         
         return start_date, end_date
 
-    async def _async_update_data(self) -> Dict[str, Any]:
+    async def _async_update_data(self) -> dict[str, Any]:
         """Fetch data from Red Energy API."""
         try:
             # Ensure we're authenticated
@@ -335,7 +338,7 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
         await self._async_refresh_metadata()
         await self.async_request_refresh()
     
-    async def _bulk_update_data(self) -> Dict[str, Any]:
+    async def _bulk_update_data(self) -> dict[str, Any]:
         """Handle bulk data updates for multiple accounts efficiently."""
         try:
             # Ensure authentication
@@ -390,7 +393,7 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
             )
             raise
     
-    async def _fetch_property_usage(self, property_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    async def _fetch_property_usage(self, property_data: dict[str, Any]) -> dict[str, Any] | None:
         """Fetch usage data for a single property."""
         property_id = property_data.get("id")
         property_services = property_data.get("services", [])
@@ -454,7 +457,7 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
         
         return None
     
-    async def _fetch_usage_data_optimized(self) -> Dict[str, Any]:
+    async def _fetch_usage_data_optimized(self) -> dict[str, Any]:
         """Fetch usage data with performance optimizations."""
         usage_data = {}
         
@@ -470,11 +473,11 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
         
         return usage_data
     
-    def get_performance_metrics(self) -> Dict[str, Any]:
+    def get_performance_metrics(self) -> dict[str, Any]:
         """Get performance metrics for the coordinator."""
         return self._performance_monitor.get_performance_stats()
     
-    def get_error_statistics(self) -> Dict[str, Any]:
+    def get_error_statistics(self) -> dict[str, Any]:
         """Get error recovery statistics."""
         return self._error_recovery.get_error_statistics()
 
@@ -509,7 +512,7 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
             return False
 
     async def async_update_account_selection(
-        self, selected_accounts: List[str], services: List[str]
+        self, selected_accounts: list[str], services: list[str]
     ) -> None:
         """Update account and service selection."""
         self.selected_accounts = selected_accounts
@@ -518,14 +521,14 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
         # Trigger data refresh with new selection
         await self.async_refresh()
 
-    def get_property_data(self, property_id: str) -> Optional[Dict[str, Any]]:
+    def get_property_data(self, property_id: str) -> dict[str, Any] | None:
         """Get cached property data by ID."""
         if not self.data or "usage_data" not in self.data:
             return None
         
         return self.data["usage_data"].get(str(property_id))
 
-    def get_service_usage(self, property_id: str, service_type: str) -> Optional[Dict[str, Any]]:
+    def get_service_usage(self, property_id: str, service_type: str) -> dict[str, Any] | None:
         """Get usage data for a specific property and service."""
         property_data = self.get_property_data(property_id)
         if not property_data:
@@ -533,7 +536,7 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
         
         return property_data.get("services", {}).get(service_type)
 
-    def get_latest_usage(self, property_id: str, service_type: str) -> Optional[float]:
+    def get_latest_usage(self, property_id: str, service_type: str) -> float | None:
         """Get the most recent usage value for a property and service."""
         service_data = self.get_service_usage(property_id, service_type)
         if not service_data or "usage_data" not in service_data:
@@ -546,7 +549,7 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
         # Return the latest day's usage
         return usage_data[-1].get("usage", 0.0)
 
-    def get_total_cost(self, property_id: str, service_type: str) -> Optional[float]:
+    def get_total_cost(self, property_id: str, service_type: str) -> float | None:
         """Get the total cost for a property and service."""
         service_data = self.get_service_usage(property_id, service_type)
         if not service_data or "usage_data" not in service_data:
@@ -554,7 +557,7 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
         
         return service_data["usage_data"].get("total_cost", 0.0)
 
-    def get_total_usage(self, property_id: str, service_type: str) -> Optional[float]:
+    def get_total_usage(self, property_id: str, service_type: str) -> float | None:
         """Get the total usage for a property and service."""
         service_data = self.get_service_usage(property_id, service_type)
         if not service_data or "usage_data" not in service_data:
@@ -562,7 +565,7 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
         
         return service_data["usage_data"].get("total_usage", 0.0)
 
-    def get_service_metadata(self, property_id: str, service_type: str) -> Optional[Dict[str, Any]]:
+    def get_service_metadata(self, property_id: str, service_type: str) -> dict[str, Any] | None:
         """Get service metadata (NMI, meter type, solar, etc.) for a property and service."""
         property_data = self.get_property_data(property_id)
         if not property_data:
@@ -578,7 +581,7 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
         
         return service_metadata
 
-    def get_service_rates(self, property_id: str, service_type: str) -> List[Dict[str, Any]]:
+    def get_service_rates(self, property_id: str, service_type: str) -> list[dict[str, Any]]:
         """Get the validated tariff rates list for a property and service."""
         metadata = self.get_service_metadata(property_id, service_type)
         if not metadata:
@@ -586,7 +589,7 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
 
         return metadata.get("rates", [])
 
-    def get_latest_import_usage(self, property_id: str, service_type: str) -> Optional[float]:
+    def get_latest_import_usage(self, property_id: str, service_type: str) -> float | None:
         """Get the most recent daily import usage."""
         service_data = self.get_service_usage(property_id, service_type)
         if not service_data or "usage_data" not in service_data:
@@ -598,7 +601,7 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
         
         return usage_data[-1].get("import_usage", 0.0)
 
-    def get_latest_export_usage(self, property_id: str, service_type: str) -> Optional[float]:
+    def get_latest_export_usage(self, property_id: str, service_type: str) -> float | None:
         """Get the most recent daily export usage."""
         service_data = self.get_service_usage(property_id, service_type)
         if not service_data or "usage_data" not in service_data:
@@ -610,7 +613,7 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
         
         return usage_data[-1].get("export_usage", 0.0)
 
-    def get_total_import_usage(self, property_id: str, service_type: str) -> Optional[float]:
+    def get_total_import_usage(self, property_id: str, service_type: str) -> float | None:
         """Get total import usage over period."""
         service_data = self.get_service_usage(property_id, service_type)
         if not service_data or "usage_data" not in service_data:
@@ -619,7 +622,7 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
         usage_data = service_data["usage_data"].get("usage_data", [])
         return sum(entry.get("import_usage", 0) for entry in usage_data)
 
-    def get_total_export_usage(self, property_id: str, service_type: str) -> Optional[float]:
+    def get_total_export_usage(self, property_id: str, service_type: str) -> float | None:
         """Get total export usage over period."""
         service_data = self.get_service_usage(property_id, service_type)
         if not service_data or "usage_data" not in service_data:
@@ -628,7 +631,7 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
         usage_data = service_data["usage_data"].get("usage_data", [])
         return sum(entry.get("export_usage", 0) for entry in usage_data)
 
-    def get_period_import_usage(self, property_id: str, service_type: str, period: str) -> Optional[float]:
+    def get_period_import_usage(self, property_id: str, service_type: str, period: str) -> float | None:
         """Get total import usage for specific time period (PEAK/OFFPEAK/SHOULDER)."""
         service_data = self.get_service_usage(property_id, service_type)
         if not service_data or "usage_data" not in service_data:
@@ -638,7 +641,7 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
         field_name = f"{period.lower()}_import_usage"
         return sum(entry.get(field_name, 0) for entry in usage_data)
 
-    def get_period_export_usage(self, property_id: str, service_type: str, period: str) -> Optional[float]:
+    def get_period_export_usage(self, property_id: str, service_type: str, period: str) -> float | None:
         """Get total export usage for specific time period (PEAK/OFFPEAK/SHOULDER)."""
         service_data = self.get_service_usage(property_id, service_type)
         if not service_data or "usage_data" not in service_data:
@@ -648,7 +651,7 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
         field_name = f"{period.lower()}_export_usage"
         return sum(entry.get(field_name, 0) for entry in usage_data)
 
-    def get_total_import_cost(self, property_id: str, service_type: str) -> Optional[float]:
+    def get_total_import_cost(self, property_id: str, service_type: str) -> float | None:
         """Get total import cost over period."""
         service_data = self.get_service_usage(property_id, service_type)
         if not service_data or "usage_data" not in service_data:
@@ -657,7 +660,7 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
         usage_data = service_data["usage_data"].get("usage_data", [])
         return sum(entry.get("import_cost", 0) for entry in usage_data)
 
-    def get_total_export_credit(self, property_id: str, service_type: str) -> Optional[float]:
+    def get_total_export_credit(self, property_id: str, service_type: str) -> float | None:
         """Get total export credit over period."""
         service_data = self.get_service_usage(property_id, service_type)
         if not service_data or "usage_data" not in service_data:
@@ -666,7 +669,7 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
         usage_data = service_data["usage_data"].get("usage_data", [])
         return sum(entry.get("export_credit", 0) for entry in usage_data)
 
-    def get_net_total_cost(self, property_id: str, service_type: str) -> Optional[float]:
+    def get_net_total_cost(self, property_id: str, service_type: str) -> float | None:
         """Get net total cost (import - export) over period."""
         import_cost = self.get_total_import_cost(property_id, service_type)
         export_credit = self.get_total_export_credit(property_id, service_type)
@@ -676,7 +679,7 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
         
         return import_cost - export_credit
 
-    def get_max_demand_data(self, property_id: str, service_type: str) -> Optional[Dict[str, Any]]:
+    def get_max_demand_data(self, property_id: str, service_type: str) -> dict[str, Any] | None:
         """Get maximum demand data (kW and timestamp)."""
         service_data = self.get_service_usage(property_id, service_type)
         if not service_data or "usage_data" not in service_data:
@@ -703,7 +706,7 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
             "max_demand_date": max_demand_date
         }
 
-    def get_total_carbon_emission(self, property_id: str, service_type: str) -> Optional[float]:
+    def get_total_carbon_emission(self, property_id: str, service_type: str) -> float | None:
         """Get total carbon emissions over period."""
         service_data = self.get_service_usage(property_id, service_type)
         if not service_data or "usage_data" not in service_data:
@@ -712,7 +715,7 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
         usage_data = service_data["usage_data"].get("usage_data", [])
         return sum(entry.get("carbon_emission_tonne", 0) for entry in usage_data)
 
-    def get_latest_import_cost(self, property_id: str, service_type: str) -> Optional[float]:
+    def get_latest_import_cost(self, property_id: str, service_type: str) -> float | None:
         """Get the most recent daily import cost."""
         service_data = self.get_service_usage(property_id, service_type)
         if not service_data or "usage_data" not in service_data:
@@ -724,7 +727,7 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
         
         return usage_data[-1].get("import_cost", 0.0)
 
-    def get_latest_export_credit(self, property_id: str, service_type: str) -> Optional[float]:
+    def get_latest_export_credit(self, property_id: str, service_type: str) -> float | None:
         """Get the most recent daily export credit."""
         service_data = self.get_service_usage(property_id, service_type)
         if not service_data or "usage_data" not in service_data:
