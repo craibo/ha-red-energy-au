@@ -80,6 +80,7 @@ SENSOR_TYPE_CHARGE_CLASS: Final = "charge_class"
 SENSOR_TYPE_STATUS: Final = "status"
 SENSOR_TYPE_ADDRESS: Final = "address"
 SENSOR_TYPE_PAYMENT_TYPE: Final = "payment_type"
+SENSOR_TYPE_RATE_PREFIX: Final = "rate"
 
 # Configuration options
 CONF_SCAN_INTERVAL: Final = "scan_interval"
