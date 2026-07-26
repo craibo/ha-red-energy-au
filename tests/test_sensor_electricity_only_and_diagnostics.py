@@ -22,6 +22,8 @@ GAS_SERVICE_METADATA = {
     "solar": False,
     "paymentTypeDescription": "DirectDebit Bank",
     "promotionDesc": "Qantas Red Saver, 2 QFF Points per $1",
+    "latitude": -33.799045,
+    "longitude": 151.212185,
 }
 
 ELECTRICITY_SERVICE_METADATA = {
@@ -164,6 +166,20 @@ def test_address_sensor_formats_full_address():
     sensor = RedEnergyAddressSensor(coordinator, config_entry, "7471493", SERVICE_TYPE_GAS)
 
     assert sensor.native_value == "27 Sunnyside Crescent, Castlecrag NSW 2068"
+
+
+def test_address_sensor_exposes_latitude_longitude_attributes():
+    """Lat/long must be exposed as entity attributes so the address can be plotted on a map."""
+    coordinator = _coordinator(GAS_SERVICE_METADATA, SERVICE_TYPE_GAS)
+    config_entry = MagicMock()
+    config_entry.entry_id = "entry1"
+
+    sensor = RedEnergyAddressSensor(coordinator, config_entry, "7471493", SERVICE_TYPE_GAS)
+
+    assert sensor.extra_state_attributes == {
+        "latitude": -33.799045,
+        "longitude": 151.212185,
+    }
 
 
 def test_payment_type_sensor_returns_description():
