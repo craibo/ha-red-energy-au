@@ -771,7 +771,7 @@ class RedEnergyRateSensor(RedEnergyBaseSensor):
             coordinator, config_entry, property_id, service_type, f"{SENSOR_TYPE_RATE_PREFIX}_{slug}"
         )
 
-        self._attr_name = self._rate_desc
+        self._attr_name = f"Rate {self._rate_desc}"
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
         self._attr_device_class = SensorDeviceClass.MONETARY
         self._attr_native_unit_of_measurement = "AUD"
