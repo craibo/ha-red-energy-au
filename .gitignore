@@ -29,7 +29,8 @@ env.bak/
 venv.bak/
 
 # IDEs
-.claude/
+.claude/*
+!.claude/skills/
 .vscode/
 .idea/
 *.swp
