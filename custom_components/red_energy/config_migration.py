@@ -31,7 +31,8 @@ CONFIG_VERSION_3 = 3  # Added performance optimizations and device management
 CONFIG_VERSION_4 = 4  # Auto-select all accounts and fix account ID matching
 CONFIG_VERSION_5 = 5  # Fixed device identifier mismatch (removed duplicate devices)
 CONFIG_VERSION_6 = 6  # Removed client_id from user config (now hardcoded)
-CURRENT_CONFIG_VERSION = CONFIG_VERSION_6
+CONFIG_VERSION_7 = 7  # Removed service-type selection (always monitor both)
+CURRENT_CONFIG_VERSION = CONFIG_VERSION_7
 
 
 class ConfigValidationError(Exception):
@@ -80,7 +81,11 @@ class RedEnergyConfigMigrator:
             # Migrate from version 5 to 6
             if current_version < CONFIG_VERSION_6:
                 migration_success &= await self._migrate_v5_to_v6(config_entry)
-            
+
+            # Migrate from version 6 to 7
+            if current_version < CONFIG_VERSION_7:
+                migration_success &= await self._migrate_v6_to_v7(config_entry)
+
             if migration_success:
                 # Update version in config entry
                 self.hass.config_entries.async_update_entry(
@@ -293,11 +298,39 @@ class RedEnergyConfigMigrator:
             )
             
             _LOGGER.info("Successfully migrated to v6, client_id is now hardcoded in the integration")
-            
+
             return True
-            
+
         except Exception as err:
             _LOGGER.error("Failed to migrate v5 to v6: %s", err, exc_info=True)
+            return False
+
+    async def _migrate_v6_to_v7(self, config_entry: ConfigEntry) -> bool:
+        """Migrate from version 6 to 7 - Always monitor both services.
+
+        Accounts are now selected individually and each only ever bills one
+        service, so the old service-type picker (electricity/gas checkboxes)
+        was removed. Entries created before this change may have "services"
+        set to a subset - upgrade them to both so accounts aren't silently
+        excluded with no UI left to fix it.
+        """
+        _LOGGER.info("Migrating config entry from v6 to v7 - Always monitoring both services")
+
+        try:
+            new_data = dict(config_entry.data)
+            new_data["services"] = [SERVICE_TYPE_ELECTRICITY, SERVICE_TYPE_GAS]
+
+            self.hass.config_entries.async_update_entry(
+                config_entry,
+                data=new_data
+            )
+
+            _LOGGER.info("Successfully migrated to v7, both services are now always monitored")
+
+            return True
+
+        except Exception as err:
+            _LOGGER.error("Failed to migrate v6 to v7: %s", err, exc_info=True)
             return False
 
 

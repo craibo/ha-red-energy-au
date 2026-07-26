@@ -2,13 +2,14 @@
 from __future__ import annotations
 
 import pytest
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from homeassistant import config_entries
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResult
 
 from custom_components.red_energy.const import (
+    DATA_SELECTED_ACCOUNTS,
     DOMAIN,
     ERROR_AUTH_FAILED,
     ERROR_CANNOT_CONNECT,
@@ -123,7 +124,7 @@ async def test_successful_single_account_flow():
     # Mock async_set_unique_id and _abort_if_unique_id_configured
     flow.async_set_unique_id = AsyncMock()
     flow._abort_if_unique_id_configured = AsyncMock()
-    flow.async_create_entry = AsyncMock(return_value={"type": "create_entry"})
+    flow.async_create_entry = MagicMock(return_value={"type": "create_entry"})
     
     mock_validation_result = {
         "customer_data": MOCK_CUSTOMER_DATA,
@@ -135,18 +136,11 @@ async def test_successful_single_account_flow():
         "custom_components.red_energy.config_flow.validate_input",
         return_value=mock_validation_result,
     ):
-        # Step 1: User input
+        # Accounts are auto-selected and both services are always requested
+        # (no separate service-selection step) - the config flow creates
+        # the entry directly after account discovery.
         result = await flow.async_step_user(MOCK_USER_INPUT)
-        
-        # Should go directly to service selection for single account
-        assert result["type"] == "form"
-        assert result["step_id"] == "service_select"
-        
-        # Step 2: Service selection
-        service_input = {"services": ["electricity"]}
-        result = await flow.async_step_service_select(service_input)
-        
-        # Should create entry
+
         flow.async_create_entry.assert_called_once()
 
 
@@ -162,7 +156,7 @@ async def test_successful_multi_account_flow():
     # Mock methods
     flow.async_set_unique_id = AsyncMock()
     flow._abort_if_unique_id_configured = AsyncMock()
-    flow.async_create_entry = AsyncMock(return_value={"type": "create_entry"})
+    flow.async_create_entry = MagicMock(return_value={"type": "create_entry"})
     
     # Add two properties to simulate multiple accounts
     mock_validation_result = {
@@ -175,12 +169,13 @@ async def test_successful_multi_account_flow():
         "custom_components.red_energy.config_flow.validate_input",
         return_value=mock_validation_result,
     ):
-        # Step 1: User input - should handle multiple accounts
+        # Both accounts are auto-selected and the entry is created directly
         result = await flow.async_step_user(MOCK_USER_INPUT)
-        
-        # Should either show account selection or proceed
+
         assert result is not None
-        assert "type" in result
+        flow.async_create_entry.assert_called_once()
+        _, kwargs = flow.async_create_entry.call_args
+        assert kwargs["data"][DATA_SELECTED_ACCOUNTS] == ["prop-001", "prop-002"]
 
 
 def test_validate_input_structure():
@@ -195,31 +190,39 @@ def test_validate_input_structure():
 
 
 @pytest.mark.asyncio
-async def test_service_select_schema_validation():
-    """Test that service selection works."""
+async def test_config_flow_always_requests_both_services():
+    """Both electricity and gas are always requested - no service picker.
+
+    Each account only ever bills one service (Red Energy splits electricity
+    and gas onto separate accounts), so a service-type toggle has nothing
+    left to do; per-account filtering in sensor.py determines what's
+    actually created.
+    """
     hass = AsyncMock(spec=HomeAssistant)
-    
+
     from custom_components.red_energy.config_flow import ConfigFlow
-    from custom_components.red_energy.const import SERVICE_TYPE_ELECTRICITY
-    
+    from custom_components.red_energy.const import SERVICE_TYPE_ELECTRICITY, SERVICE_TYPE_GAS
+
     flow = ConfigFlow()
     flow.hass = hass
-    
-    # Set up flow state to reach service selection
-    flow._customer_data = MOCK_CUSTOMER_DATA
-    flow._accounts = MOCK_PROPERTIES
-    flow._selected_account = MOCK_PROPERTIES[0]
-    flow.async_create_entry = AsyncMock(return_value={"type": "create_entry"})
     flow.async_set_unique_id = AsyncMock()
     flow._abort_if_unique_id_configured = AsyncMock()
-    
-    # Test valid service selection
-    try:
-        result = await flow.async_step_service_select({"services": [SERVICE_TYPE_ELECTRICITY]})
-        assert result is not None
-    except Exception:
-        # Some config flows may need additional setup, that's OK for this test
-        pass
+    flow.async_create_entry = MagicMock(return_value={"type": "create_entry"})
+
+    mock_validation_result = {
+        "customer_data": MOCK_CUSTOMER_DATA,
+        "accounts": [MOCK_PROPERTIES[0]],
+        "title": "Test User"
+    }
+
+    with patch(
+        "custom_components.red_energy.config_flow.validate_input",
+        return_value=mock_validation_result,
+    ):
+        await flow.async_step_user(MOCK_USER_INPUT)
+
+    _, kwargs = flow.async_create_entry.call_args
+    assert set(kwargs["data"]["services"]) == {SERVICE_TYPE_ELECTRICITY, SERVICE_TYPE_GAS}
 
 
 def test_domain_constant():
