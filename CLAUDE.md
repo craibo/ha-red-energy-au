@@ -12,6 +12,15 @@ Always work on a feature/fix branch — never commit directly to `main`. Create 
 
 When starting a new branch, bump the `version` field in `custom_components/red_energy/manifest.json` as the first commit, following semantic versioning (MAJOR.MINOR.PATCH): PATCH for bug fixes, MINOR for new features, MAJOR for breaking changes.
 
+## Account Numbers and Real Data
+
+The user's real Red Energy account numbers, consumer numbers, and customer numbers (obtained during live debugging sessions, e.g. from a SQLite dump or live API response) must never be referenced or used outside the local conversation. This means:
+
+- Never commit real account/consumer/customer numbers in code, tests, commit messages, or PR descriptions/comments — use clearly-fake placeholder values instead (e.g. `1000001`, `2000002`).
+- Never write real account numbers into any file that gets committed to git, including scratch/audit files — if such a file is genuinely needed, keep it untracked (gitignored) and local-only.
+- This applies retroactively too: if a real number is found in already-tracked test fixtures or docs, replace it with a placeholder rather than leaving it as precedent for future work.
+- Account numbers aren't login credentials, but they're still real customer data belonging to the user (or whoever's account is being debugged) and shouldn't leak into a public repository's history going forward.
+
 ## Commands
 
 ```bash
