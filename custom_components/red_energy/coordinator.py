@@ -578,6 +578,14 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
         
         return service_metadata
 
+    def get_service_rates(self, property_id: str, service_type: str) -> List[Dict[str, Any]]:
+        """Get the validated tariff rates list for a property and service."""
+        metadata = self.get_service_metadata(property_id, service_type)
+        if not metadata:
+            return []
+
+        return metadata.get("rates", [])
+
     def get_latest_import_usage(self, property_id: str, service_type: str) -> Optional[float]:
         """Get the most recent daily import usage."""
         service_data = self.get_service_usage(property_id, service_type)

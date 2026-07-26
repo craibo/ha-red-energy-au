@@ -266,7 +266,54 @@ def validate_single_service(data: Dict[str, Any]) -> Dict[str, Any]:
     if isinstance(current_plan, dict) and current_plan.get("promotionDesc"):
         validated_service["promotionDesc"] = current_plan["promotionDesc"]
 
+    validated_service["rates"] = validate_rates(
+        current_plan.get("rates") if isinstance(current_plan, dict) else None
+    )
+
     return validated_service
+
+
+def validate_rates(data: Any) -> List[Dict[str, Any]]:
+    """Validate a currentPlan.rates list.
+
+    rateCode is not unique per service - tiered/step rates (e.g. gas Anytime
+    Step1..Step5) repeat the same rateCode and are only distinguished by
+    rateDesc, so both fields are required and preserved as-is.
+    """
+    if not isinstance(data, list):
+        return []
+
+    validated_rates = []
+
+    for rate in data:
+        if not isinstance(rate, dict):
+            continue
+
+        rate_code = rate.get("rateCode")
+        rate_desc = rate.get("rateDesc")
+        if not rate_code or not rate_desc:
+            _LOGGER.warning("Skipping rate entry missing rateCode/rateDesc: %s", rate)
+            continue
+
+        try:
+            rate_incl_gst_cents = float(rate.get("rateInclGstCents", 0))
+        except (ValueError, TypeError) as err:
+            _LOGGER.warning("Skipping rate %s with invalid rateInclGstCents: %s", rate_code, err)
+            continue
+
+        validated_rates.append({
+            "rate_code": str(rate_code),
+            "rate_desc": str(rate_desc),
+            "rate_incl_gst_dollars": round(rate_incl_gst_cents / 100, 5),
+            "type": rate.get("type"),
+            "rate_excl_gst_cents": rate.get("rateExclGstCents"),
+            "discounted_rate_excl_gst_in_cents": rate.get("discountedRateExclGstInCents"),
+            "discounted_rate_incl_gst_in_cents": rate.get("discountedRateInclGstInCents"),
+            "unit": rate.get("unit"),
+            "unit_step_desc": rate.get("unitStepDesc"),
+        })
+
+    return validated_rates
 
 
 def validate_usage_data(data: Dict[str, Any]) -> Dict[str, Any]:
