@@ -74,15 +74,22 @@ async def async_setup_entry(
     # have rather than creating permanently-unavailable entities for it.
     for account_id in selected_accounts:
         for service_type in services:
-            if coordinator.get_service_metadata(account_id, service_type) is None:
+            service_metadata = coordinator.get_service_metadata(account_id, service_type)
+            if service_metadata is None:
                 _LOGGER.debug(
                     "Account %s has no %s service - skipping entity creation",
                     account_id, service_type
                 )
                 continue
 
+            # BASIC/manual-read meters never produce interval usage data (Red
+            # Energy's API 400s on every request for them), so usage-dependent
+            # sensors are created disabled by default rather than sitting
+            # enabled and permanently "Unknown".
+            is_basic_meter = service_metadata.get("meterType") == "BASIC"
+
             # Core sensors (always created)
-            entities.extend([
+            service_entities = [
                 RedEnergyCostSensor(coordinator, config_entry, account_id, service_type),
                 RedEnergyNmiSensor(coordinator, config_entry, account_id, service_type),
                 RedEnergyMeterTypeSensor(coordinator, config_entry, account_id, service_type),
@@ -109,11 +116,11 @@ async def async_setup_entry(
                 # Total cost/credit breakdown
                 RedEnergyTotalImportCostSensor(coordinator, config_entry, account_id, service_type),
                 RedEnergyTotalExportCreditSensor(coordinator, config_entry, account_id, service_type),
-            ])
-            
+            ]
+
             # Advanced sensors (optional)
             if advanced_sensors_enabled:
-                entities.extend([
+                service_entities.extend([
                     # Existing advanced sensors
                     RedEnergyDailyAverageSensor(coordinator, config_entry, account_id, service_type),
                     RedEnergyMonthlyAverageSensor(coordinator, config_entry, account_id, service_type),
@@ -132,6 +139,13 @@ async def async_setup_entry(
                     RedEnergyMaxDemandTimeSensor(coordinator, config_entry, account_id, service_type),
                     RedEnergyCarbonEmissionSensor(coordinator, config_entry, account_id, service_type),
                 ])
+
+            if is_basic_meter:
+                for entity in service_entities:
+                    if entity._requires_usage_data:
+                        entity._attr_entity_registry_enabled_default = False
+
+            entities.extend(service_entities)
     
     _LOGGER.debug(
         "Created %d sensors for Red Energy integration",
@@ -172,6 +186,13 @@ async def async_setup_entry(
 
 class RedEnergyBaseSensor(CoordinatorEntity, SensorEntity):
     """Base class for Red Energy sensors."""
+
+    # Whether this sensor needs interval usage data to report a value.
+    # BASIC/manual-read meters never have interval usage, so these sensors
+    # are disabled by default for such accounts (see async_setup_entry).
+    # Metadata-only sensors (NMI, balance, status, etc.) override this to
+    # False since they work regardless of meter type.
+    _requires_usage_data: bool = True
 
     def __init__(
         self,
@@ -511,6 +532,8 @@ class RedEnergyEfficiencySensor(RedEnergyBaseSensor):
 class RedEnergyNmiSensor(RedEnergyBaseSensor):
     """Red Energy NMI sensor."""
 
+    _requires_usage_data = False
+
     def __init__(
         self,
         coordinator: RedEnergyDataCoordinator,
@@ -537,6 +560,8 @@ class RedEnergyNmiSensor(RedEnergyBaseSensor):
 class RedEnergyMeterTypeSensor(RedEnergyBaseSensor):
     """Red Energy meter type sensor."""
 
+    _requires_usage_data = False
+
     def __init__(
         self,
         coordinator: RedEnergyDataCoordinator,
@@ -562,6 +587,8 @@ class RedEnergyMeterTypeSensor(RedEnergyBaseSensor):
 
 class RedEnergySolarSensor(RedEnergyBaseSensor):
     """Red Energy solar capability sensor."""
+
+    _requires_usage_data = False
 
     def __init__(
         self,
@@ -590,6 +617,8 @@ class RedEnergySolarSensor(RedEnergyBaseSensor):
 class RedEnergyProductNameSensor(RedEnergyBaseSensor):
     """Red Energy energy plan sensor."""
 
+    _requires_usage_data = False
+
     def __init__(
         self,
         coordinator: RedEnergyDataCoordinator,
@@ -616,6 +645,8 @@ class RedEnergyProductNameSensor(RedEnergyBaseSensor):
 class RedEnergyDistributorSensor(RedEnergyBaseSensor):
     """Red Energy distributor/lines company sensor."""
 
+    _requires_usage_data = False
+
     def __init__(
         self,
         coordinator: RedEnergyDataCoordinator,
@@ -641,6 +672,8 @@ class RedEnergyDistributorSensor(RedEnergyBaseSensor):
 
 class RedEnergyBalanceSensor(RedEnergyBaseSensor):
     """Red Energy account balance sensor."""
+
+    _requires_usage_data = False
 
     def __init__(
         self,
@@ -670,6 +703,8 @@ class RedEnergyBalanceSensor(RedEnergyBaseSensor):
 class RedEnergyArrearsSensor(RedEnergyBaseSensor):
     """Red Energy arrears sensor."""
 
+    _requires_usage_data = False
+
     def __init__(
         self,
         coordinator: RedEnergyDataCoordinator,
@@ -697,6 +732,8 @@ class RedEnergyArrearsSensor(RedEnergyBaseSensor):
 
 class RedEnergyLastBillDateSensor(RedEnergyBaseSensor):
     """Red Energy last bill date sensor."""
+
+    _requires_usage_data = False
 
     def __init__(
         self,
@@ -733,6 +770,8 @@ class RedEnergyLastBillDateSensor(RedEnergyBaseSensor):
 class RedEnergyNextBillDateSensor(RedEnergyBaseSensor):
     """Red Energy next bill date sensor."""
 
+    _requires_usage_data = False
+
     def __init__(
         self,
         coordinator: RedEnergyDataCoordinator,
@@ -768,6 +807,8 @@ class RedEnergyNextBillDateSensor(RedEnergyBaseSensor):
 class RedEnergyBillingFrequencySensor(RedEnergyBaseSensor):
     """Red Energy billing frequency sensor."""
 
+    _requires_usage_data = False
+
     def __init__(
         self,
         coordinator: RedEnergyDataCoordinator,
@@ -797,6 +838,8 @@ class RedEnergyBillingFrequencySensor(RedEnergyBaseSensor):
 class RedEnergyJurisdictionSensor(RedEnergyBaseSensor):
     """Red Energy jurisdiction sensor."""
 
+    _requires_usage_data = False
+
     def __init__(
         self,
         coordinator: RedEnergyDataCoordinator,
@@ -822,6 +865,8 @@ class RedEnergyJurisdictionSensor(RedEnergyBaseSensor):
 
 class RedEnergyChargeClassSensor(RedEnergyBaseSensor):
     """Red Energy charge class sensor (Energy Plan Type)."""
+
+    _requires_usage_data = False
 
     def __init__(
         self,
@@ -854,6 +899,8 @@ class RedEnergyChargeClassSensor(RedEnergyBaseSensor):
 
 class RedEnergyStatusSensor(RedEnergyBaseSensor):
     """Red Energy consumer status sensor."""
+
+    _requires_usage_data = False
 
     def __init__(
         self,
