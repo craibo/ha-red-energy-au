@@ -256,7 +256,16 @@ def validate_single_service(data: Dict[str, Any]) -> Dict[str, Any]:
     for field in metadata_fields:
         if field in data:
             validated_service[field] = data[field]
-    
+
+    # Nested fields not covered by the flat allowlist above
+    payment_type_detail = data.get("paymentTypeDetail")
+    if isinstance(payment_type_detail, dict) and payment_type_detail.get("paymentTypeDescription"):
+        validated_service["paymentTypeDescription"] = payment_type_detail["paymentTypeDescription"]
+
+    current_plan = data.get("currentPlan")
+    if isinstance(current_plan, dict) and current_plan.get("promotionDesc"):
+        validated_service["promotionDesc"] = current_plan["promotionDesc"]
+
     return validated_service
 
 
