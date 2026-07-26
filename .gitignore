@@ -74,3 +74,6 @@ coverage.xml
 # Temporary files
 *.tmp
 *.temp
+
+# Local-only notes containing sensitive data - never commit
+ACCOUNT_NUMBER_AUDIT.md
