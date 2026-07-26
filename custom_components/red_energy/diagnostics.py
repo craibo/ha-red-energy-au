@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict
+from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -15,7 +15,7 @@ _LOGGER = logging.getLogger(__name__)
 
 async def async_get_config_entry_diagnostics(
     hass: HomeAssistant, entry: ConfigEntry
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Return diagnostics for a config entry."""
     entry_data = hass.data[DOMAIN][entry.entry_id]
     coordinator: RedEnergyDataCoordinator = entry_data["coordinator"]
@@ -94,7 +94,7 @@ async def async_get_config_entry_diagnostics(
     return diagnostics
 
 
-def _sanitize_customer_data(customer_data: Dict[str, Any]) -> Dict[str, Any]:
+def _sanitize_customer_data(customer_data: dict[str, Any]) -> dict[str, Any]:
     """Sanitize customer data for diagnostics."""
     if not customer_data:
         return {}
@@ -115,7 +115,7 @@ def _sanitize_customer_data(customer_data: Dict[str, Any]) -> Dict[str, Any]:
 
 async def async_get_device_diagnostics(
     hass: HomeAssistant, entry: ConfigEntry, device
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Return diagnostics for a device entry."""
     # For Red Energy, devices are properties
     # We can provide property-specific diagnostics here

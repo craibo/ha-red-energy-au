@@ -1,7 +1,7 @@
 """Tests for API 400 error handling."""
 import logging
 import pytest
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from datetime import datetime
 from aiohttp import ClientResponseError
 from custom_components.red_energy.api import RedEnergyAPI, RedEnergyAPIError
@@ -10,7 +10,7 @@ from custom_components.red_energy.api import RedEnergyAPI, RedEnergyAPIError
 @pytest.fixture
 def api_client():
     """Create API client for testing."""
-    session = AsyncMock()
+    session = MagicMock()
     return RedEnergyAPI(session)
 
 
@@ -122,30 +122,48 @@ async def test_get_usage_data_400_error_with_missing_fields(api_client):
 async def test_get_usage_data_other_http_errors_still_raise(api_client):
     """Test that non-400 HTTP errors still raise exceptions."""
     # Mock the session and response
-    mock_response = AsyncMock()
+    mock_response = MagicMock()
     mock_response.status = 500
     mock_response.url = "https://api.example.com/usage/interval?consumerNumber=123&fromDate=2024-01-01&toDate=2024-01-02"
-    
+    mock_response.raise_for_status = MagicMock(
+        side_effect=ClientResponseError(
+            request_info=MagicMock(), history=(), status=500
+        )
+    )
+
     # Mock the session context manager
     async def mock_context_manager(*args, **kwargs):
         return mock_response
-    
+
     api_client._session.get.return_value.__aenter__ = mock_context_manager
     api_client._session.get.return_value.__aexit__ = AsyncMock(return_value=None)
     api_client._access_token = "test_token"
-    
+
     # Call the method and expect it to raise
     with pytest.raises(ClientResponseError):
-        await api_client.get_usage_data("123", "2024-01-01", "2024-01-02")
+        await api_client.get_usage_data("123", datetime(2024, 1, 1), datetime(2024, 1, 2))
 
 
 @pytest.mark.asyncio
 async def test_get_usage_data_success_response(api_client):
     """Test successful API response is processed normally."""
     # Mock the session and response
-    mock_response = AsyncMock()
+    mock_response = MagicMock()
     mock_response.status = 200
-    mock_response.json = AsyncMock(return_value=[{"date": "2024-01-01", "usage": 10.5}])
+    mock_response.raise_for_status = MagicMock()
+    mock_response.json = AsyncMock(return_value=[{
+        "usageDate": "2024-01-01",
+        "halfHours": [
+            {
+                "intervalStart": "2024-01-01T00:00:00+10:00",
+                "primaryConsumptionTariffComponent": "OFFPEAK",
+                "consumptionKwh": 10.5,
+                "generationKwh": 0.0,
+                "consumptionDollar": 2.5,
+                "generationDollar": 0.0,
+            }
+        ],
+    }])
     
     # Mock the session context manager
     async def mock_context_manager(*args, **kwargs):
@@ -191,8 +209,8 @@ async def test_get_usage_data_logging_on_400_error(api_client, caplog):
     api_client._access_token = "test_token"
     
     # Call the method
-    await api_client.get_usage_data("123", "2024-01-01", "2024-01-02")
-    
+    await api_client.get_usage_data("123", datetime(2024, 1, 1), datetime(2024, 1, 2))
+
     # Verify error logging
     assert "400 Bad Request for usage data" in caplog.text
     assert "Consumer: 123" in caplog.text

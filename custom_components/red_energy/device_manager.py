@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Optional, Set
+from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -26,10 +26,10 @@ class RedEnergyDeviceManager:
 
     async def async_setup_devices(
         self, 
-        coordinator_data: Dict[str, Any], 
-        selected_accounts: List[str],
-        services: List[str]
-    ) -> Dict[str, DeviceEntry]:
+        coordinator_data: dict[str, Any], 
+        selected_accounts: list[str],
+        services: list[str]
+    ) -> dict[str, DeviceEntry]:
         """Set up devices for all properties with enhanced organization."""
         devices = {}
         
@@ -52,9 +52,9 @@ class RedEnergyDeviceManager:
     async def _create_property_device(
         self,
         account_id: str,
-        property_info: Dict[str, Any],
-        services: List[str]
-    ) -> Optional[DeviceEntry]:
+        property_info: dict[str, Any],
+        services: list[str]
+    ) -> DeviceEntry | None:
         """Create or update a device for a property."""
         # Red Energy can split a single address across multiple accounts
         # (e.g. electricity and gas billed separately), so the account's own
@@ -104,7 +104,7 @@ class RedEnergyDeviceManager:
         
         return device
 
-    def _get_device_model(self, services: List[str]) -> str:
+    def _get_device_model(self, services: list[str]) -> str:
         """Generate device model based on enabled services."""
         service_names = []
         if SERVICE_TYPE_ELECTRICITY in services:
@@ -129,8 +129,8 @@ class RedEnergyDeviceManager:
     async def _update_device_attributes(
         self, 
         device: DeviceEntry, 
-        property_info: Dict[str, Any],
-        services: List[str]
+        property_info: dict[str, Any],
+        services: list[str]
     ) -> None:
         """Update device attributes with current information."""
         # This method can be enhanced to update device-specific attributes
@@ -165,7 +165,7 @@ class RedEnergyDeviceManager:
         self, 
         account_id: str, 
         device: DeviceEntry
-    ) -> Dict[str, List[str]]:
+    ) -> dict[str, list[str]]:
         """Organize entities by service type for better UI grouping."""
         entities = er.async_entries_for_device(
             self._entity_registry, device.id
@@ -194,7 +194,7 @@ class RedEnergyDeviceManager:
         
         return service_groups
 
-    async def async_get_device_diagnostics(self, device: DeviceEntry) -> Dict[str, Any]:
+    async def async_get_device_diagnostics(self, device: DeviceEntry) -> dict[str, Any]:
         """Get comprehensive diagnostics for a device."""
         entities = er.async_entries_for_device(
             self._entity_registry, device.id
@@ -242,7 +242,7 @@ class RedEnergyDeviceManager:
     async def async_update_device_configuration(
         self, 
         device: DeviceEntry,
-        new_services: List[str]
+        new_services: list[str]
     ) -> bool:
         """Update device configuration when services change."""
         try:
@@ -296,7 +296,7 @@ class RedEnergyDeviceManager:
             _LOGGER.error("Failed to migrate device identifiers: %s", err)
             return False
 
-    async def async_get_performance_metrics(self) -> Dict[str, Any]:
+    async def async_get_performance_metrics(self) -> dict[str, Any]:
         """Get performance metrics for device management."""
         devices = dr.async_entries_for_config_entry(
             self._device_registry, self.config_entry.entry_id
