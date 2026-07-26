@@ -4,7 +4,7 @@
 [![hacs](https://img.shields.io/badge/HACS-Custom-41BDF5.svg?style=for-the-badge)](https://github.com/hacs/integration)
 [![Integration Usage](https://img.shields.io/badge/dynamic/json?color=41BDF5&style=for-the-badge&logo=home-assistant&label=usage&suffix=%20installs&cacheSeconds=15600&url=https://analytics.home-assistant.io/custom_integrations.json&query=$.red_energy.total)](https://analytics.home-assistant.io/)
 
-A comprehensive Home Assistant custom integration for Red Energy (Australian energy provider) that provides real-time energy monitoring, advanced analytics, and automation capabilities.
+A comprehensive Home Assistant custom integration for Red Energy (Australian energy provider) that provides real-time energy monitoring and advanced analytics.
 
 ---
 
@@ -21,7 +21,6 @@ A comprehensive Home Assistant custom integration for Red Energy (Australian ene
 - **Multi-Account Support**: Every account on your Red Energy login gets its own device - including split accounts where electricity and gas are billed separately at the same address
 - **Advanced Analytics**: Daily/monthly averages, peak usage detection, and efficiency ratings
 - **Tariff Rate Visibility**: A diagnostic sensor per rate on your actual plan (peak/off-peak/shoulder/supply/demand)
-- **Automation Ready**: 11 pre-built automation examples with voice assistant integration
 - **Energy Dashboard Integration**: Native Home Assistant Energy dashboard support
 
 ## What You Get
@@ -48,13 +47,6 @@ A comprehensive Home Assistant custom integration for Red Energy (Australian ene
 - Credential updates
 - Data export (JSON/CSV formats)
 
-### Performance Features (Stage 5)
-- Enhanced device management and organization
-- Automatic error recovery with circuit breakers
-- Entity state restoration across restarts
-- Memory optimization for large datasets
-- Bulk processing for multiple properties
-
 ## Setup
 
 ⚠️ **Important**: Authentication and token renewal will **not** work if you are connected to a VPN. Ensure your VPN is disabled for the domains `redenergy.okta.com` and `login.redenergy.com.au`
@@ -74,8 +66,6 @@ A comprehensive Home Assistant custom integration for Red Energy (Australian ene
 - **Accounts to Monitor**: Choose which accounts/devices are active, labeled `{account_id} - {Electricity|Gas}`
 - **Polling Intervals**: 15min, 30min (default), 1hour, 2hours, 4hours
 - **Advanced Sensors**: Enable detailed usage analytics
-- **Performance Monitoring**: Track operation timing and efficiency
-- **Memory Optimization**: Reduce resource usage for large setups
 
 **Note**: Red Energy updates usage data once daily around 3am AEST. Polling intervals control how often the integration checks for updates, but usage data will only change once per day after Red Energy's daily refresh.
 
@@ -95,22 +85,17 @@ A comprehensive Home Assistant custom integration for Red Energy (Australian ene
 
 ### For Energy Enthusiasts
 - Deep analytics with statistical calculations
-- Advanced automation capabilities
-- Voice assistant integration
 - Comprehensive energy dashboard integration
-
 
 ## Documentation
 
 Complete documentation includes:
-- 11 automation examples with YAML code (AUTOMATION_EXAMPLES.md)
 - Troubleshooting and debug information in README
-- Performance optimization recommendations
 - Developer references for API structure and OAuth2 authentication
 
 ## Support
 
-- Detailed installation and automation documentation
+- Detailed installation documentation
 - GitHub Issues for bug reports and feature requests
 - Active development with regular updates
 - Community-driven with responsive support

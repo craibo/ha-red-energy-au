@@ -6,7 +6,7 @@
 [![hacs][hacsbadge]][hacs]
 [![Integration Usage](https://img.shields.io/badge/dynamic/json?color=41BDF5&style=for-the-badge&logo=home-assistant&label=usage&suffix=%20installs&cacheSeconds=15600&url=https://analytics.home-assistant.io/custom_integrations.json&query=$.red_energy.total)](https://analytics.home-assistant.io/)
 
-A comprehensive Home Assistant custom integration for Red Energy (Australian energy provider) that provides real-time energy monitoring, advanced analytics, and automation capabilities.
+A comprehensive Home Assistant custom integration for Red Energy (Australian energy provider) that provides real-time energy monitoring and advanced analytics.
 
 ---
 
@@ -26,30 +26,17 @@ A comprehensive Home Assistant custom integration for Red Energy (Australian ene
 - **Dual Service Support**: Electricity and gas monitored automatically, with electricity-only sensors (solar, export, time-of-use, demand, emissions) correctly omitted from gas accounts
 - **Tariff Rate Visibility**: A diagnostic sensor per contracted rate on your actual plan (peak/off-peak/shoulder/supply/demand/tiered steps)
 
-### 📊 **Advanced Analytics** (Stage 4+)
+### 📊 **Advanced Analytics** (Optional)
 - **Daily & Monthly Averages**: Statistical analysis of usage patterns
 - **Peak Usage Detection**: Identify highest consumption periods with date attribution
 - **Efficiency Ratings**: 0-100% efficiency scoring based on usage consistency
 - **Usage Pattern Analysis**: Coefficient of variation calculations for optimization
-
-### ⚡ **Performance & Reliability** (Stage 5+)
-- **Enhanced Device Management**: Improved entity organization and diagnostics
-- **State Restoration**: Persistent entity states across Home Assistant restarts
-- **Error Recovery**: Automatic recovery from network issues and API failures
-- **Memory Optimization**: Efficient processing for large datasets
-- **Bulk Processing**: Optimized updates for multiple properties
 
 ### 🔧 **Configuration & Management**
 - **UI-First Setup**: Complete configuration through Home Assistant UI
 - **Flexible Polling**: Configurable update intervals (15min to 4hours)
 - **Service Calls**: Manual refresh, credential updates, and data export
 - **Energy Dashboard Integration**: Native Home Assistant Energy dashboard support
-- **Health Monitoring**: Comprehensive diagnostics and performance metrics
-
-### 🤖 **Automation Ready**
-- **11 Pre-built Automations**: Cost alerts, usage optimization, efficiency monitoring
-- **Voice Assistant Integration**: Alexa/Google Assistant support
-- **Smart Home Integration**: Advanced automation examples included
 
 ## Quick Start
 
@@ -221,107 +208,15 @@ The integration automatically provides sensors compatible with Home Assistant's 
 3. Select your Red Energy sensors from the list
 4. Configure cost tracking using the cost sensors
 
-## Automation Examples
-
-The integration includes 11 comprehensive automation examples in `AUTOMATION_EXAMPLES.md`:
-
-- High daily cost alerts
-- Peak usage detection
-- Efficiency monitoring
-- Time-of-use optimization
-- Weekly energy reports
-- Voice assistant integration
-
-## Performance
-
-### Stage 5 Performance Improvements
-- **50% faster** entity restoration on startup
-- **30% faster** data processing with bulk operations
-- **40% reduction** in memory usage through optimization
-- **90%+ success rate** for automatic error recovery
-
-### Memory Optimization
-- Intelligent data compression for historical data
-- Automatic cleanup of old state history
-- Efficient caching with hit/miss tracking
-- Bulk processing for multiple properties
-
-## Configuration Options
-
-### Basic Options
-- **Polling Interval**: 15min, 30min (default), 1hour, 2hours, 4hours
-- **Advanced Sensors**: Enable additional calculated sensors
-- **Accounts to Monitor**: Choose which accounts/devices to monitor - labeled `{account_id} - {Electricity|Gas}`. Newly-added accounts (e.g. a gas connection added after initial setup) appear here once you reopen the options screen.
-
-**Note**: Red Energy updates usage data once daily around 3am AEST. Polling intervals control how often the integration checks for updates, but usage data will only change once per day after Red Energy's daily refresh.
-
-### Advanced Options (Stage 5+)
-- **Performance Monitoring**: Track operation timing and efficiency
-- **Memory Optimization**: Enable memory usage optimization
-- **Bulk Processing**: Use bulk operations for multiple properties
-- **State Restoration**: Maintain entity states across restarts
-
 ## Troubleshooting
-
-### Common Issues
-
-**Sensors showing "unavailable"**
-- Check your internet connection
-- Verify Red Energy credentials are still valid
-- Check the integration logs for specific errors
 
 **Authentication failures**
 - Verify username/password are correct
 - Check for account lockouts on Red Energy website
 - Ensure VPN is disabled during authentication
 
-**Performance issues**
-- Reduce polling frequency for large setups
-- Enable memory optimization in advanced options
-- Use bulk processing for multiple properties
-
-**Advanced sensors not appearing**
-- Enable "Advanced Sensors" in integration options
-- Wait for at least one data refresh cycle
-- Efficiency sensors need 7+ days of data
-
-**Some sensors missing on a gas device**
-- Expected: solar, export usage/credit, time-of-use breakdown, max demand, and carbon emission have no equivalent for gas and are not created on gas accounts
-
 **Usage sensors disabled and showing "Unknown" on a device**
 - If the account has a BASIC (manual-read) meter, Red Energy's API has no interval usage data for it - usage-dependent sensors are created disabled by default rather than sitting enabled with no value. Metadata sensors (NMI, balance, bill dates, etc.) still work normally
-
-**Gas account or newly-added account missing entirely**
-- Open the integration's options and check "Accounts to Monitor" - a new account (e.g. a gas connection added after initial setup) needs to be selected there once it appears in the list
-
-### Debug Logging
-
-Add to your `configuration.yaml`:
-
-```yaml
-logger:
-  logs:
-    custom_components.red_energy: debug
-```
-
-### Diagnostics
-
-The integration provides comprehensive diagnostics:
-1. Go to **Settings** → **Devices & Services** → **Red Energy**
-2. Select your Red Energy device
-3. Click **Download Diagnostics**
-
-## Development Status
-
-✅ **Stage 1**: Foundation & Core Structure  
-✅ **Stage 2**: Authentication & Configuration Flow  
-✅ **Stage 3**: Core API Integration  
-✅ **Stage 4**: Advanced Features & Enhancements  
-✅ **Stage 5**: Enhanced Device Management & Performance Optimizations  
-
-**Current Status**: Production Ready  
-**Test Coverage**: 180+ comprehensive tests  
-**Compatibility**: Home Assistant 2024.1+
 
 ## Contributing
 
@@ -347,21 +242,7 @@ pytest tests/ -v
 ## Support
 
 - **Issues**: Report bugs or feature requests via [GitHub Issues](https://github.com/craibo/ha-red-energy-au/issues)
-- **Automation Examples**: Comprehensive examples in [AUTOMATION_EXAMPLES.md](AUTOMATION_EXAMPLES.md)
 - **Developer Reference**: See [CLAUDE.md](CLAUDE.md) for API structure and authentication documentation
-
-## Architecture
-
-The integration uses a modular architecture with the following key components:
-
-- **OAuth2 PKCE Authentication**: Secure authentication with Okta-based token management
-- **Data Coordinator**: Manages API polling and data updates
-- **Device Manager**: Enhanced device registry and entity organization
-- **Performance Monitor**: Operation timing and memory optimization
-- **State Manager**: Entity state restoration and availability management
-- **Error Recovery**: Comprehensive error handling with circuit breakers
-- **Config Migration**: Automatic configuration version management
-
 
 ## Real-World Usage
 
@@ -379,8 +260,6 @@ The integration uses a modular architecture with the following key components:
 
 ### For Energy Enthusiasts
 - Deep analytics with coefficient of variation calculations
-- Advanced automation with 11+ pre-built examples
-- Voice assistant integration for usage queries
 - Energy dashboard integration for comprehensive monitoring
 
 ## License
