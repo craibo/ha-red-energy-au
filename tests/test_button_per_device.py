@@ -24,7 +24,7 @@ async def test_one_button_created_per_selected_account():
         DOMAIN: {
             "entry1": {
                 "coordinator": coordinator,
-                "selected_accounts": ["8490263", "7471493"],
+                "selected_accounts": ["1000001", "2000002"],
             }
         }
     }
@@ -38,7 +38,7 @@ async def test_one_button_created_per_selected_account():
     device_ids = {
         next(iter(e._attr_device_info["identifiers"]))[1] for e in added_entities
     }
-    assert device_ids == {"8490263", "7471493"}
+    assert device_ids == {"1000001", "2000002"}
 
 
 @pytest.mark.asyncio
@@ -48,8 +48,8 @@ async def test_button_unique_ids_do_not_collide_across_devices():
     config_entry = MagicMock()
     config_entry.entry_id = "entry1"
 
-    button_a = RedEnergyRefreshMetadataButton(coordinator, config_entry, "8490263")
-    button_b = RedEnergyRefreshMetadataButton(coordinator, config_entry, "7471493")
+    button_a = RedEnergyRefreshMetadataButton(coordinator, config_entry, "1000001")
+    button_b = RedEnergyRefreshMetadataButton(coordinator, config_entry, "2000002")
 
     assert button_a.unique_id != button_b.unique_id
 
@@ -62,7 +62,7 @@ async def test_button_press_triggers_entry_wide_refresh():
     config_entry = MagicMock()
     config_entry.entry_id = "entry1"
 
-    button = RedEnergyRefreshMetadataButton(coordinator, config_entry, "7471493")
+    button = RedEnergyRefreshMetadataButton(coordinator, config_entry, "2000002")
     await button.async_press()
 
     coordinator.async_refresh_metadata_and_usage.assert_awaited_once()

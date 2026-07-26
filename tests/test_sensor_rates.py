@@ -80,7 +80,7 @@ GAS_SERVICE_METADATA = {
 }
 
 
-def _coordinator(service_metadata, service_type, property_id="7471493"):
+def _coordinator(service_metadata, service_type, property_id="2000002"):
     coordinator = MagicMock()
     coordinator.data = {
         "usage_data": {
@@ -129,7 +129,7 @@ async def test_one_rate_sensor_created_per_rate_entry():
         DOMAIN: {
             "entry1": {
                 "coordinator": coordinator,
-                "selected_accounts": ["7471493"],
+                "selected_accounts": ["2000002"],
                 "services": [SERVICE_TYPE_ELECTRICITY],
             }
         }
@@ -159,7 +159,7 @@ async def test_duplicate_rate_code_tiered_gas_rates_produce_distinct_entities():
         DOMAIN: {
             "entry1": {
                 "coordinator": coordinator,
-                "selected_accounts": ["7471493"],
+                "selected_accounts": ["2000002"],
                 "services": [SERVICE_TYPE_GAS],
             }
         }
@@ -184,7 +184,7 @@ def test_rate_sensor_native_value_and_attributes():
     config_entry.entry_id = "entry1"
 
     sensor = RedEnergyRateSensor(
-        coordinator, config_entry, "7471493", SERVICE_TYPE_ELECTRICITY, ELECTRICITY_RATES[0]
+        coordinator, config_entry, "2000002", SERVICE_TYPE_ELECTRICITY, ELECTRICITY_RATES[0]
     )
 
     assert sensor.native_value == pytest.approx(0.27005)
@@ -205,7 +205,7 @@ def test_rate_sensor_handles_negative_solar_value():
     config_entry.entry_id = "entry1"
 
     sensor = RedEnergyRateSensor(
-        coordinator, config_entry, "7471493", SERVICE_TYPE_ELECTRICITY, ELECTRICITY_RATES[1]
+        coordinator, config_entry, "2000002", SERVICE_TYPE_ELECTRICITY, ELECTRICITY_RATES[1]
     )
 
     assert sensor.native_value == pytest.approx(-0.04)
@@ -218,7 +218,7 @@ def test_rate_sensor_returns_none_when_rate_no_longer_present():
     config_entry.entry_id = "entry1"
 
     sensor = RedEnergyRateSensor(
-        coordinator, config_entry, "7471493", SERVICE_TYPE_ELECTRICITY,
+        coordinator, config_entry, "2000002", SERVICE_TYPE_ELECTRICITY,
         {"rate_code": "gone", "rate_desc": "Gone Rate", "rate_incl_gst_dollars": 1.0},
     )
 

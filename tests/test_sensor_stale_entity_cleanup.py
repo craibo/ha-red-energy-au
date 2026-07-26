@@ -13,7 +13,7 @@ def _coordinator_for_single_account():
     coordinator = MagicMock()
     coordinator.data = {
         "usage_data": {
-            "8490263": {
+            "1000001": {
                 "property": {
                     "name": "27 Sunnyside Crescent, Castlecrag",
                     "services": [{"type": SERVICE_TYPE_ELECTRICITY, "consumer_number": "elec-1"}],
@@ -62,7 +62,7 @@ async def test_stale_entity_removed_when_no_longer_produced():
         DOMAIN: {
             "entry1": {
                 "coordinator": coordinator,
-                "selected_accounts": ["8490263"],
+                "selected_accounts": ["1000001"],
                 "services": [SERVICE_TYPE_ELECTRICITY],
             }
         }
@@ -70,7 +70,7 @@ async def test_stale_entity_removed_when_no_longer_produced():
 
     stale_entity = _registry_entry(
         "sensor.stale_gas_entity",
-        "red_energy_entry1_7471493_gas_total_cost",
+        "red_energy_entry1_2000002_gas_total_cost",
     )
 
     mock_registry = MagicMock()
@@ -103,7 +103,7 @@ async def test_current_entity_not_removed():
         DOMAIN: {
             "entry1": {
                 "coordinator": coordinator,
-                "selected_accounts": ["8490263"],
+                "selected_accounts": ["1000001"],
                 "services": [SERVICE_TYPE_ELECTRICITY],
             }
         }

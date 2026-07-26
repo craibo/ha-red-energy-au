@@ -217,11 +217,11 @@ async def test_get_usage_data_basic_meter_400_logs_at_debug_not_error(api_client
     """
     mock_response = AsyncMock()
     mock_response.status = 400
-    mock_response.url = "https://api.example.com/usage/interval?consumerNumber=4236257811&fromDate=2024-01-01&toDate=2024-01-02"
+    mock_response.url = "https://api.example.com/usage/interval?consumerNumber=4000004&fromDate=2024-01-01&toDate=2024-01-02"
 
     error_data = {
         "message": (
-            "customerNumber=5545090, consumerNumber=4236257811 has a BASIC "
+            "customerNumber=5000005, consumerNumber=4000004 has a BASIC "
             "meter or is for a Gas utility so does not have interval usages"
         ),
         "details": "No additional details",
@@ -236,7 +236,7 @@ async def test_get_usage_data_basic_meter_400_logs_at_debug_not_error(api_client
     api_client._access_token = "test_token"
 
     with caplog.at_level(logging.DEBUG, logger="custom_components.red_energy.api"):
-        result = await api_client.get_usage_data("4236257811", datetime(2024, 1, 1), datetime(2024, 1, 2))
+        result = await api_client.get_usage_data("4000004", datetime(2024, 1, 1), datetime(2024, 1, 2))
 
     assert result["error"] is True
 

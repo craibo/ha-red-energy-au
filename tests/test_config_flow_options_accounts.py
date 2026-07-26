@@ -10,7 +10,7 @@ from custom_components.red_energy.config_flow import RedEnergyOptionsFlowHandler
 MOCK_ENTRY_DATA = {
     "username": "test@example.com",
     "password": "testpass",
-    DATA_SELECTED_ACCOUNTS: ["8490263"],
+    DATA_SELECTED_ACCOUNTS: ["1000001"],
     "services": ["electricity"],
 }
 
@@ -35,8 +35,8 @@ def _raw_property(account_number, utility, consumer_number):
 
 
 MOCK_PROPERTIES_RESPONSE = [
-    _raw_property(8490263, "E", 4235478511),
-    _raw_property(7471493, "G", 4236257811),
+    _raw_property(1000001, "E", 3000003),
+    _raw_property(2000002, "G", 4000004),
 ]
 
 
@@ -71,11 +71,11 @@ async def test_options_init_form_lists_newly_discovered_account():
     assert result["type"] == "form"
     # The selector's option values should include the newly-discovered gas account
     schema_dict = result["data_schema"]({
-        "accounts": ["8490263", "7471493"],
+        "accounts": ["1000001", "2000002"],
         "scan_interval": "30min",
         "enable_advanced_sensors": False,
     })
-    assert schema_dict["accounts"] == ["8490263", "7471493"]
+    assert schema_dict["accounts"] == ["1000001", "2000002"]
 
 
 @pytest.mark.asyncio
@@ -101,8 +101,8 @@ async def test_options_account_labels_use_account_id_not_shared_address():
     )
     labels = accounts_validator.options
 
-    assert labels["8490263"] == "8490263 - Electricity"
-    assert labels["7471493"] == "7471493 - Gas"
+    assert labels["1000001"] == "1000001 - Electricity"
+    assert labels["2000002"] == "2000002 - Gas"
     assert "27 Sunnyside Crescent, Castlecrag" not in labels.values()
 
 
@@ -120,7 +120,7 @@ async def test_options_submit_adds_new_account_and_reloads():
     flow._config_entry = entry
 
     user_input = {
-        "accounts": ["8490263", "7471493"],
+        "accounts": ["1000001", "2000002"],
         "scan_interval": "30min",
         "enable_advanced_sensors": False,
     }
@@ -130,7 +130,7 @@ async def test_options_submit_adds_new_account_and_reloads():
     assert result["type"] == "create_entry"
     hass.config_entries.async_update_entry.assert_called_once()
     _, kwargs = hass.config_entries.async_update_entry.call_args
-    assert kwargs["data"][DATA_SELECTED_ACCOUNTS] == ["8490263", "7471493"]
+    assert kwargs["data"][DATA_SELECTED_ACCOUNTS] == ["1000001", "2000002"]
     hass.config_entries.async_reload.assert_awaited_once_with(entry.entry_id)
 
 
@@ -177,7 +177,7 @@ async def test_options_submit_always_keeps_both_services():
     flow._config_entry = entry
 
     user_input = {
-        "accounts": ["8490263", "7471493"],  # changed from entry's original ["8490263"]
+        "accounts": ["1000001", "2000002"],  # changed from entry's original ["1000001"]
         "scan_interval": "30min",
         "enable_advanced_sensors": False,
     }
@@ -209,7 +209,7 @@ async def test_options_submit_does_not_crash_when_coordinator_not_loaded():
     flow._config_entry = entry
 
     user_input = {
-        "accounts": ["8490263"],
+        "accounts": ["1000001"],
         "scan_interval": "30min",
         "enable_advanced_sensors": False,
     }

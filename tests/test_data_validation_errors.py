@@ -327,7 +327,7 @@ def test_validate_properties_data_handles_address_with_none_house():
     """Test property validation when API returns house: null (e.g. unit-only address)."""
     raw_properties = [
         {
-            "accountNumber": 8490263,
+            "accountNumber": 1000001,
             "address": {
                 "house": None,
                 "street": "SUNNYSIDE CRES",
@@ -337,7 +337,7 @@ def test_validate_properties_data_handles_address_with_none_house():
             },
             "consumers": [
                 {
-                    "consumerNumber": 4235478511,
+                    "consumerNumber": 3000003,
                     "utility": "E",
                     "status": "ON",
                 }
@@ -346,7 +346,7 @@ def test_validate_properties_data_handles_address_with_none_house():
     ]
     result = validate_properties_data(raw_properties)
     assert len(result) == 1
-    assert result[0]["id"] == "8490263"
+    assert result[0]["id"] == "1000001"
     assert result[0]["address"]["street"] == "SUNNYSIDE CRES"
     assert result[0]["address"]["city"] == "CASTLECRAG"
     assert result[0]["address"]["state"] == "NSW"
@@ -357,7 +357,7 @@ def test_validate_single_service_extracts_payment_type_description():
     """paymentTypeDetail.paymentTypeDescription must surface as a flat field."""
     raw_service = {
         "utility": "G",
-        "consumerNumber": "4236257811",
+        "consumerNumber": "4000004",
         "status": "ON",
         "paymentTypeDetail": {
             "paymentType": "DDB",
@@ -372,7 +372,7 @@ def test_validate_single_service_extracts_promotion_desc():
     """currentPlan.promotionDesc must surface as a flat field."""
     raw_service = {
         "utility": "E",
-        "consumerNumber": "4235478511",
+        "consumerNumber": "3000003",
         "status": "ON",
         "currentPlan": {
             "promotionCode": "NEQ005",
@@ -387,7 +387,7 @@ def test_validate_single_service_missing_nested_fields_omitted():
     """Missing paymentTypeDetail/currentPlan must not add empty keys."""
     raw_service = {
         "utility": "G",
-        "consumerNumber": "4236257811",
+        "consumerNumber": "4000004",
         "status": "ON",
     }
     result = validate_single_service(raw_service)
@@ -399,7 +399,7 @@ def test_validate_single_service_extracts_rates():
     """currentPlan.rates must surface as a validated list on the service."""
     raw_service = {
         "utility": "E",
-        "consumerNumber": "4235478511",
+        "consumerNumber": "3000003",
         "status": "ON",
         "currentPlan": {
             "rates": [
@@ -432,7 +432,7 @@ def test_validate_single_service_no_rates_defaults_to_empty_list():
     """Missing currentPlan/rates must default to an empty list, not KeyError."""
     raw_service = {
         "utility": "G",
-        "consumerNumber": "4236257811",
+        "consumerNumber": "4000004",
         "status": "ON",
     }
     result = validate_single_service(raw_service)

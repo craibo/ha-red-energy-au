@@ -40,7 +40,7 @@ def _coordinator(service_metadata, service_type):
     coordinator = MagicMock()
     coordinator.data = {
         "usage_data": {
-            "7471493": {
+            "2000002": {
                 "property": {
                     "name": "27 Sunnyside Crescent, Castlecrag",
                     "address": {
@@ -84,7 +84,7 @@ async def test_electricity_only_sensors_not_created_for_gas_account():
         DOMAIN: {
             "entry1": {
                 "coordinator": coordinator,
-                "selected_accounts": ["7471493"],
+                "selected_accounts": ["2000002"],
                 "services": [SERVICE_TYPE_GAS],
             }
         }
@@ -116,7 +116,7 @@ async def test_electricity_only_sensors_created_for_electricity_account():
         DOMAIN: {
             "entry1": {
                 "coordinator": coordinator,
-                "selected_accounts": ["7471493"],
+                "selected_accounts": ["2000002"],
                 "services": [SERVICE_TYPE_ELECTRICITY],
             }
         }
@@ -143,7 +143,7 @@ async def test_max_demand_time_disabled_by_default():
         DOMAIN: {
             "entry1": {
                 "coordinator": coordinator,
-                "selected_accounts": ["7471493"],
+                "selected_accounts": ["2000002"],
                 "services": [SERVICE_TYPE_ELECTRICITY],
             }
         }
@@ -163,7 +163,7 @@ def test_address_sensor_formats_full_address():
     config_entry = MagicMock()
     config_entry.entry_id = "entry1"
 
-    sensor = RedEnergyAddressSensor(coordinator, config_entry, "7471493", SERVICE_TYPE_GAS)
+    sensor = RedEnergyAddressSensor(coordinator, config_entry, "2000002", SERVICE_TYPE_GAS)
 
     assert sensor.native_value == "27 Sunnyside Crescent, Castlecrag NSW 2068"
 
@@ -174,7 +174,7 @@ def test_address_sensor_exposes_latitude_longitude_attributes():
     config_entry = MagicMock()
     config_entry.entry_id = "entry1"
 
-    sensor = RedEnergyAddressSensor(coordinator, config_entry, "7471493", SERVICE_TYPE_GAS)
+    sensor = RedEnergyAddressSensor(coordinator, config_entry, "2000002", SERVICE_TYPE_GAS)
 
     assert sensor.extra_state_attributes == {
         "latitude": -33.799045,
@@ -187,7 +187,7 @@ def test_payment_type_sensor_returns_description():
     config_entry = MagicMock()
     config_entry.entry_id = "entry1"
 
-    sensor = RedEnergyPaymentTypeSensor(coordinator, config_entry, "7471493", SERVICE_TYPE_GAS)
+    sensor = RedEnergyPaymentTypeSensor(coordinator, config_entry, "2000002", SERVICE_TYPE_GAS)
 
     assert sensor.native_value == "DirectDebit Bank"
 
@@ -197,7 +197,7 @@ def test_energy_plan_sensor_exposes_promotion_desc_attribute():
     config_entry = MagicMock()
     config_entry.entry_id = "entry1"
 
-    sensor = RedEnergyProductNameSensor(coordinator, config_entry, "7471493", SERVICE_TYPE_GAS)
+    sensor = RedEnergyProductNameSensor(coordinator, config_entry, "2000002", SERVICE_TYPE_GAS)
 
     assert sensor.extra_state_attributes == {
         "promotion_description": "Qantas Red Saver, 2 QFF Points per $1"

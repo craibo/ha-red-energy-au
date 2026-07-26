@@ -13,7 +13,7 @@ def _coordinator_for_basic_gas_meter():
     coordinator = MagicMock()
     coordinator.data = {
         "usage_data": {
-            "7471493": {
+            "2000002": {
                 "property": {
                     "name": "27 Sunnyside Crescent, Castlecrag",
                     "services": [
@@ -45,7 +45,7 @@ def _coordinator_for_interval_electricity_meter():
     coordinator = MagicMock()
     coordinator.data = {
         "usage_data": {
-            "8490263": {
+            "1000001": {
                 "property": {
                     "name": "27 Sunnyside Crescent, Castlecrag",
                     "services": [
@@ -86,7 +86,7 @@ async def test_basic_meter_usage_sensors_disabled_by_default():
         DOMAIN: {
             "entry1": {
                 "coordinator": coordinator,
-                "selected_accounts": ["7471493"],
+                "selected_accounts": ["2000002"],
                 "services": [SERVICE_TYPE_GAS],
             }
         }
@@ -122,7 +122,7 @@ async def test_interval_meter_usage_sensors_stay_enabled():
         DOMAIN: {
             "entry1": {
                 "coordinator": coordinator,
-                "selected_accounts": ["8490263"],
+                "selected_accounts": ["1000001"],
                 "services": [SERVICE_TYPE_ELECTRICITY],
             }
         }

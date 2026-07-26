@@ -45,19 +45,19 @@ async def test_split_accounts_at_same_address_get_distinct_device_names():
     manager = _make_device_manager()
 
     electricity_device = await manager._create_property_device(
-        "8490263",
+        "1000001",
         _property_info("27 Sunnyside Crescent, Castlecrag", SERVICE_TYPE_ELECTRICITY),
         [SERVICE_TYPE_ELECTRICITY, SERVICE_TYPE_GAS],
     )
     gas_device = await manager._create_property_device(
-        "7471493",
+        "2000002",
         _property_info("27 Sunnyside Crescent, Castlecrag", SERVICE_TYPE_GAS),
         [SERVICE_TYPE_ELECTRICITY, SERVICE_TYPE_GAS],
     )
 
     assert electricity_device.name != gas_device.name
-    assert electricity_device.name == "8490263 - Electricity"
-    assert gas_device.name == "7471493 - Gas"
+    assert electricity_device.name == "1000001 - Electricity"
+    assert gas_device.name == "2000002 - Gas"
 
 
 @pytest.mark.asyncio
@@ -66,7 +66,7 @@ async def test_device_model_reflects_accounts_own_service_not_global_toggle():
     manager = _make_device_manager()
 
     await manager._create_property_device(
-        "7471493",
+        "2000002",
         _property_info("27 Sunnyside Crescent, Castlecrag", SERVICE_TYPE_GAS),
         [SERVICE_TYPE_ELECTRICITY, SERVICE_TYPE_GAS],
     )

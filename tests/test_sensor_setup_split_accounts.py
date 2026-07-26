@@ -13,13 +13,13 @@ def _coordinator_for_split_accounts():
     coordinator = MagicMock()
     coordinator.data = {
         "usage_data": {
-            "8490263": {
+            "1000001": {
                 "property": {
                     "name": "27 Sunnyside Crescent, Castlecrag",
                     "services": [{"type": SERVICE_TYPE_ELECTRICITY, "consumer_number": "elec-1"}],
                 },
             },
-            "7471493": {
+            "2000002": {
                 "property": {
                     "name": "27 Sunnyside Crescent, Castlecrag",
                     "services": [{"type": SERVICE_TYPE_GAS, "consumer_number": "gas-1"}],
@@ -54,7 +54,7 @@ async def test_no_electricity_entities_created_for_gas_only_account():
         DOMAIN: {
             "entry1": {
                 "coordinator": coordinator,
-                "selected_accounts": ["8490263", "7471493"],
+                "selected_accounts": ["1000001", "2000002"],
                 "services": [SERVICE_TYPE_ELECTRICITY, SERVICE_TYPE_GAS],
             }
         }
@@ -66,10 +66,10 @@ async def test_no_electricity_entities_created_for_gas_only_account():
     await async_setup_entry(hass, config_entry, async_add_entities)
 
     for entity in added_entities:
-        if entity._property_id == "8490263":
+        if entity._property_id == "1000001":
             assert entity._service_type == SERVICE_TYPE_ELECTRICITY
-        elif entity._property_id == "7471493":
+        elif entity._property_id == "2000002":
             assert entity._service_type == SERVICE_TYPE_GAS
 
-    assert any(e._property_id == "8490263" for e in added_entities)
-    assert any(e._property_id == "7471493" for e in added_entities)
+    assert any(e._property_id == "1000001" for e in added_entities)
+    assert any(e._property_id == "2000002" for e in added_entities)

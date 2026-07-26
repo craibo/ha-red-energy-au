@@ -20,7 +20,7 @@ def _make_config_entry(version, services):
     entry.data = {
         "username": "test@example.com",
         "password": "testpass",
-        "selected_accounts": ["8490263"],
+        "selected_accounts": ["1000001"],
         "services": services,
     }
     return entry
