@@ -73,7 +73,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     
     # Create data coordinator
     coordinator = RedEnergyDataCoordinator(
-        hass, username, password, selected_accounts, services
+        hass, username, password, selected_accounts, services, config_entry=entry
     )
     
     # Test initial data fetch

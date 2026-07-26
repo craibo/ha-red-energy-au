@@ -8,13 +8,12 @@ import secrets
 import string
 import uuid
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any
 from urllib.parse import urlencode, parse_qs, urlparse
 import hashlib
 import base64
 
 import aiohttp
-import async_timeout
 
 from .const import API_TIMEOUT, CLIENT_ID
 
@@ -39,9 +38,9 @@ class RedEnergyAPI:
     def __init__(self, session: aiohttp.ClientSession) -> None:
         """Initialize the API client."""
         self._session = session
-        self._access_token: Optional[str] = None
-        self._refresh_token: Optional[str] = None
-        self._token_expires: Optional[datetime] = None
+        self._access_token: str | None = None
+        self._refresh_token: str | None = None
+        self._token_expires: datetime | None = None
         self._logged_entry_mapping: bool = False
         self._auth_lock = asyncio.Lock()
 
@@ -93,9 +92,9 @@ class RedEnergyAPI:
             _LOGGER.error("Unexpected error during authentication: %s", err, exc_info=True)
             raise RedEnergyAuthError(f"Authentication failed due to unexpected error: {err}") from err
     
-    async def _get_discovery_data(self) -> Dict[str, Any]:
+    async def _get_discovery_data(self) -> dict[str, Any]:
         """Get OAuth2 discovery data."""
-        async with async_timeout.timeout(API_TIMEOUT):
+        async with asyncio.timeout(API_TIMEOUT):
             async with self._session.get(self.DISCOVERY_URL) as response:
                 response.raise_for_status()
                 return await response.json()
@@ -123,7 +122,7 @@ class RedEnergyAPI:
             }
         }
         
-        async with async_timeout.timeout(API_TIMEOUT):
+        async with asyncio.timeout(API_TIMEOUT):
             async with self._session.post(self.OKTA_AUTH_URL, json=payload) as response:
                 if response.status != 200:
                     try:
@@ -191,7 +190,7 @@ class RedEnergyAPI:
         _LOGGER.debug("Authorization URL: %s", auth_url)
         
         # Make request to authorization endpoint - this should redirect
-        async with async_timeout.timeout(API_TIMEOUT):
+        async with asyncio.timeout(API_TIMEOUT):
             async with self._session.get(auth_url, allow_redirects=False) as response:
                 _LOGGER.debug("Authorization response status: %s, headers: %s", response.status, dict(response.headers))
                 
@@ -239,7 +238,7 @@ class RedEnergyAPI:
             'code_verifier': code_verifier,
         }
         
-        async with async_timeout.timeout(API_TIMEOUT):
+        async with asyncio.timeout(API_TIMEOUT):
             async with self._session.post(
                 token_endpoint,
                 data=token_data,
@@ -282,26 +281,26 @@ class RedEnergyAPI:
             _LOGGER.error("Unexpected error during credential test for user %s: %s", username, err, exc_info=True)
             return False
     
-    async def get_customer_data(self) -> Dict[str, Any]:
+    async def get_customer_data(self) -> dict[str, Any]:
         """Get current customer data."""
         await self._ensure_valid_token()
         
         url = f"{self.BASE_API_URL}/customers/current"
         headers = {'Authorization': f'Bearer {self._access_token}'}
         
-        async with async_timeout.timeout(API_TIMEOUT):
+        async with asyncio.timeout(API_TIMEOUT):
             async with self._session.get(url, headers=headers) as response:
                 response.raise_for_status()
                 return await response.json()
     
-    async def get_properties(self) -> List[Dict[str, Any]]:
+    async def get_properties(self) -> list[dict[str, Any]]:
         """Get customer properties/accounts."""
         await self._ensure_valid_token()
         
         url = f"{self.BASE_API_URL}/properties"
         headers = {'Authorization': f'Bearer {self._access_token}'}
         
-        async with async_timeout.timeout(API_TIMEOUT):
+        async with asyncio.timeout(API_TIMEOUT):
             async with self._session.get(url, headers=headers) as response:
                 response.raise_for_status()
                 data = await response.json()
@@ -312,7 +311,7 @@ class RedEnergyAPI:
         consumer_number: str, 
         from_date: datetime, 
         to_date: datetime
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Get usage interval data."""
         await self._ensure_valid_token()
         
@@ -324,7 +323,7 @@ class RedEnergyAPI:
         }
         headers = {'Authorization': f'Bearer {self._access_token}'}
         
-        async with async_timeout.timeout(API_TIMEOUT):
+        async with asyncio.timeout(API_TIMEOUT):
             async with self._session.get(url, headers=headers, params=params) as response:
                 # Handle 400 Bad Request errors gracefully
                 if response.status == 400:
@@ -444,7 +443,7 @@ class RedEnergyAPI:
             'client_id': CLIENT_ID,
         }
         
-        async with async_timeout.timeout(API_TIMEOUT):
+        async with asyncio.timeout(API_TIMEOUT):
             async with self._session.post(
                 token_endpoint,
                 data=token_data,
@@ -471,7 +470,7 @@ class RedEnergyAPI:
         consumer_number: str, 
         from_date: datetime, 
         to_date: datetime
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Transform Red Energy API usage data to expected format."""
         from_date_str = from_date.strftime('%Y-%m-%d')
         to_date_str = to_date.strftime('%Y-%m-%d')
@@ -548,7 +547,7 @@ class RedEnergyAPI:
             "usage_data": []
         }
     
-    def _normalize_usage_entry(self, entry: Any) -> Dict[str, Any]:
+    def _normalize_usage_entry(self, entry: Any) -> dict[str, Any]:
         """Normalize a single usage entry with comprehensive breakdowns.
         
         Extracts detailed breakdown data from halfHours array including:
@@ -760,7 +759,7 @@ class RedEnergyAPI:
         
         return result
     
-    def _empty_entry(self) -> Dict[str, Any]:
+    def _empty_entry(self) -> dict[str, Any]:
         """Return an empty entry structure with all fields initialized to zero."""
         return {
             "date": "",
@@ -783,7 +782,7 @@ class RedEnergyAPI:
             "carbon_emission_tonne": 0.0
         }
     
-    def _find_source_key(self, entry: Dict[str, Any], possible_keys: List[str]) -> str:
+    def _find_source_key(self, entry: dict[str, Any], possible_keys: list[str]) -> str:
         """Find which key was actually present in the entry."""
         for key in possible_keys:
             if key in entry and entry[key]:
