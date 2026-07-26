@@ -72,7 +72,6 @@ async def test_options_init_form_lists_newly_discovered_account():
     # The selector's option values should include the newly-discovered gas account
     schema_dict = result["data_schema"]({
         "accounts": ["8490263", "7471493"],
-        "services": ["electricity"],
         "scan_interval": "30min",
         "enable_advanced_sensors": False,
     })
@@ -122,7 +121,6 @@ async def test_options_submit_adds_new_account_and_reloads():
 
     user_input = {
         "accounts": ["8490263", "7471493"],
-        "services": ["electricity", "gas"],
         "scan_interval": "30min",
         "enable_advanced_sensors": False,
     }
@@ -160,12 +158,13 @@ async def test_options_init_reuses_coordinator_api_not_a_new_client():
 
 
 @pytest.mark.asyncio
-async def test_options_submit_enabling_gas_service_persists_and_reloads():
-    """Turning on the Gas service checkbox must actually take effect.
+async def test_options_submit_always_keeps_both_services():
+    """Services are no longer user-configurable - both are always requested.
 
-    entry.data["services"] is what the coordinator reads (entry.options is
-    never consulted), so toggling "gas" on in the options form must update
-    entry.data and reload — otherwise the checkbox is a no-op.
+    Each account only ever bills one service, so a service-type toggle has
+    nothing left to do; per-account filtering in sensor.py determines what's
+    actually created. Submitting options must still write both services to
+    entry.data so an old entry stuck on a subset gets upgraded.
     """
     entry = _make_config_entry()
     hass = _make_hass(entry)
@@ -178,8 +177,7 @@ async def test_options_submit_enabling_gas_service_persists_and_reloads():
     flow._config_entry = entry
 
     user_input = {
-        "accounts": ["8490263"],
-        "services": ["electricity", "gas"],
+        "accounts": ["8490263", "7471493"],  # changed from entry's original ["8490263"]
         "scan_interval": "30min",
         "enable_advanced_sensors": False,
     }
@@ -189,7 +187,6 @@ async def test_options_submit_enabling_gas_service_persists_and_reloads():
     hass.config_entries.async_update_entry.assert_called_once()
     _, kwargs = hass.config_entries.async_update_entry.call_args
     assert kwargs["data"]["services"] == ["electricity", "gas"]
-    hass.config_entries.async_reload.assert_awaited_once_with(entry.entry_id)
 
 
 @pytest.mark.asyncio
@@ -213,7 +210,6 @@ async def test_options_submit_does_not_crash_when_coordinator_not_loaded():
 
     user_input = {
         "accounts": ["8490263"],
-        "services": ["electricity"],
         "scan_interval": "30min",
         "enable_advanced_sensors": False,
     }
