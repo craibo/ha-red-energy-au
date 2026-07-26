@@ -143,7 +143,7 @@ async def test_one_rate_sensor_created_per_rate_entry():
     rate_sensors = [e for e in added_entities if isinstance(e, RedEnergyRateSensor)]
     assert len(rate_sensors) == 2
     names = {s._attr_name for s in rate_sensors}
-    assert names == {"Peak", "Solar"}
+    assert names == {"Rate Peak", "Rate Solar"}
 
 
 @pytest.mark.asyncio
@@ -175,7 +175,7 @@ async def test_duplicate_rate_code_tiered_gas_rates_produce_distinct_entities():
     unique_ids = {s.unique_id for s in rate_sensors}
     assert len(unique_ids) == 2
     names = {s._attr_name for s in rate_sensors}
-    assert names == {"Anytime Step1", "Anytime Step2"}
+    assert names == {"Rate Anytime Step1", "Rate Anytime Step2"}
 
 
 def test_rate_sensor_native_value_and_attributes():
@@ -188,7 +188,7 @@ def test_rate_sensor_native_value_and_attributes():
     )
 
     assert sensor.native_value == pytest.approx(0.27005)
-    assert sensor._attr_name == "Peak"
+    assert sensor._attr_name == "Rate Peak"
     assert sensor._attr_entity_category == EntityCategory.DIAGNOSTIC
     assert sensor._attr_device_class.value == "monetary"
 
