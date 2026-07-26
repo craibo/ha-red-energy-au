@@ -98,7 +98,6 @@ API_TIMEOUT: Final = 30
 # Configuration flow
 STEP_USER: Final = "user"
 STEP_ACCOUNT_SELECT: Final = "account_select"
-STEP_SERVICE_SELECT: Final = "service_select"
 
 # Error messages
 ERROR_AUTH_FAILED: Final = "auth_failed"

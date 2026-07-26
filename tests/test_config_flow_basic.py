@@ -27,7 +27,6 @@ def test_config_flow_has_required_classes():
     # Check for required classes and methods
     assert "class ConfigFlow" in content
     assert "async_step_user" in content
-    assert "async_step_service_select" in content
     assert "RedEnergyOptionsFlowHandler" in content
 
 
@@ -89,7 +88,5 @@ def test_constants_include_config_flow_constants():
     
     # Check for config flow constants
     assert hasattr(const_module, "STEP_USER")
-    assert hasattr(const_module, "STEP_ACCOUNT_SELECT")
-    assert hasattr(const_module, "STEP_SERVICE_SELECT")
     assert hasattr(const_module, "ERROR_AUTH_FAILED")
     assert hasattr(const_module, "CONF_CLIENT_ID")
