@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Tuple
+from typing import Any
 
 import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry
@@ -341,7 +341,7 @@ class RedEnergyConfigValidator:
         """Initialize config validator."""
         self._validation_schemas = self._create_validation_schemas()
 
-    def _create_validation_schemas(self) -> Dict[str, vol.Schema]:
+    def _create_validation_schemas(self) -> dict[str, vol.Schema]:
         """Create validation schemas for different configuration aspects."""
         
         # Base configuration schema
@@ -382,7 +382,7 @@ class RedEnergyConfigValidator:
             "account": account_schema,
         }
 
-    def validate_config_entry(self, config_entry: ConfigEntry) -> Tuple[bool, List[str]]:
+    def validate_config_entry(self, config_entry: ConfigEntry) -> tuple[bool, list[str]]:
         """Validate a complete config entry."""
         errors = []
         
@@ -404,7 +404,7 @@ class RedEnergyConfigValidator:
         
         return len(errors) == 0, errors
 
-    def _perform_additional_validation(self, config_entry: ConfigEntry) -> List[str]:
+    def _perform_additional_validation(self, config_entry: ConfigEntry) -> list[str]:
         """Perform additional validation checks."""
         errors = []
         
@@ -429,7 +429,7 @@ class RedEnergyConfigValidator:
         
         return errors
 
-    def validate_account_data(self, account_data: Dict[str, Any]) -> Tuple[bool, List[str]]:
+    def validate_account_data(self, account_data: dict[str, Any]) -> tuple[bool, list[str]]:
         """Validate individual account data."""
         errors = []
         
@@ -444,7 +444,7 @@ class RedEnergyConfigValidator:
         self, 
         username: str, 
         password: str
-    ) -> Tuple[bool, List[str]]:
+    ) -> tuple[bool, list[str]]:
         """Validate credential format and content."""
         errors = []
         
@@ -461,7 +461,7 @@ class RedEnergyConfigValidator:
     def suggest_configuration_improvements(
         self, 
         config_entry: ConfigEntry
-    ) -> List[str]:
+    ) -> list[str]:
         """Suggest configuration improvements."""
         suggestions = []
         
@@ -510,7 +510,7 @@ class ConfigHealthChecker:
     async def async_check_integration_health(
         self, 
         config_entry: ConfigEntry
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Perform comprehensive health check of the integration configuration."""
         health_report = {
             "status": "healthy",
@@ -548,7 +548,7 @@ class ConfigHealthChecker:
         
         return health_report
 
-    async def _check_coordinator_health(self, config_entry: ConfigEntry) -> Dict[str, Any]:
+    async def _check_coordinator_health(self, config_entry: ConfigEntry) -> dict[str, Any]:
         """Check data coordinator health."""
         metrics = {
             "coordinator_status": "unknown",
@@ -577,7 +577,7 @@ class ConfigHealthChecker:
         
         return metrics
 
-    async def _check_entity_health(self, config_entry: ConfigEntry) -> Dict[str, Any]:
+    async def _check_entity_health(self, config_entry: ConfigEntry) -> dict[str, Any]:
         """Check entity health and availability."""
         from homeassistant.helpers import entity_registry as er
         
@@ -609,7 +609,7 @@ class ConfigHealthChecker:
         
         return metrics
 
-    def generate_health_summary(self, health_report: Dict[str, Any]) -> str:
+    def generate_health_summary(self, health_report: dict[str, Any]) -> str:
         """Generate a human-readable health summary."""
         status = health_report["status"]
         issues_count = len(health_report["issues"])

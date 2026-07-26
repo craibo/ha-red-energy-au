@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from homeassistant.components.energy import (
     async_get_manager,
@@ -32,7 +32,7 @@ class RedEnergyEnergyPlatform(EnergyPlatform):
 
     async def async_get_config_flow_energy_sources(
         self, config_entry: ConfigEntry
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Return energy sources for config flow."""
         if config_entry.domain != DOMAIN:
             return []
@@ -94,7 +94,7 @@ class RedEnergyEnergyPlatform(EnergyPlatform):
 
     async def async_get_config_entry_energy_settings(
         self, config_entry: ConfigEntry
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """Return energy settings for a config entry."""
         if config_entry.domain != DOMAIN:
             return None
@@ -148,7 +148,7 @@ async def async_setup_energy_platform(hass: HomeAssistant) -> None:
         _LOGGER.error("Failed to set up Red Energy energy platform: %s", err)
 
 
-def get_energy_usage_sensors(entry_data: Dict[str, Any]) -> List[str]:
+def get_energy_usage_sensors(entry_data: dict[str, Any]) -> list[str]:
     """Get list of energy usage sensor entity IDs."""
     selected_accounts = entry_data.get("selected_accounts", [])
     services = entry_data.get("services", [])
@@ -175,7 +175,7 @@ def get_energy_usage_sensors(entry_data: Dict[str, Any]) -> List[str]:
     return sensors
 
 
-def get_energy_cost_sensors(entry_data: Dict[str, Any]) -> List[str]:
+def get_energy_cost_sensors(entry_data: dict[str, Any]) -> list[str]:
     """Get list of energy cost sensor entity IDs."""
     selected_accounts = entry_data.get("selected_accounts", [])
     services = entry_data.get("services", [])

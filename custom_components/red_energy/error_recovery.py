@@ -4,7 +4,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import datetime, timedelta
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable
 from collections import defaultdict, deque
 from enum import Enum
 
@@ -59,8 +59,8 @@ class ErrorRecord:
         error_type: ErrorType,
         severity: ErrorSeverity,
         message: str,
-        context: Optional[Dict[str, Any]] = None,
-        exception: Optional[Exception] = None
+        context: dict[str, Any] | None = None,
+        exception: Exception | None = None
     ) -> None:
         """Initialize error record."""
         self.error_type = error_type
@@ -100,10 +100,10 @@ class RedEnergyErrorRecoverySystem:
         self.hass = hass
         self._store = Store(hass, STORAGE_VERSION, ERROR_STORAGE_KEY)
         self._error_history: deque = deque(maxlen=1000)  # Keep last 1000 errors
-        self._recovery_actions: Dict[ErrorType, List[RecoveryAction]] = {}
-        self._error_counts: Dict[ErrorType, int] = defaultdict(int)
-        self._recovery_stats: Dict[str, int] = defaultdict(int)
-        self._circuit_breakers: Dict[str, CircuitBreaker] = {}
+        self._recovery_actions: dict[ErrorType, list[RecoveryAction]] = {}
+        self._error_counts: dict[ErrorType, int] = defaultdict(int)
+        self._recovery_stats: dict[str, int] = defaultdict(int)
+        self._circuit_breakers: dict[str, CircuitBreaker] = {}
         
         # Initialize default recovery actions
         self._setup_default_recovery_actions()
@@ -186,7 +186,7 @@ class RedEnergyErrorRecoverySystem:
         self,
         error: Exception,
         error_type: ErrorType,
-        context: Optional[Dict[str, Any]] = None
+        context: dict[str, Any] | None = None
     ) -> bool:
         """Handle an error with appropriate recovery strategy."""
         
@@ -426,7 +426,7 @@ class RedEnergyErrorRecoverySystem:
         
         return False
 
-    def get_error_statistics(self) -> Dict[str, Any]:
+    def get_error_statistics(self) -> dict[str, Any]:
         """Get comprehensive error statistics."""
         recent_errors = [
             error for error in self._error_history
@@ -497,7 +497,7 @@ class CircuitBreaker:
         self.failure_threshold = failure_threshold
         self.recovery_timeout = recovery_timeout
         self.failure_count = 0
-        self.last_failure_time: Optional[datetime] = None
+        self.last_failure_time: datetime | None = None
         self.state = "CLOSED"  # CLOSED, OPEN, HALF_OPEN
 
     def record_success(self) -> None:

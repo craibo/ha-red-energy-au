@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime
 import logging
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -283,7 +283,7 @@ class RedEnergyBaseSensor(CoordinatorEntity, SensorEntity):
 
         return f"{period_days} days (since last bill)"
 
-    def _get_last_bill_reset(self) -> Optional[datetime]:
+    def _get_last_bill_reset(self) -> datetime | None:
         """Return the last bill date as a UTC datetime for last_reset."""
         metadata = self.coordinator.get_service_metadata(self._property_id, self._service_type)
         if not metadata:
@@ -315,12 +315,12 @@ class RedEnergyCostSensor(RedEnergyBaseSensor):
         self._attr_state_class = SensorStateClass.TOTAL
 
     @property
-    def native_value(self) -> Optional[float]:
+    def native_value(self) -> float | None:
         """Return the total cost."""
         return self.coordinator.get_total_cost(self._property_id, self._service_type)
 
     @property
-    def extra_state_attributes(self) -> Optional[dict[str, Any]]:
+    def extra_state_attributes(self) -> dict[str, Any] | None:
         """Return extra state attributes."""
         service_data = self.coordinator.get_service_usage(self._property_id, self._service_type)
         if not service_data:
@@ -358,7 +358,7 @@ class RedEnergyDailyAverageSensor(RedEnergyBaseSensor):
         self._attr_state_class = None
 
     @property
-    def native_value(self) -> Optional[float]:
+    def native_value(self) -> float | None:
         """Return the daily average usage."""
         service_data = self.coordinator.get_service_usage(self._property_id, self._service_type)
         if not service_data or "usage_data" not in service_data:
@@ -373,7 +373,7 @@ class RedEnergyDailyAverageSensor(RedEnergyBaseSensor):
         return round(total_usage / len(usage_data), 2) if usage_data else 0
 
     @property
-    def extra_state_attributes(self) -> Optional[dict[str, Any]]:
+    def extra_state_attributes(self) -> dict[str, Any] | None:
         """Return extra state attributes."""
         service_data = self.coordinator.get_service_usage(self._property_id, self._service_type)
         if not service_data:
@@ -410,7 +410,7 @@ class RedEnergyMonthlyAverageSensor(RedEnergyBaseSensor):
         self._attr_state_class = None
 
     @property
-    def native_value(self) -> Optional[float]:
+    def native_value(self) -> float | None:
         """Return the estimated monthly average usage."""
         total_usage = self.coordinator.get_total_usage(self._property_id, self._service_type)
         if total_usage is None:
@@ -451,7 +451,7 @@ class RedEnergyPeakUsageSensor(RedEnergyBaseSensor):
         self._attr_state_class = None
 
     @property
-    def native_value(self) -> Optional[float]:
+    def native_value(self) -> float | None:
         """Return the peak daily usage."""
         service_data = self.coordinator.get_service_usage(self._property_id, self._service_type)
         if not service_data or "usage_data" not in service_data:
@@ -466,7 +466,7 @@ class RedEnergyPeakUsageSensor(RedEnergyBaseSensor):
         return max(usage_values) if usage_values else 0
 
     @property
-    def extra_state_attributes(self) -> Optional[dict[str, Any]]:
+    def extra_state_attributes(self) -> dict[str, Any] | None:
         """Return extra state attributes."""
         service_data = self.coordinator.get_service_usage(self._property_id, self._service_type)
         if not service_data or "usage_data" not in service_data:
@@ -507,7 +507,7 @@ class RedEnergyEfficiencySensor(RedEnergyBaseSensor):
         self._attr_icon = "mdi:leaf"
 
     @property
-    def native_value(self) -> Optional[float]:
+    def native_value(self) -> float | None:
         """Return the efficiency rating (0-100%)."""
         service_data = self.coordinator.get_service_usage(self._property_id, self._service_type)
         if not service_data or "usage_data" not in service_data:
@@ -537,7 +537,7 @@ class RedEnergyEfficiencySensor(RedEnergyBaseSensor):
         return round(efficiency, 1)
 
     @property
-    def extra_state_attributes(self) -> Optional[dict[str, Any]]:
+    def extra_state_attributes(self) -> dict[str, Any] | None:
         """Return extra state attributes."""
         service_data = self.coordinator.get_service_usage(self._property_id, self._service_type)
         if not service_data or "usage_data" not in service_data:
@@ -579,7 +579,7 @@ class RedEnergyNmiSensor(RedEnergyBaseSensor):
         self._attr_icon = "mdi:identifier"
 
     @property
-    def native_value(self) -> Optional[str]:
+    def native_value(self) -> str | None:
         """Return the NMI."""
         metadata = self.coordinator.get_service_metadata(self._property_id, self._service_type)
         if not metadata:
@@ -607,7 +607,7 @@ class RedEnergyMeterTypeSensor(RedEnergyBaseSensor):
         self._attr_icon = "mdi:meter-electric"
 
     @property
-    def native_value(self) -> Optional[str]:
+    def native_value(self) -> str | None:
         """Return the meter type."""
         metadata = self.coordinator.get_service_metadata(self._property_id, self._service_type)
         if not metadata:
@@ -636,7 +636,7 @@ class RedEnergySolarSensor(RedEnergyBaseSensor):
         self._attr_icon = "mdi:solar-power"
 
     @property
-    def native_value(self) -> Optional[str]:
+    def native_value(self) -> str | None:
         """Return the solar status."""
         metadata = self.coordinator.get_service_metadata(self._property_id, self._service_type)
         if not metadata:
@@ -665,7 +665,7 @@ class RedEnergyProductNameSensor(RedEnergyBaseSensor):
         self._attr_icon = "mdi:package-variant"
 
     @property
-    def native_value(self) -> Optional[str]:
+    def native_value(self) -> str | None:
         """Return the product name."""
         metadata = self.coordinator.get_service_metadata(self._property_id, self._service_type)
         if not metadata:
@@ -674,7 +674,7 @@ class RedEnergyProductNameSensor(RedEnergyBaseSensor):
         return metadata.get("productName")
 
     @property
-    def extra_state_attributes(self) -> Optional[dict[str, Any]]:
+    def extra_state_attributes(self) -> dict[str, Any] | None:
         """Return extra state attributes."""
         metadata = self.coordinator.get_service_metadata(self._property_id, self._service_type)
         if not metadata:
@@ -706,7 +706,7 @@ class RedEnergyDistributorSensor(RedEnergyBaseSensor):
         self._attr_icon = "mdi:transmission-tower"
 
     @property
-    def native_value(self) -> Optional[str]:
+    def native_value(self) -> str | None:
         """Return the distributor name."""
         metadata = self.coordinator.get_service_metadata(self._property_id, self._service_type)
         if not metadata:
@@ -734,7 +734,7 @@ class RedEnergyPaymentTypeSensor(RedEnergyBaseSensor):
         self._attr_icon = "mdi:credit-card-outline"
 
     @property
-    def native_value(self) -> Optional[str]:
+    def native_value(self) -> str | None:
         """Return the payment type description."""
         metadata = self.coordinator.get_service_metadata(self._property_id, self._service_type)
         if not metadata:
@@ -777,7 +777,7 @@ class RedEnergyRateSensor(RedEnergyBaseSensor):
         self._attr_native_unit_of_measurement = "AUD"
         self._attr_icon = "mdi:currency-usd"
 
-    def _find_rate(self) -> Optional[dict[str, Any]]:
+    def _find_rate(self) -> dict[str, Any] | None:
         rates = self.coordinator.get_service_rates(self._property_id, self._service_type)
         return next(
             (
@@ -788,13 +788,13 @@ class RedEnergyRateSensor(RedEnergyBaseSensor):
         )
 
     @property
-    def native_value(self) -> Optional[float]:
+    def native_value(self) -> float | None:
         """Return the rate in dollars, including GST."""
         rate = self._find_rate()
         return rate.get("rate_incl_gst_dollars") if rate else None
 
     @property
-    def extra_state_attributes(self) -> Optional[dict[str, Any]]:
+    def extra_state_attributes(self) -> dict[str, Any] | None:
         """Return the remaining rate fields as attributes."""
         rate = self._find_rate()
         if not rate:
@@ -822,7 +822,7 @@ class RedEnergyAddressSensor(RedEnergyBaseSensor):
         self._attr_icon = "mdi:map-marker"
 
     @property
-    def native_value(self) -> Optional[str]:
+    def native_value(self) -> str | None:
         """Return the formatted property address."""
         property_data = self.coordinator.get_property_data(self._property_id)
         if not property_data:
@@ -842,7 +842,7 @@ class RedEnergyAddressSensor(RedEnergyBaseSensor):
         return formatted or state_postcode or None
 
     @property
-    def extra_state_attributes(self) -> Optional[dict[str, Any]]:
+    def extra_state_attributes(self) -> dict[str, Any] | None:
         """Return latitude/longitude so the address can be plotted on a map."""
         metadata = self.coordinator.get_service_metadata(self._property_id, self._service_type)
         if not metadata:
@@ -877,7 +877,7 @@ class RedEnergyBalanceSensor(RedEnergyBaseSensor):
         self._attr_state_class = SensorStateClass.TOTAL
 
     @property
-    def native_value(self) -> Optional[float]:
+    def native_value(self) -> float | None:
         """Return the account balance."""
         metadata = self.coordinator.get_service_metadata(self._property_id, self._service_type)
         if not metadata:
@@ -907,7 +907,7 @@ class RedEnergyArrearsSensor(RedEnergyBaseSensor):
         self._attr_state_class = SensorStateClass.TOTAL
 
     @property
-    def native_value(self) -> Optional[float]:
+    def native_value(self) -> float | None:
         """Return the arrears amount."""
         metadata = self.coordinator.get_service_metadata(self._property_id, self._service_type)
         if not metadata:
@@ -936,7 +936,7 @@ class RedEnergyLastBillDateSensor(RedEnergyBaseSensor):
         self._attr_icon = "mdi:calendar-check"
 
     @property
-    def native_value(self) -> Optional[datetime]:
+    def native_value(self) -> datetime | None:
         """Return the last bill date."""
         metadata = self.coordinator.get_service_metadata(self._property_id, self._service_type)
         if not metadata:
@@ -973,7 +973,7 @@ class RedEnergyNextBillDateSensor(RedEnergyBaseSensor):
         self._attr_icon = "mdi:calendar-clock"
 
     @property
-    def native_value(self) -> Optional[datetime]:
+    def native_value(self) -> datetime | None:
         """Return the next bill date."""
         metadata = self.coordinator.get_service_metadata(self._property_id, self._service_type)
         if not metadata:
@@ -1009,7 +1009,7 @@ class RedEnergyBillingFrequencySensor(RedEnergyBaseSensor):
         self._attr_icon = "mdi:calendar-refresh"
 
     @property
-    def native_value(self) -> Optional[str]:
+    def native_value(self) -> str | None:
         """Return the billing frequency."""
         metadata = self.coordinator.get_service_metadata(self._property_id, self._service_type)
         if not metadata:
@@ -1040,7 +1040,7 @@ class RedEnergyJurisdictionSensor(RedEnergyBaseSensor):
         self._attr_icon = "mdi:map-marker"
 
     @property
-    def native_value(self) -> Optional[str]:
+    def native_value(self) -> str | None:
         """Return the jurisdiction."""
         metadata = self.coordinator.get_service_metadata(self._property_id, self._service_type)
         if not metadata:
@@ -1069,7 +1069,7 @@ class RedEnergyChargeClassSensor(RedEnergyBaseSensor):
         self._attr_name = "Energy Plan Type"
 
     @property
-    def native_value(self) -> Optional[str]:
+    def native_value(self) -> str | None:
         """Return the charge class."""
         metadata = self.coordinator.get_service_metadata(self._property_id, self._service_type)
         if not metadata:
@@ -1102,7 +1102,7 @@ class RedEnergyStatusSensor(RedEnergyBaseSensor):
         self._attr_icon = "mdi:power-plug"
 
     @property
-    def native_value(self) -> Optional[str]:
+    def native_value(self) -> str | None:
         """Return the consumer status."""
         metadata = self.coordinator.get_service_metadata(self._property_id, self._service_type)
         if not metadata:
@@ -1146,12 +1146,12 @@ class RedEnergyDailyImportUsageSensor(RedEnergyBaseSensor):
             self._attr_state_class = SensorStateClass.TOTAL_INCREASING
 
     @property
-    def native_value(self) -> Optional[float]:
+    def native_value(self) -> float | None:
         """Return the current daily import usage."""
         return self.coordinator.get_latest_import_usage(self._property_id, self._service_type)
 
     @property
-    def extra_state_attributes(self) -> Optional[dict[str, Any]]:
+    def extra_state_attributes(self) -> dict[str, Any] | None:
         """Return extra state attributes."""
         service_data = self.coordinator.get_service_usage(self._property_id, self._service_type)
         if not service_data:
@@ -1191,12 +1191,12 @@ class RedEnergyDailyExportUsageSensor(RedEnergyBaseSensor):
             self._attr_state_class = SensorStateClass.TOTAL_INCREASING
 
     @property
-    def native_value(self) -> Optional[float]:
+    def native_value(self) -> float | None:
         """Return the current daily export usage."""
         return self.coordinator.get_latest_export_usage(self._property_id, self._service_type)
 
     @property
-    def extra_state_attributes(self) -> Optional[dict[str, Any]]:
+    def extra_state_attributes(self) -> dict[str, Any] | None:
         """Return extra state attributes."""
         service_data = self.coordinator.get_service_usage(self._property_id, self._service_type)
         if not service_data:
@@ -1233,17 +1233,17 @@ class RedEnergyTotalImportUsageSensor(RedEnergyBaseSensor):
         self._attr_state_class = SensorStateClass.TOTAL
 
     @property
-    def last_reset(self) -> Optional[datetime]:
+    def last_reset(self) -> datetime | None:
         """Return the billing period start date so HA statistics reset correctly."""
         return self._get_last_bill_reset()
 
     @property
-    def native_value(self) -> Optional[float]:
+    def native_value(self) -> float | None:
         """Return the total import usage."""
         return self.coordinator.get_total_import_usage(self._property_id, self._service_type)
 
     @property
-    def extra_state_attributes(self) -> Optional[dict[str, Any]]:
+    def extra_state_attributes(self) -> dict[str, Any] | None:
         """Return extra state attributes."""
         service_data = self.coordinator.get_service_usage(self._property_id, self._service_type)
         if not service_data:
@@ -1290,17 +1290,17 @@ class RedEnergyTotalExportUsageSensor(RedEnergyBaseSensor):
         self._attr_state_class = SensorStateClass.TOTAL
 
     @property
-    def last_reset(self) -> Optional[datetime]:
+    def last_reset(self) -> datetime | None:
         """Return the billing period start date so HA statistics reset correctly."""
         return self._get_last_bill_reset()
 
     @property
-    def native_value(self) -> Optional[float]:
+    def native_value(self) -> float | None:
         """Return the total export usage."""
         return self.coordinator.get_total_export_usage(self._property_id, self._service_type)
 
     @property
-    def extra_state_attributes(self) -> Optional[dict[str, Any]]:
+    def extra_state_attributes(self) -> dict[str, Any] | None:
         """Return extra state attributes."""
         service_data = self.coordinator.get_service_usage(self._property_id, self._service_type)
         if not service_data:
@@ -1339,17 +1339,17 @@ class RedEnergyTotalImportCostSensor(RedEnergyBaseSensor):
         self._attr_state_class = SensorStateClass.TOTAL
 
     @property
-    def last_reset(self) -> Optional[datetime]:
+    def last_reset(self) -> datetime | None:
         """Return the billing period start date so HA statistics reset correctly."""
         return self._get_last_bill_reset()
 
     @property
-    def native_value(self) -> Optional[float]:
+    def native_value(self) -> float | None:
         """Return the total import cost."""
         return self.coordinator.get_total_import_cost(self._property_id, self._service_type)
 
     @property
-    def extra_state_attributes(self) -> Optional[dict[str, Any]]:
+    def extra_state_attributes(self) -> dict[str, Any] | None:
         """Return extra state attributes."""
         service_data = self.coordinator.get_service_usage(self._property_id, self._service_type)
         if not service_data:
@@ -1386,17 +1386,17 @@ class RedEnergyTotalExportCreditSensor(RedEnergyBaseSensor):
         self._attr_icon = "mdi:solar-power"
 
     @property
-    def last_reset(self) -> Optional[datetime]:
+    def last_reset(self) -> datetime | None:
         """Return the billing period start date so HA statistics reset correctly."""
         return self._get_last_bill_reset()
 
     @property
-    def native_value(self) -> Optional[float]:
+    def native_value(self) -> float | None:
         """Return the total export credit."""
         return self.coordinator.get_total_export_credit(self._property_id, self._service_type)
 
     @property
-    def extra_state_attributes(self) -> Optional[dict[str, Any]]:
+    def extra_state_attributes(self) -> dict[str, Any] | None:
         """Return extra state attributes."""
         service_data = self.coordinator.get_service_usage(self._property_id, self._service_type)
         if not service_data:
@@ -1429,12 +1429,12 @@ class RedEnergyDailyImportCostSensor(RedEnergyBaseSensor):
         self._attr_state_class = SensorStateClass.TOTAL
 
     @property
-    def native_value(self) -> Optional[float]:
+    def native_value(self) -> float | None:
         """Return the current daily import cost."""
         return self.coordinator.get_latest_import_cost(self._property_id, self._service_type)
 
     @property
-    def extra_state_attributes(self) -> Optional[dict[str, Any]]:
+    def extra_state_attributes(self) -> dict[str, Any] | None:
         """Return extra state attributes."""
         service_data = self.coordinator.get_service_usage(self._property_id, self._service_type)
         if not service_data:
@@ -1470,12 +1470,12 @@ class RedEnergyDailyExportCreditSensor(RedEnergyBaseSensor):
         self._attr_icon = "mdi:solar-power"
 
     @property
-    def native_value(self) -> Optional[float]:
+    def native_value(self) -> float | None:
         """Return the current daily export credit."""
         return self.coordinator.get_latest_export_credit(self._property_id, self._service_type)
 
     @property
-    def extra_state_attributes(self) -> Optional[dict[str, Any]]:
+    def extra_state_attributes(self) -> dict[str, Any] | None:
         """Return extra state attributes."""
         service_data = self.coordinator.get_service_usage(self._property_id, self._service_type)
         if not service_data:
@@ -1510,12 +1510,12 @@ class RedEnergyPeakImportUsageSensor(RedEnergyBaseSensor):
             self._attr_state_class = SensorStateClass.TOTAL
 
     @property
-    def native_value(self) -> Optional[float]:
+    def native_value(self) -> float | None:
         """Return the peak import usage."""
         return self.coordinator.get_period_import_usage(self._property_id, self._service_type, "peak")
 
     @property
-    def extra_state_attributes(self) -> Optional[dict[str, Any]]:
+    def extra_state_attributes(self) -> dict[str, Any] | None:
         """Return extra state attributes."""
         service_data = self.coordinator.get_service_usage(self._property_id, self._service_type)
         if not service_data:
@@ -1553,12 +1553,12 @@ class RedEnergyOffpeakImportUsageSensor(RedEnergyBaseSensor):
             self._attr_state_class = SensorStateClass.TOTAL
 
     @property
-    def native_value(self) -> Optional[float]:
+    def native_value(self) -> float | None:
         """Return the offpeak import usage."""
         return self.coordinator.get_period_import_usage(self._property_id, self._service_type, "offpeak")
 
     @property
-    def extra_state_attributes(self) -> Optional[dict[str, Any]]:
+    def extra_state_attributes(self) -> dict[str, Any] | None:
         """Return extra state attributes."""
         service_data = self.coordinator.get_service_usage(self._property_id, self._service_type)
         if not service_data:
@@ -1596,12 +1596,12 @@ class RedEnergyShoulderImportUsageSensor(RedEnergyBaseSensor):
             self._attr_state_class = SensorStateClass.TOTAL
 
     @property
-    def native_value(self) -> Optional[float]:
+    def native_value(self) -> float | None:
         """Return the shoulder import usage."""
         return self.coordinator.get_period_import_usage(self._property_id, self._service_type, "shoulder")
 
     @property
-    def extra_state_attributes(self) -> Optional[dict[str, Any]]:
+    def extra_state_attributes(self) -> dict[str, Any] | None:
         """Return extra state attributes."""
         service_data = self.coordinator.get_service_usage(self._property_id, self._service_type)
         if not service_data:
@@ -1640,12 +1640,12 @@ class RedEnergyPeakExportUsageSensor(RedEnergyBaseSensor):
             self._attr_icon = "mdi:solar-power"
 
     @property
-    def native_value(self) -> Optional[float]:
+    def native_value(self) -> float | None:
         """Return the peak export usage."""
         return self.coordinator.get_period_export_usage(self._property_id, self._service_type, "peak")
 
     @property
-    def extra_state_attributes(self) -> Optional[dict[str, Any]]:
+    def extra_state_attributes(self) -> dict[str, Any] | None:
         """Return extra state attributes."""
         service_data = self.coordinator.get_service_usage(self._property_id, self._service_type)
         if not service_data:
@@ -1685,12 +1685,12 @@ class RedEnergyOffpeakExportUsageSensor(RedEnergyBaseSensor):
             self._attr_icon = "mdi:solar-power"
 
     @property
-    def native_value(self) -> Optional[float]:
+    def native_value(self) -> float | None:
         """Return the offpeak export usage."""
         return self.coordinator.get_period_export_usage(self._property_id, self._service_type, "offpeak")
 
     @property
-    def extra_state_attributes(self) -> Optional[dict[str, Any]]:
+    def extra_state_attributes(self) -> dict[str, Any] | None:
         """Return extra state attributes."""
         service_data = self.coordinator.get_service_usage(self._property_id, self._service_type)
         if not service_data:
@@ -1730,12 +1730,12 @@ class RedEnergyShoulderExportUsageSensor(RedEnergyBaseSensor):
             self._attr_icon = "mdi:solar-power"
 
     @property
-    def native_value(self) -> Optional[float]:
+    def native_value(self) -> float | None:
         """Return the shoulder export usage."""
         return self.coordinator.get_period_export_usage(self._property_id, self._service_type, "shoulder")
 
     @property
-    def extra_state_attributes(self) -> Optional[dict[str, Any]]:
+    def extra_state_attributes(self) -> dict[str, Any] | None:
         """Return extra state attributes."""
         service_data = self.coordinator.get_service_usage(self._property_id, self._service_type)
         if not service_data:
@@ -1776,13 +1776,13 @@ class RedEnergyMaxDemandSensor(RedEnergyBaseSensor):
         self._attr_icon = "mdi:lightning-bolt"
 
     @property
-    def native_value(self) -> Optional[float]:
+    def native_value(self) -> float | None:
         """Return the maximum demand."""
         data = self.coordinator.get_max_demand_data(self._property_id, self._service_type)
         return data.get("max_demand_kw") if data else None
 
     @property
-    def extra_state_attributes(self) -> Optional[dict[str, Any]]:
+    def extra_state_attributes(self) -> dict[str, Any] | None:
         """Return extra state attributes."""
         data = self.coordinator.get_max_demand_data(self._property_id, self._service_type)
         if not data:
@@ -1818,7 +1818,7 @@ class RedEnergyMaxDemandTimeSensor(RedEnergyBaseSensor):
         self._attr_entity_registry_enabled_default = False
 
     @property
-    def native_value(self) -> Optional[datetime]:
+    def native_value(self) -> datetime | None:
         """Return the maximum demand timestamp."""
         data = self.coordinator.get_max_demand_data(self._property_id, self._service_type)
         if not data or not data.get("max_demand_time"):
@@ -1850,12 +1850,12 @@ class RedEnergyCarbonEmissionSensor(RedEnergyBaseSensor):
         self._attr_icon = "mdi:molecule-co2"
 
     @property
-    def native_value(self) -> Optional[float]:
+    def native_value(self) -> float | None:
         """Return the total carbon emissions."""
         return self.coordinator.get_total_carbon_emission(self._property_id, self._service_type)
 
     @property
-    def extra_state_attributes(self) -> Optional[dict[str, Any]]:
+    def extra_state_attributes(self) -> dict[str, Any] | None:
         """Return extra state attributes."""
         total_import = self.coordinator.get_total_import_usage(self._property_id, self._service_type)
         emission = self.native_value

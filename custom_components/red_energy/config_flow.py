@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 from datetime import timedelta
-from typing import Any, Dict
+from typing import Any
 
 import voluptuous as vol
 from homeassistant import config_entries
@@ -136,9 +136,9 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     def __init__(self) -> None:
         """Initialize the config flow."""
-        self._user_data: Dict[str, Any] = {}
-        self._customer_data: Dict[str, Any] = {}
-        self._accounts: list[Dict[str, Any]] = []
+        self._user_data: dict[str, Any] = {}
+        self._customer_data: dict[str, Any] = {}
+        self._accounts: list[dict[str, Any]] = []
         self._selected_accounts: list[str] = []
 
     async def async_step_user(

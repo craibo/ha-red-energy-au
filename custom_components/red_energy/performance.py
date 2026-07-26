@@ -5,7 +5,7 @@ import asyncio
 import logging
 import time
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any
 from collections import defaultdict, deque
 from functools import lru_cache, wraps
 
@@ -21,9 +21,9 @@ class PerformanceMonitor:
     def __init__(self, hass: HomeAssistant) -> None:
         """Initialize performance monitor."""
         self.hass = hass
-        self._timing_data: Dict[str, deque] = defaultdict(lambda: deque(maxlen=100))
+        self._timing_data: dict[str, deque] = defaultdict(lambda: deque(maxlen=100))
         self._memory_usage: deque = deque(maxlen=50)
-        self._api_calls: Dict[str, int] = defaultdict(int)
+        self._api_calls: dict[str, int] = defaultdict(int)
         self._cache_hits: int = 0
         self._cache_misses: int = 0
         
@@ -77,7 +77,7 @@ class PerformanceMonitor:
             return wrapper
         return decorator
     
-    def get_performance_stats(self) -> Dict[str, Any]:
+    def get_performance_stats(self) -> dict[str, Any]:
         """Get comprehensive performance statistics."""
         stats = {
             "timing_stats": {},
@@ -111,11 +111,11 @@ class DataProcessor:
     def __init__(self, performance_monitor: PerformanceMonitor) -> None:
         """Initialize data processor."""
         self._monitor = performance_monitor
-        self._processed_cache: Dict[str, Tuple[datetime, Any]] = {}
+        self._processed_cache: dict[str, tuple[datetime, Any]] = {}
         self._cache_ttl = timedelta(minutes=5)
     
     @lru_cache(maxsize=128)
-    def _calculate_daily_stats(self, usage_data_tuple: Tuple[Tuple[str, float], ...]) -> Dict[str, float]:
+    def _calculate_daily_stats(self, usage_data_tuple: tuple[tuple[str, float], ...]) -> dict[str, float]:
         """Calculate daily statistics with caching."""
         usage_data = [{"date": date, "usage": usage} for date, usage in usage_data_tuple]
         
@@ -158,10 +158,10 @@ class DataProcessor:
     
     def batch_process_properties(
         self, 
-        usage_data: Dict[str, Any], 
-        selected_accounts: List[str],
-        services: List[str]
-    ) -> Dict[str, Dict[str, Any]]:
+        usage_data: dict[str, Any], 
+        selected_accounts: list[str],
+        services: list[str]
+    ) -> dict[str, dict[str, Any]]:
         """Batch process multiple properties for efficiency."""
         results = {}
         
@@ -207,9 +207,9 @@ class DataProcessor:
     
     def optimize_sensor_calculations(
         self, 
-        processed_data: Dict[str, Dict[str, Any]],
+        processed_data: dict[str, dict[str, Any]],
         advanced_sensors_enabled: bool = False
-    ) -> Dict[str, Dict[str, Any]]:
+    ) -> dict[str, dict[str, Any]]:
         """Optimize sensor value calculations."""
         sensor_values = {}
         
@@ -243,7 +243,7 @@ class DataProcessor:
         
         return sensor_values
     
-    def _get_latest_daily_usage(self, daily_data: List[Dict[str, Any]]) -> float:
+    def _get_latest_daily_usage(self, daily_data: list[dict[str, Any]]) -> float:
         """Get the most recent daily usage value."""
         if not daily_data:
             return 0.0
@@ -251,7 +251,7 @@ class DataProcessor:
         # Data is typically sorted by date, get the latest
         return daily_data[-1].get("usage", 0.0)
     
-    def _calculate_peak_usage(self, daily_data: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def _calculate_peak_usage(self, daily_data: list[dict[str, Any]]) -> dict[str, Any]:
         """Calculate peak usage with date attribution."""
         if not daily_data:
             return {"usage": 0, "date": None, "cost": 0}
@@ -264,7 +264,7 @@ class DataProcessor:
             "cost": max_entry.get("cost", 0)
         }
     
-    def _calculate_efficiency_rating(self, daily_stats: Dict[str, float]) -> Dict[str, Any]:
+    def _calculate_efficiency_rating(self, daily_stats: dict[str, float]) -> dict[str, Any]:
         """Calculate efficiency rating based on usage consistency."""
         mean_usage = daily_stats["mean"]
         std_dev = daily_stats["std_dev"]
@@ -313,9 +313,9 @@ class BulkOperationManager:
     
     async def async_bulk_refresh_coordinators(
         self, 
-        coordinators: List[Any], 
+        coordinators: list[Any], 
         batch_size: int = 3
-    ) -> Dict[str, bool]:
+    ) -> dict[str, bool]:
         """Refresh multiple coordinators in batches."""
         results = {}
         
@@ -364,7 +364,7 @@ class BulkOperationManager:
     
     async def async_bulk_update_entities(
         self, 
-        entity_updates: Dict[str, Dict[str, Any]]
+        entity_updates: dict[str, dict[str, Any]]
     ) -> int:
         """Update multiple entities efficiently."""
         updated_count = 0
@@ -406,9 +406,9 @@ class MemoryOptimizer:
     
     def optimize_usage_data(
         self, 
-        usage_data: List[Dict[str, Any]], 
+        usage_data: list[dict[str, Any]], 
         max_days: int = 90
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Optimize usage data by limiting size and removing old data."""
         if not usage_data:
             return usage_data
@@ -438,8 +438,8 @@ class MemoryOptimizer:
     
     def _compress_to_weekly_averages(
         self, 
-        daily_data: List[Dict[str, Any]]
-    ) -> List[Dict[str, Any]]:
+        daily_data: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
         """Compress daily data to weekly averages."""
         if not daily_data:
             return []
@@ -478,7 +478,7 @@ class MemoryOptimizer:
         
         return weekly_averages
     
-    def get_memory_usage_stats(self, data_structure: Any) -> Dict[str, Any]:
+    def get_memory_usage_stats(self, data_structure: Any) -> dict[str, Any]:
         """Get memory usage statistics for a data structure."""
         import sys
         

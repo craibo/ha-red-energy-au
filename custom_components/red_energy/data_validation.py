@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
-from typing import Any, Dict, List
+from typing import Any
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -12,7 +12,7 @@ class DataValidationError(Exception):
     """Exception raised when data validation fails."""
 
 
-def validate_customer_data(data: Dict[str, Any]) -> Dict[str, Any]:
+def validate_customer_data(data: dict[str, Any]) -> dict[str, Any]:
     """Validate customer data from Red Energy API."""
     if not isinstance(data, dict):
         raise DataValidationError("Customer data must be a dictionary")
@@ -42,7 +42,7 @@ def validate_customer_data(data: Dict[str, Any]) -> Dict[str, Any]:
     return validated_data
 
 
-def validate_properties_data(data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def validate_properties_data(data: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Validate properties data from Red Energy API."""
     if not isinstance(data, list):
         raise DataValidationError("Properties data must be a list")
@@ -74,7 +74,7 @@ def validate_properties_data(data: List[Dict[str, Any]]) -> List[Dict[str, Any]]
     return validated_properties
 
 
-def validate_single_property(data: Dict[str, Any]) -> Dict[str, Any]:
+def validate_single_property(data: dict[str, Any]) -> dict[str, Any]:
     """Validate a single property."""
     if not isinstance(data, dict):
         raise DataValidationError("Property data must be a dictionary")
@@ -143,7 +143,7 @@ def validate_single_property(data: Dict[str, Any]) -> Dict[str, Any]:
     return validated_property
 
 
-def validate_address(data: Dict[str, Any]) -> Dict[str, Any]:
+def validate_address(data: dict[str, Any]) -> dict[str, Any]:
     """Validate address data."""
     if not isinstance(data, dict):
         data = {}
@@ -172,7 +172,7 @@ def validate_address(data: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def validate_services(data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def validate_services(data: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Validate services data."""
     if not isinstance(data, list):
         return []
@@ -190,7 +190,7 @@ def validate_services(data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return validated_services
 
 
-def validate_single_service(data: Dict[str, Any]) -> Dict[str, Any]:
+def validate_single_service(data: dict[str, Any]) -> dict[str, Any]:
     """Validate a single service."""
     if not isinstance(data, dict):
         raise DataValidationError("Service data must be a dictionary")
@@ -273,7 +273,7 @@ def validate_single_service(data: Dict[str, Any]) -> Dict[str, Any]:
     return validated_service
 
 
-def validate_rates(data: Any) -> List[Dict[str, Any]]:
+def validate_rates(data: Any) -> list[dict[str, Any]]:
     """Validate a currentPlan.rates list.
 
     rateCode is not unique per service - tiered/step rates (e.g. gas Anytime
@@ -316,7 +316,7 @@ def validate_rates(data: Any) -> List[Dict[str, Any]]:
     return validated_rates
 
 
-def validate_usage_data(data: Dict[str, Any]) -> Dict[str, Any]:
+def validate_usage_data(data: dict[str, Any]) -> dict[str, Any]:
     """Validate usage data from Red Energy API."""
     if not isinstance(data, dict):
         raise DataValidationError("Usage data must be a dictionary")
@@ -365,7 +365,7 @@ def validate_usage_data(data: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def validate_usage_entry(data: Dict[str, Any]) -> Dict[str, Any]:
+def validate_usage_entry(data: dict[str, Any]) -> dict[str, Any]:
     """Validate a single usage data entry with breakdown data."""
     if not isinstance(data, dict):
         raise DataValidationError("Usage entry must be a dictionary")
@@ -501,7 +501,7 @@ def sanitize_sensor_name(name: str) -> str:
     return sanitized.strip()
 
 
-def validate_config_data(config: Dict[str, Any]) -> None:
+def validate_config_data(config: dict[str, Any]) -> None:
     """Validate configuration data."""
     required_fields = ["username", "password"]
     

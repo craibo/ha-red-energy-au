@@ -5,7 +5,7 @@ import asyncio
 import json
 import logging
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Set
+from typing import Any
 
 from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.core import HomeAssistant, State
@@ -29,9 +29,9 @@ class RedEnergyStateManager:
         """Initialize state manager."""
         self.hass = hass
         self._store = Store(hass, STORAGE_VERSION, STORAGE_KEY)
-        self._entity_states: Dict[str, Dict[str, Any]] = {}
-        self._restoration_data: Dict[str, Any] = {}
-        self._state_history: Dict[str, List[Dict[str, Any]]] = {}
+        self._entity_states: dict[str, dict[str, Any]] = {}
+        self._restoration_data: dict[str, Any] = {}
+        self._state_history: dict[str, list[dict[str, Any]]] = {}
         self._max_history_entries = 100
 
     async def async_load_states(self) -> None:
@@ -70,7 +70,7 @@ class RedEnergyStateManager:
         self, 
         entity_id: str, 
         state: str, 
-        attributes: Dict[str, Any]
+        attributes: dict[str, Any]
     ) -> None:
         """Record entity state for restoration."""
         now = dt_util.utcnow()
@@ -99,7 +99,7 @@ class RedEnergyStateManager:
         if len(self._state_history[entity_id]) > self._max_history_entries:
             self._state_history[entity_id] = self._state_history[entity_id][-self._max_history_entries:]
 
-    def _extract_key_attributes(self, attributes: Dict[str, Any]) -> Dict[str, Any]:
+    def _extract_key_attributes(self, attributes: dict[str, Any]) -> dict[str, Any]:
         """Extract key attributes for history tracking."""
         key_attrs = {}
         
@@ -116,7 +116,7 @@ class RedEnergyStateManager:
         
         return key_attrs
 
-    def get_restoration_data(self, entity_id: str) -> Optional[Dict[str, Any]]:
+    def get_restoration_data(self, entity_id: str) -> dict[str, Any] | None:
         """Get restoration data for an entity."""
         if entity_id not in self._entity_states:
             return None
@@ -141,7 +141,7 @@ class RedEnergyStateManager:
         self, 
         entity_id: str, 
         hours: int = 24
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Get entity state history for the specified time period."""
         if entity_id not in self._state_history:
             return []
@@ -161,8 +161,8 @@ class RedEnergyStateManager:
 
     async def async_restore_entity_states(
         self, 
-        entity_ids: List[str]
-    ) -> Dict[str, bool]:
+        entity_ids: list[str]
+    ) -> dict[str, bool]:
         """Restore states for multiple entities."""
         restoration_results = {}
         
@@ -249,7 +249,7 @@ class RedEnergyStateManager:
         
         return False
 
-    def get_availability_stats(self) -> Dict[str, Any]:
+    def get_availability_stats(self) -> dict[str, Any]:
         """Get entity availability statistics."""
         total_entities = len(self._entity_states)
         available_count = 0
@@ -279,7 +279,7 @@ class RedEnergyRestoreEntity(RestoreEntity):
         """Initialize restore entity."""
         super().__init__(*args, **kwargs)
         self._state_manager = state_manager
-        self._restored_state: Optional[State] = None
+        self._restored_state: State | None = None
         self._restoration_successful = False
 
     async def async_added_to_hass(self) -> None:
@@ -350,11 +350,11 @@ class EntityAvailabilityManager:
         """Initialize availability manager."""
         self.hass = hass
         self._state_manager = state_manager
-        self._unavailable_entities: Set[str] = set()
-        self._recovery_attempts: Dict[str, int] = {}
+        self._unavailable_entities: set[str] = set()
+        self._recovery_attempts: dict[str, int] = {}
         self._max_recovery_attempts = 3
 
-    async def async_monitor_entity_availability(self, entity_ids: List[str]) -> None:
+    async def async_monitor_entity_availability(self, entity_ids: list[str]) -> None:
         """Monitor entity availability and attempt recovery."""
         for entity_id in entity_ids:
             state = self.hass.states.get(entity_id)
@@ -394,11 +394,11 @@ class EntityAvailabilityManager:
         _LOGGER.debug("State restoration recovery failed for %s", entity_id)
         return False
 
-    def get_unavailable_entities(self) -> List[str]:
+    def get_unavailable_entities(self) -> list[str]:
         """Get list of currently unavailable entities."""
         return list(self._unavailable_entities)
 
-    def get_recovery_stats(self) -> Dict[str, Any]:
+    def get_recovery_stats(self) -> dict[str, Any]:
         """Get recovery statistics."""
         return {
             "unavailable_count": len(self._unavailable_entities),
