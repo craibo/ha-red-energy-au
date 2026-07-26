@@ -142,11 +142,12 @@ class TestSensorDisplayNames:
         assert "Daily Import Usage" in sensor._attr_name
         assert "_" not in sensor._attr_name.split(" ")[-3:]  # Check last 3 words don't have underscores
 
-    def test_base_sensor_name_uses_property_id_not_property_display_name(self):
-        """Entity names use the account/property ID, not the address-derived property name.
+    def test_base_sensor_name_has_no_account_or_service_prefix(self):
+        """Entity names carry no account_id/service prefix and no address.
 
-        Split accounts (e.g. electricity and gas billed separately) can share
-        the same address, so the address alone doesn't distinguish entities.
+        The device (named "{account_id} - {Service}") already conveys both,
+        and Home Assistant shows device name + entity name together in the
+        UI, so repeating them in every entity name is redundant.
         """
         coordinator = create_mock_coordinator()
         config_entry = create_mock_config_entry()
@@ -159,7 +160,8 @@ class TestSensorDisplayNames:
             "daily_import_usage"
         )
 
-        assert sensor._attr_name.startswith("prop-001")
+        assert sensor._attr_name == "Daily Import Usage"
+        assert "prop-001" not in sensor._attr_name
         assert "Test Property" not in sensor._attr_name
 
     def test_total_cost_sensor_display_name(self):

@@ -22,6 +22,7 @@ from homeassistant.util import dt as dt_util
 from .const import (
     CONF_ENABLE_ADVANCED_SENSORS,
     DOMAIN,
+    SENSOR_TYPE_ADDRESS,
     SENSOR_TYPE_ARREARS,
     SENSOR_TYPE_BALANCE,
     SENSOR_TYPE_BILLING_FREQUENCY,
@@ -35,6 +36,7 @@ from .const import (
     SENSOR_TYPE_MONTHLY_AVERAGE,
     SENSOR_TYPE_NEXT_BILL_DATE,
     SENSOR_TYPE_NMI,
+    SENSOR_TYPE_PAYMENT_TYPE,
     SENSOR_TYPE_PEAK_USAGE,
     SENSOR_TYPE_PRODUCT_NAME,
     SENSOR_TYPE_SOLAR,
@@ -104,6 +106,8 @@ async def async_setup_entry(
                 RedEnergyJurisdictionSensor(coordinator, config_entry, account_id, service_type),
                 RedEnergyChargeClassSensor(coordinator, config_entry, account_id, service_type),
                 RedEnergyStatusSensor(coordinator, config_entry, account_id, service_type),
+                RedEnergyAddressSensor(coordinator, config_entry, account_id, service_type),
+                RedEnergyPaymentTypeSensor(coordinator, config_entry, account_id, service_type),
                 # Daily import/export usage breakdown
                 RedEnergyDailyImportUsageSensor(coordinator, config_entry, account_id, service_type),
                 RedEnergyDailyExportUsageSensor(coordinator, config_entry, account_id, service_type),
@@ -144,6 +148,14 @@ async def async_setup_entry(
                 for entity in service_entities:
                     if entity._requires_usage_data:
                         entity._attr_entity_registry_enabled_default = False
+
+            # Solar, export, time-of-use breakdown, demand, carbon emission,
+            # and efficiency have no equivalent for gas - drop them entirely
+            # rather than creating a permanently meaningless entity.
+            if service_type != SERVICE_TYPE_ELECTRICITY:
+                service_entities = [
+                    entity for entity in service_entities if not entity._electricity_only
+                ]
 
             entities.extend(service_entities)
     
@@ -194,6 +206,12 @@ class RedEnergyBaseSensor(CoordinatorEntity, SensorEntity):
     # False since they work regardless of meter type.
     _requires_usage_data: bool = True
 
+    # Whether this sensor is only meaningful for electricity: solar, export,
+    # time-of-use breakdown, demand, carbon emission, and efficiency have no
+    # equivalent for gas, which is one-directional and has no ToU tariff.
+    # Not created at all for gas accounts (see async_setup_entry).
+    _electricity_only: bool = False
+
     def __init__(
         self,
         coordinator: RedEnergyDataCoordinator,
@@ -210,9 +228,10 @@ class RedEnergyBaseSensor(CoordinatorEntity, SensorEntity):
         self._service_type = service_type
         self._sensor_type = sensor_type
 
-        service_display = service_type.title()
-
-        self._attr_name = f"{property_id} {service_display} {sensor_type.replace('_', ' ').title()}"
+        # No account_id/service prefix here - the device (named "{account_id}
+        # - {Service}", see device_manager.py) already conveys both, and HA
+        # shows device name + entity name together in the UI.
+        self._attr_name = sensor_type.replace('_', ' ').title()
         self._attr_unique_id = f"{DOMAIN}_{config_entry.entry_id}_{property_id}_{service_type}_{sensor_type}"
         
         # Set device info for grouping (device_manager handles full device metadata)
@@ -461,6 +480,8 @@ class RedEnergyPeakUsageSensor(RedEnergyBaseSensor):
 class RedEnergyEfficiencySensor(RedEnergyBaseSensor):
     """Red Energy efficiency rating sensor."""
 
+    _electricity_only = True
+
     def __init__(
         self,
         coordinator: RedEnergyDataCoordinator,
@@ -589,6 +610,7 @@ class RedEnergySolarSensor(RedEnergyBaseSensor):
     """Red Energy solar capability sensor."""
 
     _requires_usage_data = False
+    _electricity_only = True
 
     def __init__(
         self,
@@ -638,8 +660,21 @@ class RedEnergyProductNameSensor(RedEnergyBaseSensor):
         metadata = self.coordinator.get_service_metadata(self._property_id, self._service_type)
         if not metadata:
             return None
-        
+
         return metadata.get("productName")
+
+    @property
+    def extra_state_attributes(self) -> Optional[dict[str, Any]]:
+        """Return extra state attributes."""
+        metadata = self.coordinator.get_service_metadata(self._property_id, self._service_type)
+        if not metadata:
+            return None
+
+        promotion_desc = metadata.get("promotionDesc")
+        if not promotion_desc:
+            return None
+
+        return {"promotion_description": promotion_desc}
 
 
 class RedEnergyDistributorSensor(RedEnergyBaseSensor):
@@ -666,8 +701,75 @@ class RedEnergyDistributorSensor(RedEnergyBaseSensor):
         metadata = self.coordinator.get_service_metadata(self._property_id, self._service_type)
         if not metadata:
             return None
-        
+
         return metadata.get("linesCompany")
+
+
+class RedEnergyPaymentTypeSensor(RedEnergyBaseSensor):
+    """Red Energy payment type sensor."""
+
+    _requires_usage_data = False
+
+    def __init__(
+        self,
+        coordinator: RedEnergyDataCoordinator,
+        config_entry: ConfigEntry,
+        property_id: str,
+        service_type: str,
+    ) -> None:
+        """Initialize the payment type sensor."""
+        super().__init__(coordinator, config_entry, property_id, service_type, SENSOR_TYPE_PAYMENT_TYPE)
+
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+        self._attr_icon = "mdi:credit-card-outline"
+
+    @property
+    def native_value(self) -> Optional[str]:
+        """Return the payment type description."""
+        metadata = self.coordinator.get_service_metadata(self._property_id, self._service_type)
+        if not metadata:
+            return None
+
+        return metadata.get("paymentTypeDescription")
+
+
+class RedEnergyAddressSensor(RedEnergyBaseSensor):
+    """Red Energy property address sensor."""
+
+    _requires_usage_data = False
+
+    def __init__(
+        self,
+        coordinator: RedEnergyDataCoordinator,
+        config_entry: ConfigEntry,
+        property_id: str,
+        service_type: str,
+    ) -> None:
+        """Initialize the address sensor."""
+        super().__init__(coordinator, config_entry, property_id, service_type, SENSOR_TYPE_ADDRESS)
+
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+        self._attr_icon = "mdi:map-marker"
+
+    @property
+    def native_value(self) -> Optional[str]:
+        """Return the formatted property address."""
+        property_data = self.coordinator.get_property_data(self._property_id)
+        if not property_data:
+            return None
+
+        address = property_data.get("property", {}).get("address", {})
+        parts = [
+            address.get("street"),
+            address.get("city"),
+            address.get("state"),
+            address.get("postcode"),
+        ]
+        formatted = ", ".join(p for p in parts[:2] if p)
+        state_postcode = " ".join(p for p in parts[2:] if p)
+        if formatted and state_postcode:
+            return f"{formatted} {state_postcode}"
+        return formatted or state_postcode or None
 
 
 class RedEnergyBalanceSensor(RedEnergyBaseSensor):
@@ -880,7 +982,7 @@ class RedEnergyChargeClassSensor(RedEnergyBaseSensor):
         
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
         self._attr_icon = "mdi:tag"
-        self._attr_name = f"{self._attr_name.rsplit(' ', 1)[0]} Energy Plan Type"
+        self._attr_name = "Energy Plan Type"
 
     @property
     def native_value(self) -> Optional[str]:
@@ -982,6 +1084,8 @@ class RedEnergyDailyImportUsageSensor(RedEnergyBaseSensor):
 class RedEnergyDailyExportUsageSensor(RedEnergyBaseSensor):
     """Red Energy daily export usage sensor (solar generation)."""
 
+    _electricity_only = True
+
     def __init__(
         self,
         coordinator: RedEnergyDataCoordinator,
@@ -1078,6 +1182,8 @@ class RedEnergyTotalImportUsageSensor(RedEnergyBaseSensor):
 
 class RedEnergyTotalExportUsageSensor(RedEnergyBaseSensor):
     """Red Energy total export usage sensor (30-day period)."""
+
+    _electricity_only = True
 
     def __init__(
         self,
@@ -1178,6 +1284,8 @@ class RedEnergyTotalImportCostSensor(RedEnergyBaseSensor):
 class RedEnergyTotalExportCreditSensor(RedEnergyBaseSensor):
     """Red Energy total export credit sensor."""
 
+    _electricity_only = True
+
     def __init__(
         self,
         coordinator: RedEnergyDataCoordinator,
@@ -1260,6 +1368,8 @@ class RedEnergyDailyImportCostSensor(RedEnergyBaseSensor):
 class RedEnergyDailyExportCreditSensor(RedEnergyBaseSensor):
     """Red Energy daily export credit sensor."""
 
+    _electricity_only = True
+
     def __init__(
         self,
         coordinator: RedEnergyDataCoordinator,
@@ -1297,6 +1407,8 @@ class RedEnergyDailyExportCreditSensor(RedEnergyBaseSensor):
 
 class RedEnergyPeakImportUsageSensor(RedEnergyBaseSensor):
     """Red Energy peak import usage sensor."""
+
+    _electricity_only = True
 
     def __init__(
         self,
@@ -1339,6 +1451,8 @@ class RedEnergyPeakImportUsageSensor(RedEnergyBaseSensor):
 class RedEnergyOffpeakImportUsageSensor(RedEnergyBaseSensor):
     """Red Energy offpeak import usage sensor."""
 
+    _electricity_only = True
+
     def __init__(
         self,
         coordinator: RedEnergyDataCoordinator,
@@ -1380,6 +1494,8 @@ class RedEnergyOffpeakImportUsageSensor(RedEnergyBaseSensor):
 class RedEnergyShoulderImportUsageSensor(RedEnergyBaseSensor):
     """Red Energy shoulder import usage sensor."""
 
+    _electricity_only = True
+
     def __init__(
         self,
         coordinator: RedEnergyDataCoordinator,
@@ -1420,6 +1536,8 @@ class RedEnergyShoulderImportUsageSensor(RedEnergyBaseSensor):
 
 class RedEnergyPeakExportUsageSensor(RedEnergyBaseSensor):
     """Red Energy peak export usage sensor."""
+
+    _electricity_only = True
 
     def __init__(
         self,
@@ -1464,6 +1582,8 @@ class RedEnergyPeakExportUsageSensor(RedEnergyBaseSensor):
 class RedEnergyOffpeakExportUsageSensor(RedEnergyBaseSensor):
     """Red Energy offpeak export usage sensor."""
 
+    _electricity_only = True
+
     def __init__(
         self,
         coordinator: RedEnergyDataCoordinator,
@@ -1506,6 +1626,8 @@ class RedEnergyOffpeakExportUsageSensor(RedEnergyBaseSensor):
 
 class RedEnergyShoulderExportUsageSensor(RedEnergyBaseSensor):
     """Red Energy shoulder export usage sensor."""
+
+    _electricity_only = True
 
     def __init__(
         self,
@@ -1550,6 +1672,8 @@ class RedEnergyShoulderExportUsageSensor(RedEnergyBaseSensor):
 class RedEnergyMaxDemandSensor(RedEnergyBaseSensor):
     """Red Energy maximum demand sensor."""
 
+    _electricity_only = True
+
     def __init__(
         self,
         coordinator: RedEnergyDataCoordinator,
@@ -1590,6 +1714,8 @@ class RedEnergyMaxDemandSensor(RedEnergyBaseSensor):
 class RedEnergyMaxDemandTimeSensor(RedEnergyBaseSensor):
     """Red Energy maximum demand timestamp sensor."""
 
+    _electricity_only = True
+
     def __init__(
         self,
         coordinator: RedEnergyDataCoordinator,
@@ -1599,9 +1725,13 @@ class RedEnergyMaxDemandTimeSensor(RedEnergyBaseSensor):
     ) -> None:
         """Initialize the maximum demand timestamp sensor."""
         super().__init__(coordinator, config_entry, property_id, service_type, "max_demand_interval_start")
-        
+
         self._attr_device_class = SensorDeviceClass.TIMESTAMP
         self._attr_icon = "mdi:clock-alert"
+        # Rarely useful on its own (the value it timestamps - max demand -
+        # is the primary sensor) and often has no value even when usage data
+        # exists, so it's disabled by default rather than always enabled.
+        self._attr_entity_registry_enabled_default = False
 
     @property
     def native_value(self) -> Optional[datetime]:
@@ -1618,6 +1748,8 @@ class RedEnergyMaxDemandTimeSensor(RedEnergyBaseSensor):
 
 class RedEnergyCarbonEmissionSensor(RedEnergyBaseSensor):
     """Red Energy carbon emission sensor."""
+
+    _electricity_only = True
 
     def __init__(
         self,

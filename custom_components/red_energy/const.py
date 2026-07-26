@@ -78,6 +78,8 @@ SENSOR_TYPE_BILLING_FREQUENCY: Final = "billing_frequency"
 SENSOR_TYPE_JURISDICTION: Final = "jurisdiction"
 SENSOR_TYPE_CHARGE_CLASS: Final = "charge_class"
 SENSOR_TYPE_STATUS: Final = "status"
+SENSOR_TYPE_ADDRESS: Final = "address"
+SENSOR_TYPE_PAYMENT_TYPE: Final = "payment_type"
 
 # Configuration options
 CONF_SCAN_INTERVAL: Final = "scan_interval"
