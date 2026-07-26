@@ -18,6 +18,7 @@ from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
+from homeassistant.util import slugify
 
 from .const import (
     CONF_ENABLE_ADVANCED_SENSORS,
@@ -39,6 +40,7 @@ from .const import (
     SENSOR_TYPE_PAYMENT_TYPE,
     SENSOR_TYPE_PEAK_USAGE,
     SENSOR_TYPE_PRODUCT_NAME,
+    SENSOR_TYPE_RATE_PREFIX,
     SENSOR_TYPE_SOLAR,
     SENSOR_TYPE_STATUS,
     SERVICE_TYPE_ELECTRICITY,
@@ -121,6 +123,14 @@ async def async_setup_entry(
                 RedEnergyTotalImportCostSensor(coordinator, config_entry, account_id, service_type),
                 RedEnergyTotalExportCreditSensor(coordinator, config_entry, account_id, service_type),
             ]
+
+            # One diagnostic sensor per contracted tariff rate (peak/off-peak/
+            # supply/demand/etc.) - a dynamic, variable-count set driven by
+            # the plan's actual rates rather than a fixed sensor list.
+            service_entities.extend(
+                RedEnergyRateSensor(coordinator, config_entry, account_id, service_type, rate)
+                for rate in coordinator.get_service_rates(account_id, service_type)
+            )
 
             # Advanced sensors (optional)
             if advanced_sensors_enabled:
@@ -731,6 +741,66 @@ class RedEnergyPaymentTypeSensor(RedEnergyBaseSensor):
             return None
 
         return metadata.get("paymentTypeDescription")
+
+
+class RedEnergyRateSensor(RedEnergyBaseSensor):
+    """Red Energy tariff rate sensor.
+
+    One instance per entry in the plan's rates list. rateCode alone isn't a
+    stable identifier - tiered rates (e.g. gas Anytime Step1..Step5) repeat
+    the same rateCode across steps - so rate_code + rate_desc together key
+    both the unique_id and the coordinator lookup.
+    """
+
+    _requires_usage_data = False
+
+    def __init__(
+        self,
+        coordinator: RedEnergyDataCoordinator,
+        config_entry: ConfigEntry,
+        property_id: str,
+        service_type: str,
+        rate: dict[str, Any],
+    ) -> None:
+        """Initialize the rate sensor."""
+        self._rate_code = rate.get("rate_code", "")
+        self._rate_desc = rate.get("rate_desc", "")
+        slug = slugify(f"{self._rate_code}_{self._rate_desc}")
+
+        super().__init__(
+            coordinator, config_entry, property_id, service_type, f"{SENSOR_TYPE_RATE_PREFIX}_{slug}"
+        )
+
+        self._attr_name = self._rate_desc
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+        self._attr_device_class = SensorDeviceClass.MONETARY
+        self._attr_native_unit_of_measurement = "AUD"
+        self._attr_icon = "mdi:currency-usd"
+
+    def _find_rate(self) -> Optional[dict[str, Any]]:
+        rates = self.coordinator.get_service_rates(self._property_id, self._service_type)
+        return next(
+            (
+                r for r in rates
+                if r.get("rate_code") == self._rate_code and r.get("rate_desc") == self._rate_desc
+            ),
+            None,
+        )
+
+    @property
+    def native_value(self) -> Optional[float]:
+        """Return the rate in dollars, including GST."""
+        rate = self._find_rate()
+        return rate.get("rate_incl_gst_dollars") if rate else None
+
+    @property
+    def extra_state_attributes(self) -> Optional[dict[str, Any]]:
+        """Return the remaining rate fields as attributes."""
+        rate = self._find_rate()
+        if not rate:
+            return None
+
+        return {key: value for key, value in rate.items() if key != "rate_incl_gst_dollars"}
 
 
 class RedEnergyAddressSensor(RedEnergyBaseSensor):

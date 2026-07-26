@@ -6,6 +6,7 @@ from custom_components.red_energy.data_validation import (
     validate_address,
     validate_properties_data,
     validate_single_service,
+    validate_rates,
     DataValidationError
 )
 
@@ -392,3 +393,119 @@ def test_validate_single_service_missing_nested_fields_omitted():
     result = validate_single_service(raw_service)
     assert "paymentTypeDescription" not in result
     assert "promotionDesc" not in result
+
+
+def test_validate_single_service_extracts_rates():
+    """currentPlan.rates must surface as a validated list on the service."""
+    raw_service = {
+        "utility": "E",
+        "consumerNumber": "4235478511",
+        "status": "ON",
+        "currentPlan": {
+            "rates": [
+                {
+                    "rateCode": "80008279798P",
+                    "rateDesc": "Peak",
+                    "type": "PR",
+                    "rateExclGstCents": 24.55,
+                    "rateInclGstCents": 27.005,
+                    "discountedRateExclGstInCents": 24.55,
+                    "discountedRateInclGstInCents": 27.005,
+                    "unit": "kWh",
+                    "unitStepDesc": None,
+                },
+            ],
+        },
+    }
+    result = validate_single_service(raw_service)
+    assert len(result["rates"]) == 1
+    rate = result["rates"][0]
+    assert rate["rate_code"] == "80008279798P"
+    assert rate["rate_desc"] == "Peak"
+    assert rate["rate_incl_gst_dollars"] == pytest.approx(0.27005)
+    assert rate["type"] == "PR"
+    assert rate["unit"] == "kWh"
+    assert rate["unit_step_desc"] is None
+
+
+def test_validate_single_service_no_rates_defaults_to_empty_list():
+    """Missing currentPlan/rates must default to an empty list, not KeyError."""
+    raw_service = {
+        "utility": "G",
+        "consumerNumber": "4236257811",
+        "status": "ON",
+    }
+    result = validate_single_service(raw_service)
+    assert result["rates"] == []
+
+
+def test_validate_rates_handles_negative_solar_rate():
+    """Solar feed-in rates are negative (a credit) - must not be rejected."""
+    raw_rates = [
+        {
+            "rateCode": "80008279798GP",
+            "rateDesc": "Solar",
+            "type": "PR",
+            "rateExclGstCents": -3.6364,
+            "rateInclGstCents": -4,
+            "discountedRateExclGstInCents": -3.6364,
+            "discountedRateInclGstInCents": -4,
+            "unit": "kWh",
+            "unitStepDesc": None,
+        },
+    ]
+    result = validate_rates(raw_rates)
+    assert len(result) == 1
+    assert result[0]["rate_incl_gst_dollars"] == pytest.approx(-0.04)
+
+
+def test_validate_rates_handles_duplicate_rate_code_tiered_steps():
+    """Tiered gas rates repeat rateCode across steps - all must be preserved."""
+    raw_rates = [
+        {
+            "rateCode": "10009300825P",
+            "rateDesc": "Anytime Step1",
+            "type": "PSR1",
+            "rateExclGstCents": 4.5,
+            "rateInclGstCents": 4.95,
+            "discountedRateExclGstInCents": 4.5,
+            "discountedRateInclGstInCents": 4.95,
+            "unit": "MJ",
+            "unitStepDesc": "First 20.712 / day",
+        },
+        {
+            "rateCode": "10009300825P",
+            "rateDesc": "Anytime Step2",
+            "type": "PSR1",
+            "rateExclGstCents": 3.3,
+            "rateInclGstCents": 3.63,
+            "discountedRateExclGstInCents": 3.3,
+            "discountedRateInclGstInCents": 3.63,
+            "unit": "MJ",
+            "unitStepDesc": "Next 20.384 / day",
+        },
+    ]
+    result = validate_rates(raw_rates)
+    assert len(result) == 2
+    assert result[0]["rate_code"] == result[1]["rate_code"] == "10009300825P"
+    assert result[0]["rate_desc"] == "Anytime Step1"
+    assert result[1]["rate_desc"] == "Anytime Step2"
+
+
+def test_validate_rates_skips_entries_missing_required_fields():
+    """Entries missing rateCode or rateDesc must be skipped, not raise."""
+    raw_rates = [
+        {"rateDesc": "Missing code", "rateInclGstCents": 1.0},
+        {"rateCode": "X1", "rateInclGstCents": 1.0},
+        {"rateCode": "X2", "rateDesc": "Valid", "rateInclGstCents": 10.0},
+    ]
+    result = validate_rates(raw_rates)
+    assert len(result) == 1
+    assert result[0]["rate_code"] == "X2"
+
+
+def test_validate_rates_handles_non_list_input():
+    """Malformed rates field (not a list) must return an empty list, not raise."""
+    assert validate_rates(None) == []
+    assert validate_rates("not-a-list") == []
+    assert validate_rates({}) == []
