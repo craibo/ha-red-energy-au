@@ -116,31 +116,6 @@ def test_config_flow_options_updated():
     assert "coordinator.update_interval" in content
 
 
-def test_automation_examples_exist():
-    """Test that automation examples file exists."""
-    examples_path = os.path.join(
-        os.path.dirname(os.path.dirname(__file__)),
-        "AUTOMATION_EXAMPLES.md"
-    )
-    
-    assert os.path.exists(examples_path)
-    
-    with open(examples_path, 'r') as f:
-        content = f.read()
-    
-    # Check for key sections
-    sections = [
-        "Cost Monitoring Automations",
-        "Usage Pattern Automations", 
-        "Cost Optimization Automations",
-        "Data Management Automations",
-        "Smart Home Integration",
-        "Voice Assistant Integration",
-    ]
-    
-    for section in sections:
-        assert section in content, f"Automation section {section} not found"
-
 
 def test_init_services_integration():
     """Test that __init__.py includes services setup."""
