@@ -46,7 +46,7 @@ flake8 custom_components --count --exit-zero --max-complexity=10 --max-line-leng
 mypy custom_components/red_energy --ignore-missing-imports
 ```
 
-CI runs Python 3.11 and 3.12. pytest and mypy failures are `continue-on-error: true` in CI.
+CI runs Python 3.13 and 3.14 (matching Home Assistant's supported Python baseline). pytest and mypy failures are `continue-on-error: true` in CI.
 
 ## Architecture
 
