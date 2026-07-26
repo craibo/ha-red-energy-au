@@ -18,23 +18,24 @@ A comprehensive Home Assistant custom integration for Red Energy (Australian ene
 ## Key Features
 
 - **Real-time Energy Monitoring**: Track daily electricity and gas usage with cost analysis
-- **Multi-Property Support**: Monitor multiple properties from a single Red Energy account
+- **Multi-Account Support**: Every account on your Red Energy login gets its own device - including split accounts where electricity and gas are billed separately at the same address
 - **Advanced Analytics**: Daily/monthly averages, peak usage detection, and efficiency ratings
+- **Tariff Rate Visibility**: A diagnostic sensor per rate on your actual plan (peak/off-peak/shoulder/supply/demand)
 - **Automation Ready**: 11 pre-built automation examples with voice assistant integration
 - **Energy Dashboard Integration**: Native Home Assistant Energy dashboard support
 
 ## What You Get
 
-### Core Sensors (Per Property/Service)
-- Daily usage tracking (kWh for electricity, MJ for gas)
-- Total cost monitoring since last bill (AUD)
-- Total usage since last bill
+### Core Sensors (Per Account/Device)
+- Daily and total usage/cost tracking (kWh for electricity, MJ for gas) since last bill
+- Account metadata: NMI, meter type, energy plan, distributor, payment type, address (with lat/long for mapping), balance, arrears, bill dates
+- Electricity-only concepts (solar, export usage/credit) are only created on electricity accounts, never on gas
 
 ### Advanced Analytics (Optional)
 - Daily and monthly usage averages (billing period-adjusted)
 - Peak usage detection with date attribution  
-- Efficiency ratings (0-100%) based on usage consistency
-- Usage pattern analysis for optimization
+- Efficiency ratings (0-100%) based on usage consistency - electricity only
+- Time-of-use breakdown, max demand, and carbon emissions - electricity only
 
 ### Billing Period Alignment
 - Automatic alignment with Red Energy billing cycles
@@ -65,13 +66,12 @@ A comprehensive Home Assistant custom integration for Red Energy (Australian ene
 1. Enter your Red Energy credentials:
    - **Username**: Your Red Energy account email
    - **Password**: Your Red Energy account password
-2. Select which properties to monitor
-3. Choose services (electricity, gas, or both)
-4. Configure polling interval and advanced options
-5. Optionally enable advanced sensors for detailed analytics
+2. All accounts on your login are added automatically, each as its own device - electricity and gas are always both monitored (there's nothing to select per-service)
+3. Afterwards, use the integration's **Configure** option to choose which accounts to monitor, set the polling interval, or enable advanced sensors
 
 ## Configuration Options
 
+- **Accounts to Monitor**: Choose which accounts/devices are active, labeled `{account_id} - {Electricity|Gas}`
 - **Polling Intervals**: 15min, 30min (default), 1hour, 2hours, 4hours
 - **Advanced Sensors**: Enable detailed usage analytics
 - **Performance Monitoring**: Track operation timing and efficiency

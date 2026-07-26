@@ -22,8 +22,9 @@ A comprehensive Home Assistant custom integration for Red Energy (Australian ene
 ### 🏠 **Core Energy Monitoring**
 - **Real-time Usage Tracking**: Daily electricity and gas consumption
 - **Cost Analysis**: Total costs and daily spending tracking
-- **Multi-Property Support**: Monitor multiple properties from a single account
-- **Dual Service Support**: Both electricity and gas monitoring
+- **Multi-Account Support**: Monitor every account on your Red Energy login, each as its own device - including split accounts where electricity and gas are billed separately
+- **Dual Service Support**: Electricity and gas monitored automatically, with electricity-only sensors (solar, export, time-of-use, demand, emissions) correctly omitted from gas accounts
+- **Tariff Rate Visibility**: A diagnostic sensor per contracted rate on your actual plan (peak/off-peak/shoulder/supply/demand/tiered steps)
 
 ### 📊 **Advanced Analytics** (Stage 4+)
 - **Daily & Monthly Averages**: Statistical analysis of usage patterns
@@ -54,7 +55,7 @@ A comprehensive Home Assistant custom integration for Red Energy (Australian ene
 
 ### Installation via HACS (Recommended)
 
-1. Install [HACS](#hacs) follwing the instructions [here](https://hacs.xyz/docs/setup/download)
+1. Install [HACS](#hacs) following the instructions [here](https://hacs.xyz/docs/setup/download)
 2. [![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=craibo&repository=ha-red-energy-au&category=integration)
 3. Press the Download button
 4. Restart Home Assistant
@@ -75,8 +76,8 @@ A comprehensive Home Assistant custom integration for Red Energy (Australian ene
 3. Enter your Red Energy credentials:
    - **Username**: Your Red Energy account email address
    - **Password**: Your Red Energy account password
-4. Select your properties and services (electricity/gas)
-5. Configure advanced options if desired
+4. All accounts on your Red Energy login are added automatically - electricity and gas are always both monitored (each account is billed as one service, so there's nothing to select)
+5. Use the integration's **Configure** options afterwards to choose which accounts to monitor, adjust polling interval, or enable advanced sensors
 
 ⚠️ **Important**: This integration uses the real Red Energy API. You must have valid Red Energy account credentials to use this integration.
 
@@ -90,61 +91,68 @@ A comprehensive Home Assistant custom integration for Red Energy (Australian ene
 
 This limitation is inherent to Red Energy's platform and cannot be changed by this integration. The integration will automatically detect and display new data once Red Energy updates it.
 
-## Sensors Created
+## Devices & Sensors Created
 
-### Core Sensors (22 per service - Always Available)
-For each enabled service (electricity/gas) per property:
+Red Energy bills electricity and gas as **separate accounts**, even at the same address (e.g. one account for electricity, another for gas). This integration creates **one Home Assistant device per account**, named `{account_id} - {Electricity|Gas}`, so split accounts at the same address are never ambiguous. Every sensor entity belongs to its account's device; entity names don't repeat the account ID or service (the device already shows both).
+
+Since electricity-only concepts (solar, export, time-of-use tariffs, demand, carbon emissions) don't apply to gas, those sensors are only created on electricity accounts - a gas-only account won't get a permanently meaningless "Solar" entity, for example.
+
+### Core Sensors (Always Available)
+**24 sensors for electricity accounts, 19 for gas accounts** (gas accounts skip the 5 electricity-only ones marked below):
 
 **Usage & Cost Tracking:**
-- `sensor.{property_name}_{service}_daily_import_usage` - Daily imported energy (kWh/MJ)
-- `sensor.{property_name}_{service}_daily_export_usage` - Daily exported energy (kWh/MJ)
-- `sensor.{property_name}_{service}_total_import_usage` - Total imported energy since last bill
-- `sensor.{property_name}_{service}_total_export_usage` - Total exported energy since last bill
-- `sensor.{property_name}_{service}_daily_import_cost` - Daily import cost (AUD)
-- `sensor.{property_name}_{service}_daily_export_credit` - Daily export credit (AUD)
-- `sensor.{property_name}_{service}_total_import_cost` - Total import cost since last bill (AUD)
-- `sensor.{property_name}_{service}_total_export_credit` - Total export credit since last bill (AUD)
+- Daily Import Usage - Daily imported energy (kWh/MJ)
+- Daily Export Usage *(electricity only)* - Daily exported energy (kWh)
+- Total Import Usage - Total imported energy since last bill
+- Total Export Usage *(electricity only)* - Total exported energy since last bill
+- Daily Import Cost - Daily import cost (AUD)
+- Daily Export Credit *(electricity only)* - Daily export credit (AUD)
+- Total Import Cost - Total import cost since last bill (AUD)
+- Total Export Credit *(electricity only)* - Total export credit since last bill (AUD)
+- Total Cost - Total cost since last bill (AUD)
 
 **Account & Service Information:**
-- `sensor.{property_name}_{service}_nmi` - National Meter Identifier
-- `sensor.{property_name}_{service}_meter_type` - Meter type (e.g., smart meter)
-- `sensor.{property_name}_{service}_solar` - Solar system indicator
-- `sensor.{property_name}_{service}_energy_plan` - Current energy plan name
-- `sensor.{property_name}_{service}_distributor` - Energy distributor
-- `sensor.{property_name}_{service}_jurisdiction` - Jurisdiction
-- `sensor.{property_name}_{service}_charge_class` - Charge classification
+- NMI - National Meter Identifier
+- Meter Type - Meter type (e.g. INTERVAL, BASIC)
+- Solar *(electricity only)* - Solar system indicator
+- Energy Plan - Current energy plan name (exposes the plan's `promotion_description` as an attribute)
+- Distributor - Energy distributor / lines company
+- Payment Type - Payment method description (e.g. Direct Debit Bank)
+- Address - Formatted property address (exposes `latitude`/`longitude` attributes for mapping)
+- Jurisdiction - Jurisdiction (state)
+- Energy Plan Type - Charge classification (Residential/Small Business)
+- Status - Service status
 
 **Billing Information:**
-- `sensor.{property_name}_{service}_balance` - Current account balance (AUD)
-- `sensor.{property_name}_{service}_arrears` - Outstanding arrears (AUD)
-- `sensor.{property_name}_{service}_last_bill_date` - Last billing date
-- `sensor.{property_name}_{service}_next_bill_date` - Next billing date
-- `sensor.{property_name}_{service}_billing_frequency` - Billing cycle frequency
-- `sensor.{property_name}_{service}_status` - Service status
+- Balance - Current account balance (AUD)
+- Arrears - Outstanding arrears (AUD)
+- Last Bill Date - Last billing date
+- Next Bill Date - Next billing date
+- Billing Frequency - Billing cycle frequency
 
-### Advanced Sensors (13 per service - Optional)
-When "Advanced Sensors" are enabled in integration options:
+### Tariff Rate Sensors (Always Available, Variable Count)
+One diagnostic sensor per rate on the account's actual plan (e.g. Peak, Off-Peak, Shoulder, Supply, Demand, or tiered gas usage steps), named `Rate {rate description}`. The state is the rate in dollars including GST; unit, excl-GST rate, and step description are exposed as attributes. The number of these sensors depends entirely on the plan's tariff structure.
+
+### Advanced Sensors (Optional)
+Enabled via the "Advanced Sensors" integration option. **13 sensors for electricity accounts, 3 for gas accounts** (gas accounts only get Daily/Monthly Average and Peak Usage, which apply to total usage regardless of service):
 
 **Statistical Analysis:**
-- `sensor.{property_name}_{service}_daily_average` - Average daily usage
-- `sensor.{property_name}_{service}_monthly_average` - Projected monthly usage (billing period-adjusted)
-- `sensor.{property_name}_{service}_peak_usage` - Highest single-day usage with date
-- `sensor.{property_name}_{service}_efficiency` - Usage consistency efficiency rating (0-100%)
+- Daily Average - Average daily usage
+- Monthly Average - Projected monthly usage (billing period-adjusted)
+- Peak Usage - Highest single-day usage with date
+- Efficiency *(electricity only)* - Usage consistency efficiency rating (0-100%)
 
-**Time-of-Use Breakdown (Import):**
-- `sensor.{property_name}_{service}_peak_import_usage` - Peak period import usage
-- `sensor.{property_name}_{service}_offpeak_import_usage` - Off-peak period import usage
-- `sensor.{property_name}_{service}_shoulder_import_usage` - Shoulder period import usage
+**Time-of-Use Breakdown** *(electricity only - gas has no ToU tariff)*:
+- Peak/Offpeak/Shoulder Import Usage
+- Peak/Offpeak/Shoulder Export Usage
 
-**Time-of-Use Breakdown (Export):**
-- `sensor.{property_name}_{service}_peak_export_usage` - Peak period export usage
-- `sensor.{property_name}_{service}_offpeak_export_usage` - Off-peak period export usage
-- `sensor.{property_name}_{service}_shoulder_export_usage` - Shoulder period export usage
+**Demand & Environmental** *(electricity only)*:
+- Max Demand - Maximum demand (kW)
+- Max Demand Interval Start - Time of maximum demand *(disabled by default - enable manually if useful)*
+- Carbon Emission Tonne - Carbon emissions (tonnes CO₂e)
 
-**Demand & Environmental:**
-- `sensor.{property_name}_{service}_max_demand` - Maximum demand (kW)
-- `sensor.{property_name}_{service}_max_demand_interval_start` - Time of maximum demand
-- `sensor.{property_name}_{service}_carbon_emission_tonne` - Carbon emissions (tonnes CO₂e)
+### Diagnostics Button
+Each device has its own **Refresh metadata** button. Pressing it on any device triggers a full metadata + usage refresh for every account on the config entry (not just that one device) - it's duplicated per device purely so the action is reachable no matter which device you're viewing.
 
 ## Usage Calculation & Billing Period
 
@@ -243,8 +251,7 @@ The integration includes 11 comprehensive automation examples in `AUTOMATION_EXA
 ### Basic Options
 - **Polling Interval**: 15min, 30min (default), 1hour, 2hours, 4hours
 - **Advanced Sensors**: Enable additional calculated sensors
-- **Selected Accounts**: Choose which properties to monitor
-- **Services**: Select electricity, gas, or both per property
+- **Accounts to Monitor**: Choose which accounts/devices to monitor - labeled `{account_id} - {Electricity|Gas}`. Newly-added accounts (e.g. a gas connection added after initial setup) appear here once you reopen the options screen.
 
 **Note**: Red Energy updates usage data once daily around 3am AEST. Polling intervals control how often the integration checks for updates, but usage data will only change once per day after Red Energy's daily refresh.
 
@@ -278,6 +285,15 @@ The integration includes 11 comprehensive automation examples in `AUTOMATION_EXA
 - Wait for at least one data refresh cycle
 - Efficiency sensors need 7+ days of data
 
+**Some sensors missing on a gas device**
+- Expected: solar, export usage/credit, time-of-use breakdown, max demand, and carbon emission have no equivalent for gas and are not created on gas accounts
+
+**Usage sensors disabled and showing "Unknown" on a device**
+- If the account has a BASIC (manual-read) meter, Red Energy's API has no interval usage data for it - usage-dependent sensors are created disabled by default rather than sitting enabled with no value. Metadata sensors (NMI, balance, bill dates, etc.) still work normally
+
+**Gas account or newly-added account missing entirely**
+- Open the integration's options and check "Accounts to Monitor" - a new account (e.g. a gas connection added after initial setup) needs to be selected there once it appears in the list
+
 ### Debug Logging
 
 Add to your `configuration.yaml`:
@@ -304,7 +320,7 @@ The integration provides comprehensive diagnostics:
 ✅ **Stage 5**: Enhanced Device Management & Performance Optimizations  
 
 **Current Status**: Production Ready  
-**Test Coverage**: 73+ comprehensive tests  
+**Test Coverage**: 180+ comprehensive tests  
 **Compatibility**: Home Assistant 2024.1+
 
 ## Contributing
@@ -332,7 +348,7 @@ pytest tests/ -v
 
 - **Issues**: Report bugs or feature requests via [GitHub Issues](https://github.com/craibo/ha-red-energy-au/issues)
 - **Automation Examples**: Comprehensive examples in [AUTOMATION_EXAMPLES.md](AUTOMATION_EXAMPLES.md)
-- **Developer Reference**: See `.cursor/rules/` for API structure and authentication documentation
+- **Developer Reference**: See [CLAUDE.md](CLAUDE.md) for API structure and authentication documentation
 
 ## Architecture
 
