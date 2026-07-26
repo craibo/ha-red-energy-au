@@ -8,13 +8,6 @@
           "username": "Username (Email)",
           "password": "Password"
         }
-      },
-      "service_select": {
-        "title": "Select Services",
-        "description": "All {account_count} properties will be monitored. Choose which services to track.",
-        "data": {
-          "services": "Services to Monitor"
-        }
       }
     },
     "error": {
@@ -31,10 +24,9 @@
     "step": {
       "init": {
         "title": "Red Energy Options",
-        "description": "Configure which accounts and services to monitor.",
+        "description": "Configure which accounts to monitor.",
         "data": {
           "accounts": "Accounts to Monitor",
-          "services": "Services to Monitor",
           "scan_interval": "Scan Interval",
           "enable_advanced_sensors": "Enable Advanced Sensors"
         }
