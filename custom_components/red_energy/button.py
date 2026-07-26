@@ -28,8 +28,15 @@ async def async_setup_entry(
     if not coordinator:
         return
 
-    entities: list[ButtonEntity] = []
-    entities.append(RedEnergyRefreshMetadataButton(coordinator, config_entry))
+    # One button per device: the refresh itself is entry-wide (it refreshes
+    # every selected account), but each device needs its own button so the
+    # action is available no matter which device the user is viewing rather
+    # than only the first one.
+    selected_accounts = entry_data.get("selected_accounts", [])
+    entities: list[ButtonEntity] = [
+        RedEnergyRefreshMetadataButton(coordinator, config_entry, account_id)
+        for account_id in selected_accounts
+    ]
 
     _LOGGER.debug("About to register %d button entities with Home Assistant", len(entities))
     _LOGGER.debug("Button entity details: %s", [f"{entity.__class__.__name__}({entity.unique_id})" for entity in entities])
@@ -50,35 +57,22 @@ async def async_setup_entry(
 
 
 class RedEnergyRefreshMetadataButton(ButtonEntity):
-    """Button to trigger full metadata refresh and data update."""
+    """Button to trigger full metadata refresh and data update.
+
+    The refresh itself is entry-wide (every selected account is refreshed
+    together), but one instance of this button is created per account/device
+    so the action is available regardless of which device is being viewed.
+    """
 
     _attr_has_entity_name = True
 
-    def __init__(self, coordinator, config_entry: ConfigEntry) -> None:
+    def __init__(self, coordinator, config_entry: ConfigEntry, account_id: str) -> None:
         self._coordinator = coordinator
         self._config_entry = config_entry
         self._attr_name = "Refresh metadata"
-        self._attr_unique_id = f"{config_entry.entry_id}_refresh_metadata"
-        
-        # Associate with the first available device for diagnostics
-        self._attr_device_info = self._get_device_info()
-
-    def _get_device_info(self):
-        """Get device info for the first available property."""
-        if not self._coordinator.data or "usage_data" not in self._coordinator.data:
-            return None
-            
-        usage_data = self._coordinator.data["usage_data"]
-        if not usage_data:
-            return None
-            
-        # Get the first property ID for device association
-        first_property_id = next(iter(usage_data.keys()), None)
-        if not first_property_id:
-            return None
-            
-        return {
-            "identifiers": {(DOMAIN, first_property_id)},
+        self._attr_unique_id = f"{config_entry.entry_id}_{account_id}_refresh_metadata"
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, account_id)},
         }
 
     async def async_press(self) -> None:

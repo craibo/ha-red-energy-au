@@ -11,7 +11,7 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import UnitOfEnergy
+from homeassistant.const import ATTR_LATITUDE, ATTR_LONGITUDE, UnitOfEnergy
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity import EntityCategory
@@ -840,6 +840,20 @@ class RedEnergyAddressSensor(RedEnergyBaseSensor):
         if formatted and state_postcode:
             return f"{formatted} {state_postcode}"
         return formatted or state_postcode or None
+
+    @property
+    def extra_state_attributes(self) -> Optional[dict[str, Any]]:
+        """Return latitude/longitude so the address can be plotted on a map."""
+        metadata = self.coordinator.get_service_metadata(self._property_id, self._service_type)
+        if not metadata:
+            return None
+
+        latitude = metadata.get("latitude")
+        longitude = metadata.get("longitude")
+        if latitude is None or longitude is None:
+            return None
+
+        return {ATTR_LATITUDE: latitude, ATTR_LONGITUDE: longitude}
 
 
 class RedEnergyBalanceSensor(RedEnergyBaseSensor):
