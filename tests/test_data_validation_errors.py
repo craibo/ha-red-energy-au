@@ -5,6 +5,7 @@ from custom_components.red_energy.data_validation import (
     validate_usage_entry,
     validate_address,
     validate_properties_data,
+    validate_single_service,
     DataValidationError
 )
 
@@ -349,3 +350,45 @@ def test_validate_properties_data_handles_address_with_none_house():
     assert result[0]["address"]["city"] == "CASTLECRAG"
     assert result[0]["address"]["state"] == "NSW"
     assert result[0]["address"]["postcode"] == "2068"
+
+
+def test_validate_single_service_extracts_payment_type_description():
+    """paymentTypeDetail.paymentTypeDescription must surface as a flat field."""
+    raw_service = {
+        "utility": "G",
+        "consumerNumber": "4236257811",
+        "status": "ON",
+        "paymentTypeDetail": {
+            "paymentType": "DDB",
+            "paymentTypeDescription": "DirectDebit Bank",
+        },
+    }
+    result = validate_single_service(raw_service)
+    assert result["paymentTypeDescription"] == "DirectDebit Bank"
+
+
+def test_validate_single_service_extracts_promotion_desc():
+    """currentPlan.promotionDesc must surface as a flat field."""
+    raw_service = {
+        "utility": "E",
+        "consumerNumber": "4235478511",
+        "status": "ON",
+        "currentPlan": {
+            "promotionCode": "NEQ005",
+            "promotionDesc": "Qantas Red Saver, 2 QFF Points per $1",
+        },
+    }
+    result = validate_single_service(raw_service)
+    assert result["promotionDesc"] == "Qantas Red Saver, 2 QFF Points per $1"
+
+
+def test_validate_single_service_missing_nested_fields_omitted():
+    """Missing paymentTypeDetail/currentPlan must not add empty keys."""
+    raw_service = {
+        "utility": "G",
+        "consumerNumber": "4236257811",
+        "status": "ON",
+    }
+    result = validate_single_service(raw_service)
+    assert "paymentTypeDescription" not in result
+    assert "promotionDesc" not in result
