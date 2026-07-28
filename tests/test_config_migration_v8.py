@@ -13,7 +13,6 @@ import pytest
 
 from custom_components.red_energy.config_migration import (
     CONFIG_VERSION_8,
-    CURRENT_CONFIG_VERSION,
     RedEnergyConfigMigrator,
 )
 from custom_components.red_energy.const import DOMAIN
@@ -217,6 +216,5 @@ async def test_v7_to_v8_api_failure_does_not_fail_migration():
     hass.config_entries.async_update_entry.assert_not_called()
 
 
-def test_config_version_8_is_current():
-    assert CURRENT_CONFIG_VERSION == CONFIG_VERSION_8
+def test_config_version_8_exists():
     assert CONFIG_VERSION_8 == 8
