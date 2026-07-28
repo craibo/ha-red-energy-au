@@ -14,9 +14,10 @@ MOCK_ENTRY_DATA = {
     "services": ["electricity"],
 }
 
-def _raw_property(account_number, utility, consumer_number):
+def _raw_property(account_number, utility, consumer_number, property_physical_number=None):
     return {
         "accountNumber": account_number,
+        "propertyPhysicalNumber": property_physical_number,
         "displayAddresses": {"shortForm": "1 Example Street, Testville"},
         "address": {
             "suburb": "Testville",
@@ -105,6 +106,33 @@ async def test_options_account_labels_use_account_id_not_shared_address():
     assert labels["1000001"] == "1000001 - Electricity"
     assert labels["2000002"] == "2000002 - Gas"
     assert "1 Example Street, Testville" not in labels.values()
+
+
+@pytest.mark.asyncio
+async def test_options_account_labels_show_property_and_account_number():
+    """When propertyPhysicalNumber and accountNumber are both present and
+    distinct, labels must read 'Property Number - Account Number - Service'."""
+    properties = [
+        _raw_property(7471493, "E", 3000001, property_physical_number=82227160),
+        _raw_property(8490263, "G", 3000002, property_physical_number=82227160),
+    ]
+    entry = _make_config_entry()
+    entry.data = {**MOCK_ENTRY_DATA, DATA_SELECTED_ACCOUNTS: ["82227160.7471493"]}
+    hass = _make_hass(entry, properties=properties)
+
+    flow = RedEnergyOptionsFlowHandler()
+    flow.hass = hass
+    flow.handler = entry.entry_id
+
+    result = await flow.async_step_init()
+
+    accounts_validator = next(
+        v for k, v in result["data_schema"].schema.items() if str(k) == "accounts"
+    )
+    labels = accounts_validator.options
+
+    assert labels["82227160.7471493"] == "82227160 - 7471493 - Electricity"
+    assert labels["82227160.8490263"] == "82227160 - 8490263 - Gas"
 
 
 @pytest.mark.asyncio

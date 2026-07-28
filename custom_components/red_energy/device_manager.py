@@ -64,7 +64,16 @@ class RedEnergyDeviceManager:
             s.get("type") for s in property_info.get("services", []) if s.get("type")
         ] or services
         service_label = "/".join(s.title() for s in account_services)
-        device_name = f"{account_id} - {service_label}" if service_label else str(account_id)
+        property_physical_number = property_info.get("property_physical_number")
+        account_number = property_info.get("account_number")
+        if property_physical_number and account_number and property_physical_number != account_number:
+            name_parts = [property_physical_number, account_number, service_label]
+        else:
+            # No distinct propertyPhysicalNumber/accountNumber pair (e.g.
+            # synthetic ID fallback) - fall back to the id alone rather than
+            # showing the same value twice.
+            name_parts = [str(account_id), service_label]
+        device_name = " - ".join(part for part in name_parts if part)
         address = property_info.get("address", {})
 
         # Create comprehensive device identifiers

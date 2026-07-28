@@ -150,6 +150,8 @@ def validate_single_property(data: dict[str, Any]) -> dict[str, Any]:
         "name": str(property_name),
         "address": validate_address(data.get("address", {})),
         "services": validate_services(services_data),
+        "property_physical_number": str(property_physical_number) if property_physical_number else None,
+        "account_number": str(account_number) if account_number else None,
     }
     
     _LOGGER.debug("Validated property: %s (ID: %s) with %d services", 

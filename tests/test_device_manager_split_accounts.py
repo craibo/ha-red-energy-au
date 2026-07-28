@@ -14,11 +14,13 @@ from custom_components.red_energy.device_manager import RedEnergyDeviceManager
 ADDRESS = {"street_address": "1 Example Street", "suburb": "Testville"}
 
 
-def _property_info(name, service_type):
+def _property_info(name, service_type, property_physical_number=None, account_number=None):
     return {
         "name": name,
         "address": ADDRESS,
         "services": [{"type": service_type}],
+        "property_physical_number": property_physical_number,
+        "account_number": account_number,
     }
 
 
@@ -73,3 +75,34 @@ async def test_device_model_reflects_accounts_own_service_not_global_toggle():
 
     _, kwargs = manager._device_registry.async_get_or_create.call_args
     assert kwargs["model"] == "Gas Monitor"
+
+
+@pytest.mark.asyncio
+async def test_device_name_shows_property_and_account_number():
+    """When propertyPhysicalNumber and accountNumber are both present and
+    distinct, the device name must read 'Property Number - Account Number - Service'."""
+    manager = _make_device_manager()
+
+    electricity_device = await manager._create_property_device(
+        "82227160.7471493",
+        _property_info(
+            "1 Example Street, Testville",
+            SERVICE_TYPE_ELECTRICITY,
+            property_physical_number="82227160",
+            account_number="7471493",
+        ),
+        [SERVICE_TYPE_ELECTRICITY, SERVICE_TYPE_GAS],
+    )
+    gas_device = await manager._create_property_device(
+        "82227160.8490263",
+        _property_info(
+            "1 Example Street, Testville",
+            SERVICE_TYPE_GAS,
+            property_physical_number="82227160",
+            account_number="8490263",
+        ),
+        [SERVICE_TYPE_ELECTRICITY, SERVICE_TYPE_GAS],
+    )
+
+    assert electricity_device.name == "82227160 - 7471493 - Electricity"
+    assert gas_device.name == "82227160 - 8490263 - Gas"

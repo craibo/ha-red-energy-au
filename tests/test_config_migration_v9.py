@@ -136,3 +136,13 @@ async def test_v8_entry_with_matching_ids_is_a_noop():
 def test_config_version_9_is_current():
     assert CURRENT_CONFIG_VERSION == CONFIG_VERSION_9
     assert CONFIG_VERSION_9 == 9
+
+
+def test_config_flow_version_matches_current_config_version():
+    """Home Assistant core only calls async_migrate_entry when
+    ConfigEntry.version != ConfigFlow.VERSION - if these two drift apart,
+    every migration in this file becomes dead code for existing entries,
+    regardless of how correct the migration logic itself is."""
+    from custom_components.red_energy.config_flow import ConfigFlow
+
+    assert ConfigFlow.VERSION == CURRENT_CONFIG_VERSION
