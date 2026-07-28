@@ -378,15 +378,22 @@ class RedEnergyConfigMigrator:
                 )
                 return True
 
-            # Old IDs were accountNumber alone, so recompute what each fetched
-            # property's old-style ID would have been to match it against the
-            # previously selected accounts.
+            # Recompute what each fetched property's OLD-style ID would have
+            # been (pre-v8 fallback chain: id -> propertyId -> property_id ->
+            # accountNumber) so it can be matched against the previously
+            # selected accounts, regardless of which field actually produced
+            # that account's old ID.
             id_map: dict[str, str] = {}
             for raw_property in raw_properties:
-                account_number = raw_property.get("accountNumber")
-                if not account_number:
+                old_id = (
+                    raw_property.get("id")
+                    or raw_property.get("propertyId")
+                    or raw_property.get("property_id")
+                    or raw_property.get("accountNumber")
+                )
+                if not old_id:
                     continue
-                old_id = str(account_number)
+                old_id = str(old_id)
                 if old_id in selected_accounts and old_id not in id_map:
                     new_id = validate_properties_data([raw_property])[0]["id"]
                     if new_id != old_id:
