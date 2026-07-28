@@ -15,6 +15,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers import config_validation as cv
 
 from .api import RedEnergyAPI, RedEnergyAPIError, RedEnergyAuthError
+from .config_migration import CURRENT_CONFIG_VERSION
 from .data_validation import validate_config_data, validate_properties_data, DataValidationError
 from .const import (
     CLIENT_ID,
@@ -132,7 +133,10 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Red Energy."""
 
-    VERSION = 1
+    # Must match CURRENT_CONFIG_VERSION in config_migration.py, or Home
+    # Assistant core will never call async_migrate_entry - it only migrates
+    # when an entry's stored version differs from this class attribute.
+    VERSION = CURRENT_CONFIG_VERSION
 
     def __init__(self) -> None:
         """Initialize the config flow."""
@@ -241,9 +245,16 @@ class RedEnergyOptionsFlowHandler(config_entries.OptionsFlow):
                 service_label = "/".join(
                     s.get("type", "").title() for s in account.get("services", []) if s.get("type")
                 )
-                account_options[account_id] = (
-                    f"{account_id} - {service_label}" if service_label else account_id
-                )
+                property_physical_number = account.get("property_physical_number")
+                account_number = account.get("account_number")
+                if property_physical_number and account_number and property_physical_number != account_number:
+                    label_parts = [property_physical_number, account_number, service_label]
+                else:
+                    # No distinct propertyPhysicalNumber/accountNumber pair
+                    # (e.g. synthetic ID fallback) - fall back to the id alone
+                    # rather than showing the same value twice.
+                    label_parts = [account_id, service_label]
+                account_options[account_id] = " - ".join(part for part in label_parts if part)
         except Exception as err:
             _LOGGER.warning("Could not refresh account list for options flow: %s", err)
             # Fall back to the accounts already known to the config entry so the
