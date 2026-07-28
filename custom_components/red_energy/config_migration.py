@@ -33,7 +33,8 @@ CONFIG_VERSION_5 = 5  # Fixed device identifier mismatch (removed duplicate devi
 CONFIG_VERSION_6 = 6  # Removed client_id from user config (now hardcoded)
 CONFIG_VERSION_7 = 7  # Removed service-type selection (always monitor both)
 CONFIG_VERSION_8 = 8  # Composite property IDs (fix accounts with shared accountNumber)
-CURRENT_CONFIG_VERSION = CONFIG_VERSION_8
+CONFIG_VERSION_9 = 9  # Repair entries left with stale IDs by the v7->v8 migration
+CURRENT_CONFIG_VERSION = CONFIG_VERSION_9
 
 
 class ConfigValidationError(Exception):
@@ -90,6 +91,10 @@ class RedEnergyConfigMigrator:
             # Migrate from version 7 to 8
             if current_version < CONFIG_VERSION_8:
                 migration_success &= await self._migrate_v7_to_v8(config_entry)
+
+            # Migrate from version 8 to 9
+            if current_version < CONFIG_VERSION_9:
+                migration_success &= await self._migrate_v8_to_v9(config_entry)
 
             if migration_success:
                 # Update version in config entry
@@ -353,7 +358,28 @@ class RedEnergyConfigMigrator:
         entity history and Energy Dashboard statistics carry over.
         """
         _LOGGER.info("Migrating config entry from v7 to v8 - Updating property IDs")
+        return await self._remap_stale_property_ids(config_entry, "v7 to v8")
 
+    async def _migrate_v8_to_v9(self, config_entry: ConfigEntry) -> bool:
+        """Migrate from version 8 to 9 - Repair entries stuck on stale IDs.
+
+        The original v7->v8 migration only matched old IDs derived from
+        accountNumber. Accounts where propertyPhysicalNumber (not
+        accountNumber) was the field shared across properties had their old
+        ID come from accountNumber via a different branch of the pre-v8
+        fallback chain, so the match failed silently and selected_accounts
+        was left stale - permanently, since the version bump to 8 meant this
+        step would never run again. This re-runs the same repair with the
+        corrected matching logic for anyone who already advanced to v8 with
+        unresolved IDs.
+        """
+        _LOGGER.info("Migrating config entry from v8 to v9 - Repairing stale property IDs")
+        return await self._remap_stale_property_ids(config_entry, "v8 to v9")
+
+    async def _remap_stale_property_ids(self, config_entry: ConfigEntry, migration_label: str) -> bool:
+        """Re-fetch properties and remap any selected_accounts entries that
+        no longer match a current property ID, renaming the corresponding
+        device/entities in place. Shared by the v7->v8 and v8->v9 steps."""
         try:
             from homeassistant.helpers.aiohttp_client import async_get_clientsession
             from homeassistant.helpers import device_registry as dr, entity_registry as er
@@ -372,19 +398,22 @@ class RedEnergyConfigMigrator:
                 raw_properties = await api.get_properties()
             except Exception as err:
                 _LOGGER.warning(
-                    "Could not refresh properties during v7 to v8 migration (%s) - "
+                    "Could not refresh properties during %s migration (%s) - "
                     "existing IDs will be kept and re-evaluated on next successful setup",
-                    err,
+                    migration_label, err,
                 )
                 return True
 
+            validated_properties = validate_properties_data(raw_properties)
+            current_ids = {prop["id"] for prop in validated_properties}
+
             # Recompute what each fetched property's OLD-style ID would have
             # been (pre-v8 fallback chain: id -> propertyId -> property_id ->
-            # accountNumber) so it can be matched against the previously
-            # selected accounts, regardless of which field actually produced
-            # that account's old ID.
+            # accountNumber) so it can be matched against any selected
+            # account that doesn't already match a current property ID,
+            # regardless of which field actually produced that old ID.
             id_map: dict[str, str] = {}
-            for raw_property in raw_properties:
+            for raw_property, validated_property in zip(raw_properties, validated_properties):
                 old_id = (
                     raw_property.get("id")
                     or raw_property.get("propertyId")
@@ -394,13 +423,14 @@ class RedEnergyConfigMigrator:
                 if not old_id:
                     continue
                 old_id = str(old_id)
-                if old_id in selected_accounts and old_id not in id_map:
-                    new_id = validate_properties_data([raw_property])[0]["id"]
-                    if new_id != old_id:
-                        id_map[old_id] = new_id
+                if old_id in current_ids or old_id not in selected_accounts:
+                    continue
+                new_id = validated_property["id"]
+                if new_id != old_id and old_id not in id_map:
+                    id_map[old_id] = new_id
 
             if not id_map:
-                _LOGGER.debug("No property IDs changed format, nothing to migrate")
+                _LOGGER.debug("No stale property IDs found during %s, nothing to repair", migration_label)
                 return True
 
             new_data[DATA_SELECTED_ACCOUNTS] = [
@@ -439,14 +469,14 @@ class RedEnergyConfigMigrator:
             self.hass.config_entries.async_update_entry(config_entry, data=new_data)
 
             _LOGGER.info(
-                "Successfully migrated to v8, updated %d property ID(s): %s",
-                len(id_map), id_map
+                "Successfully completed %s, updated %d property ID(s): %s",
+                migration_label, len(id_map), id_map
             )
 
             return True
 
         except Exception as err:
-            _LOGGER.error("Failed to migrate v7 to v8: %s", err, exc_info=True)
+            _LOGGER.error("Failed %s migration: %s", migration_label, err, exc_info=True)
             # Don't fail the entire migration - the fix still applies for new
             # device/entity creation, existing ones just won't be renamed.
             return True
