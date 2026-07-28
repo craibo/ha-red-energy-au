@@ -48,13 +48,13 @@ async def test_v8_entry_stuck_with_stale_ids_gets_repaired():
         {
             "accountNumber": 7471493,
             "propertyPhysicalNumber": 82227160,
-            "address": {"street": "27 SUNNYSIDE CRESCENT", "suburb": "CASTLECRAG"},
+            "address": {"street": "1 EXAMPLE STREET", "suburb": "TESTVILLE"},
             "consumers": [{"consumerNumber": 3000001, "utility": "E", "status": "ON"}],
         },
         {
             "accountNumber": 8490263,
             "propertyPhysicalNumber": 82227160,
-            "address": {"street": "27 SUNNYSIDE CRESCENT", "suburb": "CASTLECRAG"},
+            "address": {"street": "1 EXAMPLE STREET", "suburb": "TESTVILLE"},
             "consumers": [{"consumerNumber": 3000002, "utility": "G", "status": "ON"}],
         },
     ]
@@ -106,7 +106,7 @@ async def test_v8_entry_with_matching_ids_is_a_noop():
         {
             "accountNumber": 7471493,
             "propertyPhysicalNumber": 82227160,
-            "address": {"street": "27 SUNNYSIDE CRESCENT", "suburb": "CASTLECRAG"},
+            "address": {"street": "1 EXAMPLE STREET", "suburb": "TESTVILLE"},
             "consumers": [{"consumerNumber": 3000001, "utility": "E", "status": "ON"}],
         },
     ]

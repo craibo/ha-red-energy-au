@@ -257,16 +257,16 @@ def test_validate_address_handles_partial_none_values():
     """Test address with some None and some string values."""
     address = {
         "house": None,
-        "street": "SUNNYSIDE CRES",
-        "suburb": "CASTLECRAG",
+        "street": "EXAMPLE STREET",
+        "suburb": "TESTVILLE",
         "state": "NSW",
-        "postcode": "2068",
+        "postcode": "2000",
     }
     result = validate_address(address)
-    assert result["street"] == "SUNNYSIDE CRES"
-    assert result["city"] == "CASTLECRAG"
+    assert result["street"] == "EXAMPLE STREET"
+    assert result["city"] == "TESTVILLE"
     assert result["state"] == "NSW"
-    assert result["postcode"] == "2068"
+    assert result["postcode"] == "2000"
 
 
 def test_validate_usage_entry_allday_tariff_no_warning(caplog):
@@ -330,10 +330,10 @@ def test_validate_properties_data_handles_address_with_none_house():
             "accountNumber": 1000001,
             "address": {
                 "house": None,
-                "street": "SUNNYSIDE CRES",
-                "suburb": "CASTLECRAG",
+                "street": "EXAMPLE STREET",
+                "suburb": "TESTVILLE",
                 "state": "NSW",
-                "postcode": "2068",
+                "postcode": "2000",
             },
             "consumers": [
                 {
@@ -347,10 +347,10 @@ def test_validate_properties_data_handles_address_with_none_house():
     result = validate_properties_data(raw_properties)
     assert len(result) == 1
     assert result[0]["id"] == "1000001"
-    assert result[0]["address"]["street"] == "SUNNYSIDE CRES"
-    assert result[0]["address"]["city"] == "CASTLECRAG"
+    assert result[0]["address"]["street"] == "EXAMPLE STREET"
+    assert result[0]["address"]["city"] == "TESTVILLE"
     assert result[0]["address"]["state"] == "NSW"
-    assert result[0]["address"]["postcode"] == "2068"
+    assert result[0]["address"]["postcode"] == "2000"
 
 
 def test_validate_properties_data_shared_account_number_stays_distinct():

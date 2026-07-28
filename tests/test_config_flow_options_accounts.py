@@ -22,7 +22,7 @@ def _raw_property(account_number, utility, consumer_number, property_physical_nu
         "address": {
             "suburb": "Testville",
             "state": "NSW",
-            "postcode": "2068",
+            "postcode": "2000",
             "displayAddresses": {"shortForm": "1 Example Street, Testville"},
         },
         "consumers": [

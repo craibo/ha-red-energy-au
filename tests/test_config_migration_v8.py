@@ -123,13 +123,13 @@ async def test_v7_entry_with_shared_property_physical_number_still_remaps_both()
         {
             "accountNumber": 7471493,
             "propertyPhysicalNumber": 82227160,
-            "address": {"street": "27 SUNNYSIDE CRESCENT", "suburb": "CASTLECRAG"},
+            "address": {"street": "1 EXAMPLE STREET", "suburb": "TESTVILLE"},
             "consumers": [{"consumerNumber": 3000001, "utility": "E", "status": "ON"}],
         },
         {
             "accountNumber": 8490263,
             "propertyPhysicalNumber": 82227160,
-            "address": {"street": "27 SUNNYSIDE CRESCENT", "suburb": "CASTLECRAG"},
+            "address": {"street": "1 EXAMPLE STREET", "suburb": "TESTVILLE"},
             "consumers": [{"consumerNumber": 3000002, "utility": "G", "status": "ON"}],
         },
     ]

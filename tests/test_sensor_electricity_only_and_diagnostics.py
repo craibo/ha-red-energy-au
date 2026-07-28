@@ -47,7 +47,7 @@ def _coordinator(service_metadata, service_type):
                         "street": "1 Example Street",
                         "city": "Testville",
                         "state": "NSW",
-                        "postcode": "2068",
+                        "postcode": "2000",
                     },
                     "services": [service_metadata],
                 },
@@ -165,7 +165,7 @@ def test_address_sensor_formats_full_address():
 
     sensor = RedEnergyAddressSensor(coordinator, config_entry, "2000002", SERVICE_TYPE_GAS)
 
-    assert sensor.native_value == "1 Example Street, Testville NSW 2068"
+    assert sensor.native_value == "1 Example Street, Testville NSW 2000"
 
 
 def test_address_sensor_exposes_latitude_longitude_attributes():
