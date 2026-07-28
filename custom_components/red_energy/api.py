@@ -34,7 +34,17 @@ class RedEnergyAPI:
     REDIRECT_URI = "au.com.redenergy://callback"
     BASE_API_URL = "https://selfservice.services.retail.energy/v1"
     OKTA_AUTH_URL = "https://redenergy.okta.com/api/v1/authn"
-    
+
+    # Domains involved in the cookie-sensitive Okta /authn -> /authorize
+    # handshake. Home Assistant's aiohttp session is shared and its cookie
+    # jar persists across every config-entry reload, so a stale session
+    # cookie (e.g. JSESSIONID) from a previous, abandoned auth attempt can
+    # desync Okta's server-side session state and break the next attempt's
+    # redirect - even though that attempt sends a fresh sessionToken/PKCE
+    # pair. selfservice.services.retail.energy (the data API) is excluded:
+    # it's bearer-token only and never sets or reads cookies.
+    OKTA_COOKIE_DOMAINS: tuple[str, ...] = ("redenergy.okta.com", "login.redenergy.com.au")
+
     def __init__(self, session: aiohttp.ClientSession) -> None:
         """Initialize the API client."""
         self._session = session
@@ -52,7 +62,15 @@ class RedEnergyAPI:
         state and cause the authorization redirect to fail.
         """
         async with self._auth_lock:
+            self._clear_auth_cookies()
             return await self._authenticate_locked(username, password)
+
+    def _clear_auth_cookies(self) -> None:
+        """Clear leftover Okta/Red Energy session cookies before a fresh
+        auth attempt, so state from a previous (possibly abandoned) attempt
+        on this shared session can't desync Okta's server-side session."""
+        for domain in self.OKTA_COOKIE_DOMAINS:
+            self._session.cookie_jar.clear_domain(domain)
 
     async def _authenticate_locked(self, username: str, password: str) -> bool:
         try:
