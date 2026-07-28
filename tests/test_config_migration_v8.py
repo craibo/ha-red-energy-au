@@ -109,6 +109,61 @@ async def test_v7_entry_with_collapsed_account_id_gets_composite_ids():
 
 
 @pytest.mark.asyncio
+async def test_v7_entry_with_shared_property_physical_number_still_remaps_both():
+    """Regression test: some accounts have it the other way round from issue
+    #51 - propertyPhysicalNumber is the SHARED field (one physical address,
+    separate elec/gas billing accounts) and accountNumber is unique per
+    property. The old ID (pre-v8) fell through to accountNumber alone in
+    this shape, so both previously-selected properties must still be
+    remapped to their new composite IDs."""
+    entry = _make_config_entry(selected_accounts=["7471493", "8490263"])
+    hass = MagicMock()
+    hass.config_entries.async_update_entry = MagicMock()
+
+    raw_properties = [
+        {
+            "accountNumber": 7471493,
+            "propertyPhysicalNumber": 82227160,
+            "address": {"street": "1 EXAMPLE STREET", "suburb": "TESTVILLE"},
+            "consumers": [{"consumerNumber": 3000001, "utility": "E", "status": "ON"}],
+        },
+        {
+            "accountNumber": 8490263,
+            "propertyPhysicalNumber": 82227160,
+            "address": {"street": "1 EXAMPLE STREET", "suburb": "TESTVILLE"},
+            "consumers": [{"consumerNumber": 3000002, "utility": "G", "status": "ON"}],
+        },
+    ]
+
+    mock_device_registry = MagicMock()
+    mock_device_registry.async_get_device.return_value = None
+
+    mock_entity_registry = MagicMock()
+
+    with patch(
+        "custom_components.red_energy.api.RedEnergyAPI.authenticate",
+        new=AsyncMock(return_value=True),
+    ), patch(
+        "custom_components.red_energy.api.RedEnergyAPI.get_properties",
+        new=AsyncMock(return_value=raw_properties),
+    ), patch(
+        "homeassistant.helpers.aiohttp_client.async_get_clientsession",
+        return_value=MagicMock(),
+    ), patch(
+        "homeassistant.helpers.device_registry.async_get", return_value=mock_device_registry
+    ), patch(
+        "homeassistant.helpers.entity_registry.async_get", return_value=mock_entity_registry
+    ):
+        migrator = RedEnergyConfigMigrator(hass)
+        result = await migrator._migrate_v7_to_v8(entry)
+
+    assert result is True
+
+    new_data = hass.config_entries.async_update_entry.call_args.kwargs["data"]
+    assert set(new_data["selected_accounts"]) == {"82227160.7471493", "82227160.8490263"}
+
+
+@pytest.mark.asyncio
 async def test_v7_entry_with_already_unique_ids_is_a_noop():
     """Properties that already had distinct accountNumbers keep their IDs."""
     entry = _make_config_entry(selected_accounts=["1000001"])
