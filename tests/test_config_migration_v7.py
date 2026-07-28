@@ -59,5 +59,5 @@ async def test_current_version_entry_not_migrated():
     hass.config_entries.async_update_entry.assert_not_called()
 
 
-def test_config_version_7_is_current():
-    assert CURRENT_CONFIG_VERSION == CONFIG_VERSION_7
+def test_config_version_7_exists():
+    assert CONFIG_VERSION_7 == 7

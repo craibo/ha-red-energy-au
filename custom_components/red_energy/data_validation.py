@@ -80,9 +80,23 @@ def validate_single_property(data: dict[str, Any]) -> dict[str, Any]:
         raise DataValidationError("Property data must be a dictionary")
     
     _LOGGER.debug("Validating property with keys: %s", list(data.keys()))
-    
-    property_id = data.get("id") or data.get("propertyId") or data.get("property_id") or data.get("accountNumber")
-    
+
+    # accountNumber is not always unique per property - Red Energy can group
+    # multiple physical properties under one billing account, in which case
+    # they all share the same accountNumber. propertyPhysicalNumber is unique
+    # per property, so prefer propertyNumber (or a composed equivalent) to
+    # avoid collapsing distinct properties into a single id downstream.
+    property_physical_number = data.get("propertyPhysicalNumber")
+    account_number = data.get("accountNumber")
+    property_id = (
+        data.get("id")
+        or data.get("propertyId")
+        or data.get("property_id")
+        or data.get("propertyNumber")
+        or (f"{property_physical_number}.{account_number}" if property_physical_number and account_number else None)
+        or account_number
+    )
+
     if not property_id:
         address = data.get("address", {})
         if isinstance(address, dict):
