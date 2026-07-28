@@ -82,7 +82,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     except UpdateFailed as err:
         _LOGGER.error("Failed to set up Red Energy integration: %s", err)
         raise ConfigEntryNotReady(f"Failed to connect to Red Energy: {err}") from err
-    
+
+    # The coordinator resolves the configured selection against the properties
+    # the API actually returned (see _resolve_selected_accounts), which can add
+    # properties billed under an already-selected account. Devices, sensors and
+    # buttons must all be built from that resolved list, not the stale one.
+    selected_accounts = coordinator.selected_accounts
+
     # Set up devices
     devices = await device_manager.async_setup_devices(
         coordinator.data, selected_accounts, services

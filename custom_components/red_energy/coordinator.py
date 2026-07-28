@@ -21,6 +21,7 @@ from .data_validation import (
 from .error_recovery import RedEnergyErrorRecoverySystem, ErrorType
 from .performance import PerformanceMonitor, DataProcessor
 from .const import (
+    DATA_SELECTED_ACCOUNTS,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
 )
@@ -114,7 +115,8 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
             # Refresh metadata (customer/properties) once per calendar day or on first run
             if self._should_refresh_metadata_today() or not self._customer_data:
                 await self._async_refresh_metadata()
-            
+                self._resolve_selected_accounts()
+
             # Log selected accounts configuration
             _LOGGER.debug("=" * 80)
             _LOGGER.debug("COORDINATOR CONFIGURATION:")
@@ -298,6 +300,59 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
             _LOGGER.exception("Unexpected error during update")
             raise UpdateFailed(f"Unexpected error: {err}") from err
     
+    def _resolve_selected_accounts(self) -> None:
+        """Re-point the selection at properties whose id gained a unique suffix.
+
+        An entry configured before multi-property accounts were disambiguated
+        holds the bare account number. Once that account's properties are split
+        into "{account_number}_{property_number}" ids, nothing matches and the
+        entry fails to load with "No usage data retrieved" - the user would have
+        to delete and re-add the integration to see either property. Expanding
+        the stale id onto every property derived from it adopts them all, which
+        is also what a fresh setup would have done.
+        """
+        available_ids = [str(prop.get("id")) for prop in self._properties]
+        resolved: list[str] = []
+
+        for account_id in self.selected_accounts:
+            account_id = str(account_id)
+            if account_id in available_ids:
+                resolved.append(account_id)
+                continue
+
+            derived_ids = [
+                prop_id
+                for prop_id in available_ids
+                if prop_id.startswith(f"{account_id}_")
+            ]
+            if derived_ids:
+                _LOGGER.info(
+                    "Account %s now bills %d properties - monitoring %s",
+                    account_id, len(derived_ids), derived_ids,
+                )
+                resolved.extend(derived_ids)
+            else:
+                # Unknown to the API right now (transient, or genuinely closed).
+                # Keep it so a temporary API hiccup can't silently drop an
+                # account from the user's configuration.
+                resolved.append(account_id)
+
+        resolved = list(dict.fromkeys(resolved))
+        if resolved == list(self.selected_accounts):
+            return
+
+        _LOGGER.info(
+            "Updating selected accounts from %s to %s",
+            list(self.selected_accounts), resolved,
+        )
+        self.selected_accounts = resolved
+
+        if self.config_entry is not None:
+            self.hass.config_entries.async_update_entry(
+                self.config_entry,
+                data={**self.config_entry.data, DATA_SELECTED_ACCOUNTS: resolved},
+            )
+
     def _should_refresh_metadata_today(self) -> bool:
         """Return True if we haven't refreshed metadata today (calendar day)."""
         today = datetime.now(timezone.utc).date()
@@ -336,6 +391,7 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
     async def async_refresh_metadata_and_usage(self) -> None:
         """Manually trigger metadata refresh and then request full data refresh."""
         await self._async_refresh_metadata()
+        self._resolve_selected_accounts()
         await self.async_request_refresh()
     
     async def _bulk_update_data(self) -> dict[str, Any]:

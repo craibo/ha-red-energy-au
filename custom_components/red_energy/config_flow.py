@@ -15,7 +15,12 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers import config_validation as cv
 
 from .api import RedEnergyAPI, RedEnergyAPIError, RedEnergyAuthError
-from .data_validation import validate_config_data, validate_properties_data, DataValidationError
+from .data_validation import (
+    DataValidationError,
+    format_account_label,
+    validate_config_data,
+    validate_properties_data,
+)
 from .const import (
     CLIENT_ID,
     CONF_ENABLE_ADVANCED_SENSORS,
@@ -177,8 +182,12 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 await self.async_set_unique_id(user_input[CONF_USERNAME])
                 self._abort_if_unique_id_configured()
                 
-                # Auto-select all accounts - properties are already validated with IDs
-                self._selected_accounts = [account["id"] for account in self._accounts]
+                # Auto-select every property - they are already validated with
+                # ids made unique across the response, so dict.fromkeys() only
+                # guards against an API response repeating a property outright.
+                self._selected_accounts = list(
+                    dict.fromkeys(str(account["id"]) for account in self._accounts)
+                )
                 _LOGGER.info("Auto-selected %d accounts: %s", len(self._selected_accounts), self._selected_accounts)
                 
                 if not self._selected_accounts:
@@ -238,11 +247,10 @@ class RedEnergyOptionsFlowHandler(config_entries.OptionsFlow):
             raw_properties = await coordinator.api.get_properties()
             for account in validate_properties_data(raw_properties):
                 account_id = account["id"]
-                service_label = "/".join(
-                    s.get("type", "").title() for s in account.get("services", []) if s.get("type")
-                )
-                account_options[account_id] = (
-                    f"{account_id} - {service_label}" if service_label else account_id
+                account_options[account_id] = format_account_label(
+                    account_id,
+                    account.get("name"),
+                    [s.get("type") for s in account.get("services", [])],
                 )
         except Exception as err:
             _LOGGER.warning("Could not refresh account list for options flow: %s", err)

@@ -56,8 +56,36 @@ async def test_split_accounts_at_same_address_get_distinct_device_names():
     )
 
     assert electricity_device.name != gas_device.name
-    assert electricity_device.name == "1000001 - Electricity"
-    assert gas_device.name == "2000002 - Gas"
+    assert (
+        electricity_device.name
+        == "1000001 - 27 Sunnyside Crescent, Castlecrag - Electricity"
+    )
+    assert gas_device.name == "2000002 - 27 Sunnyside Crescent, Castlecrag - Gas"
+
+
+@pytest.mark.asyncio
+async def test_properties_on_one_account_get_distinct_device_names():
+    """Two addresses billed under one account must not produce identical devices.
+
+    Their ids differ only by a suffix, so the address is what actually tells
+    the two devices apart in the UI.
+    """
+    manager = _make_device_manager()
+
+    first_device = await manager._create_property_device(
+        "1001100_5000001",
+        _property_info("1 First St, Suburbia", SERVICE_TYPE_ELECTRICITY),
+        [SERVICE_TYPE_ELECTRICITY],
+    )
+    second_device = await manager._create_property_device(
+        "1001100_5000002",
+        _property_info("2 Second Ave, Othertown", SERVICE_TYPE_ELECTRICITY),
+        [SERVICE_TYPE_ELECTRICITY],
+    )
+
+    assert first_device.name != second_device.name
+    assert first_device.name == "1001100_5000001 - 1 First St, Suburbia - Electricity"
+    assert second_device.name == "1001100_5000002 - 2 Second Ave, Othertown - Electricity"
 
 
 @pytest.mark.asyncio

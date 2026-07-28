@@ -94,10 +94,17 @@ The Red Energy API uses non-standard field names:
 | `consumerNumber` | `consumer_number` | camelCase → snake_case |
 | `status: "ON"` | `active: true` | String → bool |
 | `accountNumber` | `id` | Primary property identifier |
+| `propertyNumber` | `property_number` | Per-property key; disambiguates shared account numbers |
 | `suburb` | `city` | Australian terminology |
 | `displayAddresses.shortForm` | `name` | Preferred property display name |
 
 Address fields can be `null` in the API — always use `(data.get("field") or "").strip()` not `data.get("field", "").strip()`.
+
+### Multiple Properties On One Account
+
+`accountNumber` is **not** unique per property — Red Energy bills several properties (different addresses, each with its own consumer) under one account. Since `accountNumber` is the fallback for the property `id`, `validate_properties_data()` rewrites colliding ids to `{accountNumber}_{propertyNumber}` (falling back to the consumer number, then the response index). Only colliding ids are rewritten, so single-property accounts keep the ids their entities are already registered under.
+
+`coordinator._resolve_selected_accounts()` then expands a stored bare account number onto every property derived from it, so entries configured before this existed adopt the extra properties instead of failing to load.
 
 ### Usage Data Structure
 

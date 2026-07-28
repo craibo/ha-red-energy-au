@@ -10,6 +10,7 @@ from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.helpers.device_registry import DeviceEntry
 
 from .const import DOMAIN, MANUFACTURER, SERVICE_TYPE_ELECTRICITY, SERVICE_TYPE_GAS
+from .data_validation import format_account_label
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -56,15 +57,17 @@ class RedEnergyDeviceManager:
         services: list[str]
     ) -> DeviceEntry | None:
         """Create or update a device for a property."""
-        # Red Energy can split a single address across multiple accounts
-        # (e.g. electricity and gas billed separately), so the account's own
-        # service type(s) - not the global services toggle - must drive the
-        # device name/model to keep devices distinguishable per account.
+        # Red Energy can split a single address across multiple accounts (e.g.
+        # electricity and gas billed separately) and can also bill several
+        # addresses under one account, so the device name carries the account's
+        # own service type(s) and its address - not the global services toggle -
+        # to keep every device distinguishable.
         account_services = [
             s.get("type") for s in property_info.get("services", []) if s.get("type")
         ] or services
-        service_label = "/".join(s.title() for s in account_services)
-        device_name = f"{account_id} - {service_label}" if service_label else str(account_id)
+        device_name = format_account_label(
+            account_id, property_info.get("name"), account_services
+        )
         address = property_info.get("address", {})
 
         # Create comprehensive device identifiers

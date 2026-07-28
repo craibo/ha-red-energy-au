@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from collections import Counter
 from datetime import datetime
 from typing import Any
 
@@ -69,9 +70,77 @@ def validate_properties_data(data: list[dict[str, Any]]) -> list[dict[str, Any]]
     if not validated_properties:
         _LOGGER.error("No valid properties after validation! Original data: %s", data)
         raise DataValidationError("No valid properties after validation")
-    
+
+    _disambiguate_duplicate_property_ids(validated_properties)
+
     _LOGGER.debug("Successfully validated %d of %d properties", len(validated_properties), len(data))
     return validated_properties
+
+
+def _property_discriminator(property_data: dict[str, Any], index: int) -> str:
+    """Pick a stable per-property suffix for an id shared with another property.
+
+    propertyNumber is the API's own per-property key, so it is preferred. A
+    consumer number is the next-best stable choice (a property's meter), and
+    the response index is a last resort that at least keeps the properties
+    apart within a single update.
+    """
+    property_number = property_data.get("property_number")
+    if property_number:
+        return str(property_number)
+
+    for service in property_data.get("services") or []:
+        consumer_number = service.get("consumer_number")
+        if consumer_number:
+            return str(consumer_number)
+
+    return str(index)
+
+
+def _disambiguate_duplicate_property_ids(properties: list[dict[str, Any]]) -> None:
+    """Make property ids unique when several properties share an account number.
+
+    Red Energy bills multiple properties (different addresses, each with their
+    own consumer) under a single accountNumber, and accountNumber is the
+    fallback used for the property id. Duplicated ids collapse the properties
+    into one coordinator key, one device and one set of sensor unique_ids, so
+    every property but the last silently disappears.
+
+    Only colliding ids are rewritten, so accounts that bill a single property -
+    the overwhelming majority - keep the ids their entities are already
+    registered under.
+    """
+    id_counts = Counter(prop["id"] for prop in properties)
+    duplicated_ids = {prop_id for prop_id, count in id_counts.items() if count > 1}
+
+    if not duplicated_ids:
+        return
+
+    _LOGGER.info(
+        "Account number(s) %s bill more than one property - deriving unique "
+        "property ids so each gets its own device",
+        ", ".join(sorted(duplicated_ids)),
+    )
+
+    assigned_ids = {prop["id"] for prop in properties} - duplicated_ids
+
+    for index, prop in enumerate(properties):
+        original_id = prop["id"]
+        if original_id not in duplicated_ids:
+            continue
+
+        new_id = f"{original_id}_{_property_discriminator(prop, index)}"
+        # A discriminator can only repeat if the API returns the same property
+        # twice; fall back to the index so no property is dropped.
+        if new_id in assigned_ids:
+            new_id = f"{original_id}_{index}"
+
+        assigned_ids.add(new_id)
+        prop["id"] = new_id
+        _LOGGER.debug(
+            "Property '%s' on account %s assigned unique id %s",
+            prop.get("name"), original_id, new_id,
+        )
 
 
 def validate_single_property(data: dict[str, Any]) -> dict[str, Any]:
@@ -137,7 +206,18 @@ def validate_single_property(data: dict[str, Any]) -> dict[str, Any]:
         "address": validate_address(data.get("address", {})),
         "services": validate_services(services_data),
     }
-    
+
+    # Kept alongside the id so validate_properties_data() can tell apart
+    # several properties billed under one account number - the id itself falls
+    # back to accountNumber, which is shared in that case.
+    property_number = data.get("propertyNumber") or data.get("property_number")
+    if property_number is not None:
+        validated_property["property_number"] = str(property_number)
+
+    account_number = data.get("accountNumber") or data.get("account_number")
+    if account_number is not None:
+        validated_property["account_number"] = str(account_number)
+
     _LOGGER.debug("Validated property: %s (ID: %s) with %d services", 
                 validated_property["name"], validated_property["id"], len(validated_property["services"]))
     return validated_property
@@ -483,6 +563,33 @@ def validate_usage_entry(data: dict[str, Any]) -> dict[str, Any]:
     validated_data.pop("_breakdown_available", None)
     
     return validated_data
+
+
+def format_account_label(
+    account_id: str, name: str | None, service_types: list[str]
+) -> str:
+    """Build a human-readable label for a property/account.
+
+    Both discriminators are needed: one account can bill several properties at
+    different addresses (so the id alone repeats a service type), and one
+    address can be split across separate electricity and gas accounts (so the
+    address alone repeats). Used for device names and the options-flow account
+    checklist so the two always match.
+    """
+    account_id = str(account_id)
+    parts = [account_id]
+
+    name = str(name or "").strip()
+    if name and name not in (account_id, f"Property {account_id}"):
+        parts.append(name)
+
+    service_label = "/".join(
+        service_type.title() for service_type in service_types if service_type
+    )
+    if service_label:
+        parts.append(service_label)
+
+    return " - ".join(parts)
 
 
 def sanitize_sensor_name(name: str) -> str:

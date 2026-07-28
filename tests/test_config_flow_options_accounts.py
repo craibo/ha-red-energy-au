@@ -86,7 +86,9 @@ async def test_options_account_labels_use_account_id_not_shared_address():
     Both mock properties share the display address "27 Sunnyside Crescent,
     Castlecrag" (electricity and gas billed on separate accounts) - the
     label shown to the user must not be that address for both, or the
-    options screen is unusable (matches the reported UI screenshot).
+    options screen is unusable (matches the reported UI screenshot). The
+    address still appears alongside the id and service, since one account can
+    bill several addresses and the id alone then means nothing to the user.
     """
     entry = _make_config_entry()
     hass = _make_hass(entry)
@@ -102,8 +104,8 @@ async def test_options_account_labels_use_account_id_not_shared_address():
     )
     labels = accounts_validator.options
 
-    assert labels["1000001"] == "1000001 - Electricity"
-    assert labels["2000002"] == "2000002 - Gas"
+    assert labels["1000001"] == "1000001 - 27 Sunnyside Crescent, Castlecrag - Electricity"
+    assert labels["2000002"] == "2000002 - 27 Sunnyside Crescent, Castlecrag - Gas"
     assert "27 Sunnyside Crescent, Castlecrag" not in labels.values()
 
 
