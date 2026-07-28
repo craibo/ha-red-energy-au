@@ -32,7 +32,8 @@ CONFIG_VERSION_4 = 4  # Auto-select all accounts and fix account ID matching
 CONFIG_VERSION_5 = 5  # Fixed device identifier mismatch (removed duplicate devices)
 CONFIG_VERSION_6 = 6  # Removed client_id from user config (now hardcoded)
 CONFIG_VERSION_7 = 7  # Removed service-type selection (always monitor both)
-CURRENT_CONFIG_VERSION = CONFIG_VERSION_7
+CONFIG_VERSION_8 = 8  # Composite property IDs (fix accounts with shared accountNumber)
+CURRENT_CONFIG_VERSION = CONFIG_VERSION_8
 
 
 class ConfigValidationError(Exception):
@@ -85,6 +86,10 @@ class RedEnergyConfigMigrator:
             # Migrate from version 6 to 7
             if current_version < CONFIG_VERSION_7:
                 migration_success &= await self._migrate_v6_to_v7(config_entry)
+
+            # Migrate from version 7 to 8
+            if current_version < CONFIG_VERSION_8:
+                migration_success &= await self._migrate_v7_to_v8(config_entry)
 
             if migration_success:
                 # Update version in config entry
@@ -332,6 +337,112 @@ class RedEnergyConfigMigrator:
         except Exception as err:
             _LOGGER.error("Failed to migrate v6 to v7: %s", err, exc_info=True)
             return False
+
+    async def _migrate_v7_to_v8(self, config_entry: ConfigEntry) -> bool:
+        """Migrate from version 7 to 8 - Composite property IDs.
+
+        Red Energy can group multiple physical properties under one billing
+        account, so they share the same accountNumber. Property IDs used to
+        be derived from accountNumber alone, which silently collapsed those
+        properties into a single device/entity set (see GitHub issue #51).
+        IDs are now composed from propertyPhysicalNumber + accountNumber,
+        which is unique per property.
+
+        For every property whose ID changes, the existing device and its
+        entities are renamed in place (rather than deleted/recreated) so
+        entity history and Energy Dashboard statistics carry over.
+        """
+        _LOGGER.info("Migrating config entry from v7 to v8 - Updating property IDs")
+
+        try:
+            from homeassistant.helpers.aiohttp_client import async_get_clientsession
+            from homeassistant.helpers import device_registry as dr, entity_registry as er
+
+            from .api import RedEnergyAPI
+            from .data_validation import validate_properties_data
+
+            new_data = dict(config_entry.data)
+            selected_accounts = new_data.get(DATA_SELECTED_ACCOUNTS, [])
+
+            session = async_get_clientsession(self.hass)
+            api = RedEnergyAPI(session)
+
+            try:
+                await api.authenticate(new_data[CONF_USERNAME], new_data[CONF_PASSWORD])
+                raw_properties = await api.get_properties()
+            except Exception as err:
+                _LOGGER.warning(
+                    "Could not refresh properties during v7 to v8 migration (%s) - "
+                    "existing IDs will be kept and re-evaluated on next successful setup",
+                    err,
+                )
+                return True
+
+            # Old IDs were accountNumber alone, so recompute what each fetched
+            # property's old-style ID would have been to match it against the
+            # previously selected accounts.
+            id_map: dict[str, str] = {}
+            for raw_property in raw_properties:
+                account_number = raw_property.get("accountNumber")
+                if not account_number:
+                    continue
+                old_id = str(account_number)
+                if old_id in selected_accounts and old_id not in id_map:
+                    new_id = validate_properties_data([raw_property])[0]["id"]
+                    if new_id != old_id:
+                        id_map[old_id] = new_id
+
+            if not id_map:
+                _LOGGER.debug("No property IDs changed format, nothing to migrate")
+                return True
+
+            new_data[DATA_SELECTED_ACCOUNTS] = [
+                id_map.get(account_id, account_id) for account_id in selected_accounts
+            ]
+
+            device_registry = dr.async_get(self.hass)
+            entity_registry = er.async_get(self.hass)
+
+            for old_id, new_id in id_map.items():
+                device = device_registry.async_get_device(identifiers={(DOMAIN, old_id)})
+                if not device:
+                    continue
+
+                for entity in er.async_entries_for_device(
+                    entity_registry, device.id, include_disabled_entities=True
+                ):
+                    old_segment = f"_{old_id}_"
+                    if old_segment not in entity.unique_id:
+                        continue
+                    new_unique_id = entity.unique_id.replace(old_segment, f"_{new_id}_")
+                    if new_unique_id != entity.unique_id:
+                        entity_registry.async_update_entity(
+                            entity.entity_id, new_unique_id=new_unique_id
+                        )
+                        _LOGGER.info(
+                            "Migrated entity %s unique_id from %s to %s",
+                            entity.entity_id, entity.unique_id, new_unique_id
+                        )
+
+                device_registry.async_update_device(
+                    device.id, new_identifiers={(DOMAIN, new_id)}
+                )
+                _LOGGER.info("Migrated device %s identifier from %s to %s", device.name, old_id, new_id)
+
+            self.hass.config_entries.async_update_entry(config_entry, data=new_data)
+
+            _LOGGER.info(
+                "Successfully migrated to v8, updated %d property ID(s): %s",
+                len(id_map), id_map
+            )
+
+            return True
+
+        except Exception as err:
+            _LOGGER.error("Failed to migrate v7 to v8: %s", err, exc_info=True)
+            # Don't fail the entire migration - the fix still applies for new
+            # device/entity creation, existing ones just won't be renamed.
+            return True
 
 
 class RedEnergyConfigValidator:
