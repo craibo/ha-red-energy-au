@@ -15,7 +15,7 @@ def _coordinator_for_single_account():
         "usage_data": {
             "1000001": {
                 "property": {
-                    "name": "27 Sunnyside Crescent, Castlecrag",
+                    "name": "1 Example Street, Testville",
                     "services": [{"type": SERVICE_TYPE_ELECTRICITY, "consumer_number": "elec-1"}],
                 },
             },

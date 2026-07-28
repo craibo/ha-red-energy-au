@@ -18,12 +18,12 @@ def _raw_property(account_number, utility, consumer_number, property_physical_nu
     return {
         "accountNumber": account_number,
         "propertyPhysicalNumber": property_physical_number,
-        "displayAddresses": {"shortForm": "27 Sunnyside Crescent, Castlecrag"},
+        "displayAddresses": {"shortForm": "1 Example Street, Testville"},
         "address": {
-            "suburb": "Castlecrag",
+            "suburb": "Testville",
             "state": "NSW",
             "postcode": "2068",
-            "displayAddresses": {"shortForm": "27 Sunnyside Crescent, Castlecrag"},
+            "displayAddresses": {"shortForm": "1 Example Street, Testville"},
         },
         "consumers": [
             {
@@ -84,8 +84,8 @@ async def test_options_init_form_lists_newly_discovered_account():
 async def test_options_account_labels_use_account_id_not_shared_address():
     """Checkbox labels must disambiguate accounts sharing the same address.
 
-    Both mock properties share the display address "27 Sunnyside Crescent,
-    Castlecrag" (electricity and gas billed on separate accounts) - the
+    Both mock properties share the display address "1 Example Street,
+    Testville" (electricity and gas billed on separate accounts) - the
     label shown to the user must not be that address for both, or the
     options screen is unusable (matches the reported UI screenshot).
     """
@@ -105,7 +105,7 @@ async def test_options_account_labels_use_account_id_not_shared_address():
 
     assert labels["1000001"] == "1000001 - Electricity"
     assert labels["2000002"] == "2000002 - Gas"
-    assert "27 Sunnyside Crescent, Castlecrag" not in labels.values()
+    assert "1 Example Street, Testville" not in labels.values()
 
 
 @pytest.mark.asyncio

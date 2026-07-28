@@ -42,10 +42,10 @@ def _coordinator(service_metadata, service_type):
         "usage_data": {
             "2000002": {
                 "property": {
-                    "name": "27 Sunnyside Crescent, Castlecrag",
+                    "name": "1 Example Street, Testville",
                     "address": {
-                        "street": "27 Sunnyside Crescent",
-                        "city": "Castlecrag",
+                        "street": "1 Example Street",
+                        "city": "Testville",
                         "state": "NSW",
                         "postcode": "2068",
                     },
@@ -165,7 +165,7 @@ def test_address_sensor_formats_full_address():
 
     sensor = RedEnergyAddressSensor(coordinator, config_entry, "2000002", SERVICE_TYPE_GAS)
 
-    assert sensor.native_value == "27 Sunnyside Crescent, Castlecrag NSW 2068"
+    assert sensor.native_value == "1 Example Street, Testville NSW 2068"
 
 
 def test_address_sensor_exposes_latitude_longitude_attributes():

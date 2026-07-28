@@ -15,13 +15,13 @@ def _coordinator_for_split_accounts():
         "usage_data": {
             "1000001": {
                 "property": {
-                    "name": "27 Sunnyside Crescent, Castlecrag",
+                    "name": "1 Example Street, Testville",
                     "services": [{"type": SERVICE_TYPE_ELECTRICITY, "consumer_number": "elec-1"}],
                 },
             },
             "2000002": {
                 "property": {
-                    "name": "27 Sunnyside Crescent, Castlecrag",
+                    "name": "1 Example Street, Testville",
                     "services": [{"type": SERVICE_TYPE_GAS, "consumer_number": "gas-1"}],
                 },
             },

@@ -11,7 +11,7 @@ from custom_components.red_energy.const import (
 )
 from custom_components.red_energy.device_manager import RedEnergyDeviceManager
 
-ADDRESS = {"street_address": "27 Sunnyside Crescent", "suburb": "Castlecrag"}
+ADDRESS = {"street_address": "1 Example Street", "suburb": "Testville"}
 
 
 def _property_info(name, service_type, property_physical_number=None, account_number=None):
@@ -48,12 +48,12 @@ async def test_split_accounts_at_same_address_get_distinct_device_names():
 
     electricity_device = await manager._create_property_device(
         "1000001",
-        _property_info("27 Sunnyside Crescent, Castlecrag", SERVICE_TYPE_ELECTRICITY),
+        _property_info("1 Example Street, Testville", SERVICE_TYPE_ELECTRICITY),
         [SERVICE_TYPE_ELECTRICITY, SERVICE_TYPE_GAS],
     )
     gas_device = await manager._create_property_device(
         "2000002",
-        _property_info("27 Sunnyside Crescent, Castlecrag", SERVICE_TYPE_GAS),
+        _property_info("1 Example Street, Testville", SERVICE_TYPE_GAS),
         [SERVICE_TYPE_ELECTRICITY, SERVICE_TYPE_GAS],
     )
 
@@ -69,7 +69,7 @@ async def test_device_model_reflects_accounts_own_service_not_global_toggle():
 
     await manager._create_property_device(
         "2000002",
-        _property_info("27 Sunnyside Crescent, Castlecrag", SERVICE_TYPE_GAS),
+        _property_info("1 Example Street, Testville", SERVICE_TYPE_GAS),
         [SERVICE_TYPE_ELECTRICITY, SERVICE_TYPE_GAS],
     )
 
@@ -86,7 +86,7 @@ async def test_device_name_shows_property_and_account_number():
     electricity_device = await manager._create_property_device(
         "82227160.7471493",
         _property_info(
-            "27 Sunnyside Crescent, Castlecrag",
+            "1 Example Street, Testville",
             SERVICE_TYPE_ELECTRICITY,
             property_physical_number="82227160",
             account_number="7471493",
@@ -96,7 +96,7 @@ async def test_device_name_shows_property_and_account_number():
     gas_device = await manager._create_property_device(
         "82227160.8490263",
         _property_info(
-            "27 Sunnyside Crescent, Castlecrag",
+            "1 Example Street, Testville",
             SERVICE_TYPE_GAS,
             property_physical_number="82227160",
             account_number="8490263",
