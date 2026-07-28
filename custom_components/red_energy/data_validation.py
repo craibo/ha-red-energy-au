@@ -12,6 +12,20 @@ class DataValidationError(Exception):
     """Exception raised when data validation fails."""
 
 
+def build_property_display_name(property_id: str, validated_property: dict[str, Any], service_label: str) -> str:
+    """Build the "{address} - {service} ({accountNumber})" display name used
+    for devices and account picker labels. Falls back to the property ID when
+    the address or account number aren't available (e.g. synthetic IDs)."""
+    address = validated_property.get("extra_short_form") or str(property_id)
+    account_number = validated_property.get("account_number")
+
+    name_parts = [address, service_label]
+    display_name = " - ".join(part for part in name_parts if part)
+    if account_number:
+        display_name = f"{display_name} ({account_number})"
+    return display_name
+
+
 def validate_customer_data(data: dict[str, Any]) -> dict[str, Any]:
     """Validate customer data from Red Energy API."""
     if not isinstance(data, dict):
@@ -117,29 +131,39 @@ def validate_single_property(data: dict[str, Any]) -> dict[str, Any]:
     
     # Get property name - try various fields
     property_name = data.get("name") or data.get("propertyName")
-    
+
+    address_data = data.get("address", {})
+    display_addresses = (
+        address_data.get("displayAddresses", {}) if isinstance(address_data, dict) else {}
+    )
+    if not isinstance(display_addresses, dict):
+        display_addresses = {}
+
+    # extraShortForm (e.g. "100 Main Street") is the preferred short label for
+    # device/entity display names - shorter than shortForm, which usually
+    # includes the suburb too.
+    extra_short_form = display_addresses.get("extraShortForm")
+
     # If no name, try to build from address
     if not property_name:
-        address_data = data.get("address", {})
-        if isinstance(address_data, dict):
-            # Try display address fields first
-            display_addresses = address_data.get("displayAddresses", {})
-            if isinstance(display_addresses, dict):
-                property_name = display_addresses.get("shortForm") or display_addresses.get("extraShortForm")
-            
-            # Fall back to building from address parts
-            if not property_name:
-                house = (address_data.get("house") or "").strip()
-                street = (address_data.get("street") or "").strip()
-                suburb = (address_data.get("suburb") or "").strip()
-                if house and street and suburb:
-                    property_name = f"{house} {street}, {suburb}"
-                elif street and suburb:
-                    property_name = f"{street}, {suburb}"
-    
+        property_name = display_addresses.get("shortForm") or extra_short_form
+
+        # Fall back to building from address parts
+        if not property_name and isinstance(address_data, dict):
+            house = (address_data.get("house") or "").strip()
+            street = (address_data.get("street") or "").strip()
+            suburb = (address_data.get("suburb") or "").strip()
+            if house and street and suburb:
+                property_name = f"{house} {street}, {suburb}"
+            elif street and suburb:
+                property_name = f"{street}, {suburb}"
+
     # Final fallback
     if not property_name:
         property_name = f"Property {property_id}"
+
+    if not extra_short_form:
+        extra_short_form = property_name
     
     # API can return either "services" or "consumers"
     services_data = data.get("services") or data.get("consumers", [])
@@ -152,6 +176,7 @@ def validate_single_property(data: dict[str, Any]) -> dict[str, Any]:
         "services": validate_services(services_data),
         "property_physical_number": str(property_physical_number) if property_physical_number else None,
         "account_number": str(account_number) if account_number else None,
+        "extra_short_form": str(extra_short_form),
     }
     
     _LOGGER.debug("Validated property: %s (ID: %s) with %d services", 

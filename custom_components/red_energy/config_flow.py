@@ -16,7 +16,12 @@ from homeassistant.helpers import config_validation as cv
 
 from .api import RedEnergyAPI, RedEnergyAPIError, RedEnergyAuthError
 from .config_migration import CURRENT_CONFIG_VERSION
-from .data_validation import validate_config_data, validate_properties_data, DataValidationError
+from .data_validation import (
+    build_property_display_name,
+    validate_config_data,
+    validate_properties_data,
+    DataValidationError,
+)
 from .const import (
     CLIENT_ID,
     CONF_ENABLE_ADVANCED_SENSORS,
@@ -245,16 +250,9 @@ class RedEnergyOptionsFlowHandler(config_entries.OptionsFlow):
                 service_label = "/".join(
                     s.get("type", "").title() for s in account.get("services", []) if s.get("type")
                 )
-                property_physical_number = account.get("property_physical_number")
-                account_number = account.get("account_number")
-                if property_physical_number and account_number and property_physical_number != account_number:
-                    label_parts = [property_physical_number, account_number, service_label]
-                else:
-                    # No distinct propertyPhysicalNumber/accountNumber pair
-                    # (e.g. synthetic ID fallback) - fall back to the id alone
-                    # rather than showing the same value twice.
-                    label_parts = [account_id, service_label]
-                account_options[account_id] = " - ".join(part for part in label_parts if part)
+                account_options[account_id] = build_property_display_name(
+                    account_id, account, service_label
+                )
         except Exception as err:
             _LOGGER.warning("Could not refresh account list for options flow: %s", err)
             # Fall back to the accounts already known to the config entry so the

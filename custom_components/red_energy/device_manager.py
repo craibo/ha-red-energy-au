@@ -10,6 +10,7 @@ from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.helpers.device_registry import DeviceEntry
 
 from .const import DOMAIN, MANUFACTURER, SERVICE_TYPE_ELECTRICITY, SERVICE_TYPE_GAS
+from .data_validation import build_property_display_name
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -64,16 +65,7 @@ class RedEnergyDeviceManager:
             s.get("type") for s in property_info.get("services", []) if s.get("type")
         ] or services
         service_label = "/".join(s.title() for s in account_services)
-        property_physical_number = property_info.get("property_physical_number")
-        account_number = property_info.get("account_number")
-        if property_physical_number and account_number and property_physical_number != account_number:
-            name_parts = [property_physical_number, account_number, service_label]
-        else:
-            # No distinct propertyPhysicalNumber/accountNumber pair (e.g.
-            # synthetic ID fallback) - fall back to the id alone rather than
-            # showing the same value twice.
-            name_parts = [str(account_id), service_label]
-        device_name = " - ".join(part for part in name_parts if part)
+        device_name = build_property_display_name(account_id, property_info, service_label)
         address = property_info.get("address", {})
 
         # Create comprehensive device identifiers
