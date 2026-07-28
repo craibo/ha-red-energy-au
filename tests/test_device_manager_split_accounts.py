@@ -14,13 +14,14 @@ from custom_components.red_energy.device_manager import RedEnergyDeviceManager
 ADDRESS = {"street_address": "1 Example Street", "suburb": "Testville"}
 
 
-def _property_info(name, service_type, property_physical_number=None, account_number=None):
+def _property_info(name, service_type, property_physical_number=None, account_number=None, extra_short_form=None):
     return {
         "name": name,
         "address": ADDRESS,
         "services": [{"type": service_type}],
         "property_physical_number": property_physical_number,
         "account_number": account_number,
+        "extra_short_form": extra_short_form or name,
     }
 
 
@@ -48,18 +49,22 @@ async def test_split_accounts_at_same_address_get_distinct_device_names():
 
     electricity_device = await manager._create_property_device(
         "1000001",
-        _property_info("1 Example Street, Testville", SERVICE_TYPE_ELECTRICITY),
+        _property_info(
+            "1 Example Street, Testville", SERVICE_TYPE_ELECTRICITY, account_number="1000001"
+        ),
         [SERVICE_TYPE_ELECTRICITY, SERVICE_TYPE_GAS],
     )
     gas_device = await manager._create_property_device(
         "2000002",
-        _property_info("1 Example Street, Testville", SERVICE_TYPE_GAS),
+        _property_info(
+            "1 Example Street, Testville", SERVICE_TYPE_GAS, account_number="2000002"
+        ),
         [SERVICE_TYPE_ELECTRICITY, SERVICE_TYPE_GAS],
     )
 
     assert electricity_device.name != gas_device.name
-    assert electricity_device.name == "1000001 - Electricity"
-    assert gas_device.name == "2000002 - Gas"
+    assert electricity_device.name == "1 Example Street, Testville - Electricity (1000001)"
+    assert gas_device.name == "1 Example Street, Testville - Gas (2000002)"
 
 
 @pytest.mark.asyncio
@@ -78,9 +83,9 @@ async def test_device_model_reflects_accounts_own_service_not_global_toggle():
 
 
 @pytest.mark.asyncio
-async def test_device_name_shows_property_and_account_number():
-    """When propertyPhysicalNumber and accountNumber are both present and
-    distinct, the device name must read 'Property Number - Account Number - Service'."""
+async def test_device_name_shows_address_service_and_account_number():
+    """Device name must read '{address} - {service} ({accountNumber})', using
+    extraShortForm for the address rather than the internal composite ID."""
     manager = _make_device_manager()
 
     electricity_device = await manager._create_property_device(
@@ -90,6 +95,7 @@ async def test_device_name_shows_property_and_account_number():
             SERVICE_TYPE_ELECTRICITY,
             property_physical_number="82227160",
             account_number="7471493",
+            extra_short_form="100 Main Street",
         ),
         [SERVICE_TYPE_ELECTRICITY, SERVICE_TYPE_GAS],
     )
@@ -100,9 +106,10 @@ async def test_device_name_shows_property_and_account_number():
             SERVICE_TYPE_GAS,
             property_physical_number="82227160",
             account_number="8490263",
+            extra_short_form="100 Main Street",
         ),
         [SERVICE_TYPE_ELECTRICITY, SERVICE_TYPE_GAS],
     )
 
-    assert electricity_device.name == "82227160 - 7471493 - Electricity"
-    assert gas_device.name == "82227160 - 8490263 - Gas"
+    assert electricity_device.name == "100 Main Street - Electricity (7471493)"
+    assert gas_device.name == "100 Main Street - Gas (8490263)"

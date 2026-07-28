@@ -23,7 +23,10 @@ def _raw_property(account_number, utility, consumer_number, property_physical_nu
             "suburb": "Testville",
             "state": "NSW",
             "postcode": "2000",
-            "displayAddresses": {"shortForm": "1 Example Street, Testville"},
+            "displayAddresses": {
+                "shortForm": "1 Example Street, Testville",
+                "extraShortForm": "1 Example Street",
+            },
         },
         "consumers": [
             {
@@ -81,13 +84,13 @@ async def test_options_init_form_lists_newly_discovered_account():
 
 
 @pytest.mark.asyncio
-async def test_options_account_labels_use_account_id_not_shared_address():
+async def test_options_account_labels_use_account_number_not_shared_address():
     """Checkbox labels must disambiguate accounts sharing the same address.
 
     Both mock properties share the display address "1 Example Street,
     Testville" (electricity and gas billed on separate accounts) - the
-    label shown to the user must not be that address for both, or the
-    options screen is unusable (matches the reported UI screenshot).
+    account number in parentheses must disambiguate them, or the options
+    screen is unusable (matches the reported UI screenshot).
     """
     entry = _make_config_entry()
     hass = _make_hass(entry)
@@ -103,15 +106,15 @@ async def test_options_account_labels_use_account_id_not_shared_address():
     )
     labels = accounts_validator.options
 
-    assert labels["1000001"] == "1000001 - Electricity"
-    assert labels["2000002"] == "2000002 - Gas"
-    assert "1 Example Street, Testville" not in labels.values()
+    assert labels["1000001"] == "1 Example Street - Electricity (1000001)"
+    assert labels["2000002"] == "1 Example Street - Gas (2000002)"
+    assert labels["1000001"] != labels["2000002"]
 
 
 @pytest.mark.asyncio
-async def test_options_account_labels_show_property_and_account_number():
-    """When propertyPhysicalNumber and accountNumber are both present and
-    distinct, labels must read 'Property Number - Account Number - Service'."""
+async def test_options_account_labels_show_address_and_account_number():
+    """Labels must read '{address} - {service} ({accountNumber})', using
+    extraShortForm for the address rather than the internal composite ID."""
     properties = [
         _raw_property(7471493, "E", 3000001, property_physical_number=82227160),
         _raw_property(8490263, "G", 3000002, property_physical_number=82227160),
@@ -131,8 +134,8 @@ async def test_options_account_labels_show_property_and_account_number():
     )
     labels = accounts_validator.options
 
-    assert labels["82227160.7471493"] == "82227160 - 7471493 - Electricity"
-    assert labels["82227160.8490263"] == "82227160 - 8490263 - Gas"
+    assert labels["82227160.7471493"] == "1 Example Street - Electricity (7471493)"
+    assert labels["82227160.8490263"] == "1 Example Street - Gas (8490263)"
 
 
 @pytest.mark.asyncio
