@@ -12,14 +12,19 @@ Always work on a feature/fix branch — never commit directly to `main`. Create 
 
 When starting a new branch, bump the `version` field in `custom_components/red_energy/manifest.json` as the first commit, following semantic versioning (MAJOR.MINOR.PATCH): PATCH for bug fixes, MINOR for new features, MAJOR for breaking changes.
 
-## Account Numbers and Real Data
+## Personal Information and Real Data
 
-The user's real Red Energy account numbers, consumer numbers, and customer numbers (obtained during live debugging sessions, e.g. from a SQLite dump or live API response) must never be referenced or used outside the local conversation. This means:
+Never use real personal information — the user's own or anyone else's — anywhere it could end up committed: code, tests, fixtures, commit messages, PR descriptions/comments, or scratch/audit files. This includes but is not limited to:
 
-- Never commit real account/consumer/customer numbers in code, tests, commit messages, or PR descriptions/comments — use clearly-fake placeholder values instead (e.g. `1000001`, `2000002`).
-- Never write real account numbers into any file that gets committed to git, including scratch/audit files — if such a file is genuinely needed, keep it untracked (gitignored) and local-only.
-- This applies retroactively too: if a real number is found in already-tracked test fixtures or docs, replace it with a placeholder rather than leaving it as precedent for future work.
-- Account numbers aren't login credentials, but they're still real customer data belonging to the user (or whoever's account is being debugged) and shouldn't leak into a public repository's history going forward.
+- Account numbers, consumer numbers, customer numbers (Red Energy or otherwise)
+- Physical addresses, street names, suburbs (even ones that look innocuous, like a test fixture's "property address")
+- Names, emails, phone numbers, or other identifying details pulled from live debugging sessions (e.g. a SQLite dump, live API response, or log file)
+
+Always use clearly-fake example data instead — e.g. account numbers like `1000001`/`2000002`, addresses like `1 Example Street, Testville`, emails like `test@example.com`. This applies even when real data would make a test fixture or reproduction case more "realistic" — fake data that exercises the same code path is just as effective and carries no risk.
+
+- If a file containing real data is genuinely needed for local debugging, keep it untracked (gitignored) and local-only — never let it reach a commit.
+- This applies retroactively too: if real personal information is found in already-tracked files, replace it with a placeholder rather than leaving it as precedent for future work.
+- This data isn't necessarily a login credential, but it's still real personal information belonging to the user (or whoever's account/data is being debugged) and shouldn't leak into a public repository's history going forward.
 
 ## Commands
 
