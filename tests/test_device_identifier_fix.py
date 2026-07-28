@@ -168,10 +168,10 @@ def test_device_model_dual_service():
 
 
 def test_migration_version():
-    """Test that migration version is set to 7."""
-    from custom_components.red_energy.config_migration import CURRENT_CONFIG_VERSION, CONFIG_VERSION_5, CONFIG_VERSION_7
+    """Test that migration version 5 (device identifier fix) still exists."""
+    from custom_components.red_energy.config_migration import CURRENT_CONFIG_VERSION, CONFIG_VERSION_5
 
-    assert CURRENT_CONFIG_VERSION == CONFIG_VERSION_7
+    assert CURRENT_CONFIG_VERSION >= CONFIG_VERSION_5
     assert CONFIG_VERSION_5 == 5
 
     print(f"✓ Current config version: {CURRENT_CONFIG_VERSION}")

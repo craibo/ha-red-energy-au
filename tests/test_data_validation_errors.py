@@ -353,6 +353,52 @@ def test_validate_properties_data_handles_address_with_none_house():
     assert result[0]["address"]["postcode"] == "2000"
 
 
+def test_validate_properties_data_shared_account_number_stays_distinct():
+    """Two properties on one billing account share accountNumber but must
+    still validate to distinct IDs (see GitHub issue #51)."""
+    raw_properties = [
+        {
+            "accountNumber": 1001100,
+            "propertyPhysicalNumber": 1111111,
+            "address": {
+                "street": "1 FIRST STREET",
+                "suburb": "SUBURBIA",
+                "state": "NSW",
+                "postcode": "2000",
+            },
+            "consumers": [
+                {
+                    "consumerNumber": 2000001,
+                    "utility": "E",
+                    "status": "ON",
+                }
+            ],
+        },
+        {
+            "accountNumber": 1001100,
+            "propertyPhysicalNumber": 2222222,
+            "address": {
+                "street": "2 SECOND STREET",
+                "suburb": "SUBURBIA",
+                "state": "NSW",
+                "postcode": "2000",
+            },
+            "consumers": [
+                {
+                    "consumerNumber": 2000002,
+                    "utility": "E",
+                    "status": "ON",
+                }
+            ],
+        },
+    ]
+    result = validate_properties_data(raw_properties)
+    assert len(result) == 2
+    ids = {prop["id"] for prop in result}
+    assert len(ids) == 2
+    assert ids == {"1111111.1001100", "2222222.1001100"}
+
+
 def test_validate_single_service_extracts_payment_type_description():
     """paymentTypeDetail.paymentTypeDescription must surface as a flat field."""
     raw_service = {
