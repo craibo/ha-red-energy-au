@@ -77,20 +77,23 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
         last_bill_date = service.get("lastBillDate")
         if last_bill_date:
             try:
-                start_date = datetime.strptime(last_bill_date, "%Y-%m-%d")
-                
+                # lastBillDate is the final day of the *previous* billing period,
+                # so the new period's usage starts the following day - otherwise
+                # that day's usage/cost is double-counted across both periods.
+                start_date = datetime.strptime(last_bill_date, "%Y-%m-%d") + timedelta(days=1)
+
                 if start_date > end_date:
                     _LOGGER.warning("lastBillDate %s is in the future, falling back to 30-day period", last_bill_date)
                     start_date = None
                 elif (end_date - start_date).days > 90:
-                    _LOGGER.warning("lastBillDate %s is >90 days old (%d days), this may be a long billing period", 
+                    _LOGGER.warning("lastBillDate %s is >90 days old (%d days), this may be a long billing period",
                                   last_bill_date, (end_date - start_date).days)
                 else:
-                    _LOGGER.info("Using billing period: %s to %s (%d days)", 
-                               start_date.strftime('%Y-%m-%d'), 
+                    _LOGGER.info("Using billing period: %s to %s (%d days)",
+                               start_date.strftime('%Y-%m-%d'),
                                end_date.strftime('%Y-%m-%d'),
                                (end_date - start_date).days)
-                    
+
             except (ValueError, TypeError) as err:
                 _LOGGER.warning("Invalid lastBillDate format '%s': %s, falling back to 30-day period", last_bill_date, err)
                 start_date = None
@@ -589,29 +592,41 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
 
         return metadata.get("rates", [])
 
-    def get_latest_import_usage(self, property_id: str, service_type: str) -> float | None:
-        """Get the most recent daily import usage."""
+    def _get_latest_usage_entry(self, property_id: str, service_type: str) -> dict[str, Any] | None:
+        """Return the usage_data entry with the latest usageDate.
+
+        Selects by max date rather than assuming the API returns entries
+        in order, so results stay correct if the API ever returns them
+        out of order.
+        """
         service_data = self.get_service_usage(property_id, service_type)
         if not service_data or "usage_data" not in service_data:
             return None
-        
+
         usage_data = service_data["usage_data"].get("usage_data", [])
         if not usage_data:
             return None
-        
-        return usage_data[-1].get("import_usage", 0.0)
+
+        dated_entries = [entry for entry in usage_data if entry.get("date")]
+        if not dated_entries:
+            return usage_data[-1]
+
+        return max(dated_entries, key=lambda entry: entry["date"])
+
+    def get_latest_usage_date(self, property_id: str, service_type: str) -> str | None:
+        """Get the usageDate of the most recent daily usage entry."""
+        entry = self._get_latest_usage_entry(property_id, service_type)
+        return entry.get("date") if entry else None
+
+    def get_latest_import_usage(self, property_id: str, service_type: str) -> float | None:
+        """Get the most recent daily import usage."""
+        entry = self._get_latest_usage_entry(property_id, service_type)
+        return entry.get("import_usage", 0.0) if entry else None
 
     def get_latest_export_usage(self, property_id: str, service_type: str) -> float | None:
         """Get the most recent daily export usage."""
-        service_data = self.get_service_usage(property_id, service_type)
-        if not service_data or "usage_data" not in service_data:
-            return None
-        
-        usage_data = service_data["usage_data"].get("usage_data", [])
-        if not usage_data:
-            return None
-        
-        return usage_data[-1].get("export_usage", 0.0)
+        entry = self._get_latest_usage_entry(property_id, service_type)
+        return entry.get("export_usage", 0.0) if entry else None
 
     def get_total_import_usage(self, property_id: str, service_type: str) -> float | None:
         """Get total import usage over period."""
@@ -689,17 +704,22 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
         if not usage_data:
             return None
         
-        max_demand_kw = 0.0
+        max_demand_kw = None
         max_demand_time = None
         max_demand_date = None
-        
+
         for entry in usage_data:
-            demand = entry.get("max_demand_kw", 0.0)
-            if demand > max_demand_kw:
+            demand = entry.get("max_demand_kw")
+            if demand is None:
+                continue
+            if max_demand_kw is None or demand > max_demand_kw:
                 max_demand_kw = demand
                 max_demand_time = entry.get("max_demand_time")
                 max_demand_date = entry.get("date")
-        
+
+        if max_demand_kw is None:
+            return None
+
         return {
             "max_demand_kw": max_demand_kw,
             "max_demand_time": max_demand_time,
@@ -717,24 +737,10 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
 
     def get_latest_import_cost(self, property_id: str, service_type: str) -> float | None:
         """Get the most recent daily import cost."""
-        service_data = self.get_service_usage(property_id, service_type)
-        if not service_data or "usage_data" not in service_data:
-            return None
-        
-        usage_data = service_data["usage_data"].get("usage_data", [])
-        if not usage_data:
-            return None
-        
-        return usage_data[-1].get("import_cost", 0.0)
+        entry = self._get_latest_usage_entry(property_id, service_type)
+        return entry.get("import_cost", 0.0) if entry else None
 
     def get_latest_export_credit(self, property_id: str, service_type: str) -> float | None:
         """Get the most recent daily export credit."""
-        service_data = self.get_service_usage(property_id, service_type)
-        if not service_data or "usage_data" not in service_data:
-            return None
-        
-        usage_data = service_data["usage_data"].get("usage_data", [])
-        if not usage_data:
-            return None
-        
-        return usage_data[-1].get("export_credit", 0.0)
+        entry = self._get_latest_usage_entry(property_id, service_type)
+        return entry.get("export_credit", 0.0) if entry else None
