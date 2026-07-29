@@ -438,7 +438,7 @@ def validate_usage_entry(data: dict[str, Any]) -> dict[str, Any]:
     
     # Validate all numeric fields
     for field in numeric_fields:
-        if field in data:
+        if field in data and data[field] is not None:
             try:
                 value = float(data[field])
                 # Handle negative values appropriately based on field type
