@@ -2,11 +2,12 @@
 
 Covers: daily energy sensor state class, max demand null-vs-zero,
 "Peak Usage" sensor renaming, billing period boundary double-count,
-and latest-day selection by usageDate instead of list position.
+latest-day selection by usageDate instead of list position, and
+per-day last_reset on the daily TOTAL sensors.
 """
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from homeassistant.components.sensor import SensorStateClass
 
@@ -15,6 +16,8 @@ from custom_components.red_energy.data_validation import validate_usage_entry
 from custom_components.red_energy.sensor import (
     RedEnergyDailyImportUsageSensor,
     RedEnergyDailyExportUsageSensor,
+    RedEnergyDailyImportCostSensor,
+    RedEnergyDailyExportCreditSensor,
     RedEnergyPeakUsageSensor,
 )
 from custom_components.red_energy.const import SERVICE_TYPE_ELECTRICITY
@@ -216,3 +219,50 @@ class TestLatestDaySelection:
             coordinator, _config_entry(), "prop-001", SERVICE_TYPE_ELECTRICITY
         )
         assert sensor.extra_state_attributes["usage_date"] == "2024-01-15"
+
+
+class TestDailySensorLastReset:
+    """Follow-up from #62: daily TOTAL sensors need last_reset tied to usageDate.
+
+    Without a reset boundary that moves with each new completed day, HA's
+    sum statistics treat successive independent daily totals as deltas of
+    one continuous accumulation (e.g. $6.20 -> $4.80 -> $7.10 would net out
+    to a negative delta on day 2 instead of three separate daily totals).
+    """
+
+    @pytest.mark.parametrize(
+        "sensor_cls",
+        [
+            RedEnergyDailyImportUsageSensor,
+            RedEnergyDailyExportUsageSensor,
+            RedEnergyDailyImportCostSensor,
+            RedEnergyDailyExportCreditSensor,
+        ],
+    )
+    def test_last_reset_matches_usage_date(self, coordinator, sensor_cls):
+        _set_service_usage(
+            coordinator,
+            [{"date": "2024-01-15", "import_usage": 10.0, "export_usage": 2.0,
+              "import_cost": 3.0, "export_credit": 0.5}],
+        )
+        sensor = sensor_cls(coordinator, _config_entry(), "prop-001", SERVICE_TYPE_ELECTRICITY)
+
+        assert sensor.last_reset == datetime(2024, 1, 15, tzinfo=timezone.utc)
+
+    def test_last_reset_moves_to_new_day_on_next_update(self, coordinator):
+        sensor = RedEnergyDailyImportUsageSensor(
+            coordinator, _config_entry(), "prop-001", SERVICE_TYPE_ELECTRICITY
+        )
+
+        _set_service_usage(coordinator, [{"date": "2024-01-15", "import_usage": 10.0}])
+        assert sensor.last_reset == datetime(2024, 1, 15, tzinfo=timezone.utc)
+
+        _set_service_usage(coordinator, [{"date": "2024-01-16", "import_usage": 4.0}])
+        assert sensor.last_reset == datetime(2024, 1, 16, tzinfo=timezone.utc)
+
+    def test_last_reset_none_when_no_usage_data(self, coordinator):
+        _set_service_usage(coordinator, [])
+        sensor = RedEnergyDailyImportUsageSensor(
+            coordinator, _config_entry(), "prop-001", SERVICE_TYPE_ELECTRICITY
+        )
+        assert sensor.last_reset is None

@@ -296,6 +296,22 @@ class RedEnergyBaseSensor(CoordinatorEntity, SensorEntity):
         except (ValueError, TypeError):
             return None
 
+    def _get_latest_usage_date_reset(self) -> datetime | None:
+        """Return the start of the latest usageDate as a UTC datetime for last_reset.
+
+        Daily sensors publish a new independent completed-day total on every
+        update, so each one needs its own reset boundary - otherwise HA's sum
+        statistics treat successive daily totals as deltas of one continuous
+        accumulation instead of separate one-day totals.
+        """
+        usage_date = self.coordinator.get_latest_usage_date(self._property_id, self._service_type)
+        if not usage_date:
+            return None
+        try:
+            return dt_util.as_utc(datetime.strptime(usage_date, "%Y-%m-%d"))
+        except (ValueError, TypeError):
+            return None
+
 
 class RedEnergyCostSensor(RedEnergyBaseSensor):
     """Red Energy total cost sensor."""
@@ -1154,6 +1170,11 @@ class RedEnergyDailyImportUsageSensor(RedEnergyBaseSensor):
             self._attr_state_class = SensorStateClass.TOTAL
 
     @property
+    def last_reset(self) -> datetime | None:
+        """Return the start of the represented usageDate so HA statistics don't sum across days."""
+        return self._get_latest_usage_date_reset()
+
+    @property
     def native_value(self) -> float | None:
         """Return the current daily import usage."""
         return self.coordinator.get_latest_import_usage(self._property_id, self._service_type)
@@ -1198,6 +1219,11 @@ class RedEnergyDailyExportUsageSensor(RedEnergyBaseSensor):
             self._attr_device_class = SensorDeviceClass.ENERGY
             self._attr_native_unit_of_measurement = "MJ"
             self._attr_state_class = SensorStateClass.TOTAL
+
+    @property
+    def last_reset(self) -> datetime | None:
+        """Return the start of the represented usageDate so HA statistics don't sum across days."""
+        return self._get_latest_usage_date_reset()
 
     @property
     def native_value(self) -> float | None:
@@ -1439,6 +1465,11 @@ class RedEnergyDailyImportCostSensor(RedEnergyBaseSensor):
         self._attr_state_class = SensorStateClass.TOTAL
 
     @property
+    def last_reset(self) -> datetime | None:
+        """Return the start of the represented usageDate so HA statistics don't sum across days."""
+        return self._get_latest_usage_date_reset()
+
+    @property
     def native_value(self) -> float | None:
         """Return the current daily import cost."""
         return self.coordinator.get_latest_import_cost(self._property_id, self._service_type)
@@ -1479,6 +1510,11 @@ class RedEnergyDailyExportCreditSensor(RedEnergyBaseSensor):
         self._attr_native_unit_of_measurement = "AUD"
         self._attr_state_class = SensorStateClass.TOTAL
         self._attr_icon = "mdi:solar-power"
+
+    @property
+    def last_reset(self) -> datetime | None:
+        """Return the start of the represented usageDate so HA statistics don't sum across days."""
+        return self._get_latest_usage_date_reset()
 
     @property
     def native_value(self) -> float | None:
