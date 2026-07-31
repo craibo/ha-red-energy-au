@@ -296,6 +296,22 @@ class RedEnergyBaseSensor(CoordinatorEntity, SensorEntity):
         except (ValueError, TypeError):
             return None
 
+    def _get_latest_usage_date_reset(self) -> datetime | None:
+        """Return the start of the latest usageDate as a UTC datetime for last_reset.
+
+        Daily sensors publish a new independent completed-day total on every
+        update, so each one needs its own reset boundary - otherwise HA's sum
+        statistics treat successive daily totals as deltas of one continuous
+        accumulation instead of separate one-day totals.
+        """
+        usage_date = self.coordinator.get_latest_usage_date(self._property_id, self._service_type)
+        if not usage_date:
+            return None
+        try:
+            return dt_util.as_utc(datetime.strptime(usage_date, "%Y-%m-%d"))
+        except (ValueError, TypeError):
+            return None
+
 
 class RedEnergyCostSensor(RedEnergyBaseSensor):
     """Red Energy total cost sensor."""
@@ -429,7 +445,13 @@ class RedEnergyMonthlyAverageSensor(RedEnergyBaseSensor):
 
 
 class RedEnergyPeakUsageSensor(RedEnergyBaseSensor):
-    """Red Energy peak daily usage sensor."""
+    """Red Energy highest net grid usage day sensor.
+
+    Despite the "peak_usage" sensor_type/entity_id (kept for unique_id
+    backward compatibility), this is not a TOU peak-period or demand-peak
+    figure - it's the single day with the highest net (import - export)
+    usage across the returned period.
+    """
 
     def __init__(
         self,
@@ -440,7 +462,8 @@ class RedEnergyPeakUsageSensor(RedEnergyBaseSensor):
     ) -> None:
         """Initialize the peak usage sensor."""
         super().__init__(coordinator, config_entry, property_id, service_type, SENSOR_TYPE_PEAK_USAGE)
-        
+        self._attr_name = "Highest Net Usage Day"
+
         if service_type == SERVICE_TYPE_ELECTRICITY:
             self._attr_device_class = SensorDeviceClass.ENERGY
             self._attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
@@ -452,16 +475,16 @@ class RedEnergyPeakUsageSensor(RedEnergyBaseSensor):
 
     @property
     def native_value(self) -> float | None:
-        """Return the peak daily usage."""
+        """Return the highest daily net usage (import - export)."""
         service_data = self.coordinator.get_service_usage(self._property_id, self._service_type)
         if not service_data or "usage_data" not in service_data:
             return None
-        
+
         usage_data = service_data["usage_data"].get("usage_data", [])
         if not usage_data:
             return None
-        
-        # Find peak daily usage
+
+        # Find the day with the highest net usage
         usage_values = [entry.get("usage", 0) for entry in usage_data]
         return max(usage_values) if usage_values else 0
 
@@ -471,16 +494,17 @@ class RedEnergyPeakUsageSensor(RedEnergyBaseSensor):
         service_data = self.coordinator.get_service_usage(self._property_id, self._service_type)
         if not service_data or "usage_data" not in service_data:
             return None
-        
+
         usage_data = service_data["usage_data"].get("usage_data", [])
         if not usage_data:
             return None
-        
-        # Find peak date
+
+        # Find the day with the highest net usage
         peak_entry = max(usage_data, key=lambda x: x.get("usage", 0))
-        
+
         return {
             "consumer_number": service_data.get("consumer_number"),
+            "description": "Day with the highest net (import - export) grid usage in the period, not a TOU peak-period or demand figure",
             "peak_date": peak_entry.get("date"),
             "peak_cost": peak_entry.get("cost"),
             "service_type": self._service_type,
@@ -1139,11 +1163,16 @@ class RedEnergyDailyImportUsageSensor(RedEnergyBaseSensor):
         if service_type == SERVICE_TYPE_ELECTRICITY:
             self._attr_device_class = SensorDeviceClass.ENERGY
             self._attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
-            self._attr_state_class = SensorStateClass.TOTAL_INCREASING
+            self._attr_state_class = SensorStateClass.TOTAL
         elif service_type == SERVICE_TYPE_GAS:
             self._attr_device_class = SensorDeviceClass.ENERGY
             self._attr_native_unit_of_measurement = "MJ"
-            self._attr_state_class = SensorStateClass.TOTAL_INCREASING
+            self._attr_state_class = SensorStateClass.TOTAL
+
+    @property
+    def last_reset(self) -> datetime | None:
+        """Return the start of the represented usageDate so HA statistics don't sum across days."""
+        return self._get_latest_usage_date_reset()
 
     @property
     def native_value(self) -> float | None:
@@ -1160,6 +1189,7 @@ class RedEnergyDailyImportUsageSensor(RedEnergyBaseSensor):
         return {
             "consumer_number": service_data.get("consumer_number"),
             "last_updated": service_data.get("last_updated"),
+            "usage_date": self.coordinator.get_latest_usage_date(self._property_id, self._service_type),
             "service_type": self._service_type,
             "description": "Grid import (consumption)"
         }
@@ -1183,12 +1213,17 @@ class RedEnergyDailyExportUsageSensor(RedEnergyBaseSensor):
         if service_type == SERVICE_TYPE_ELECTRICITY:
             self._attr_device_class = SensorDeviceClass.ENERGY
             self._attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
-            self._attr_state_class = SensorStateClass.TOTAL_INCREASING
+            self._attr_state_class = SensorStateClass.TOTAL
             self._attr_icon = "mdi:solar-power"
         elif service_type == SERVICE_TYPE_GAS:
             self._attr_device_class = SensorDeviceClass.ENERGY
             self._attr_native_unit_of_measurement = "MJ"
-            self._attr_state_class = SensorStateClass.TOTAL_INCREASING
+            self._attr_state_class = SensorStateClass.TOTAL
+
+    @property
+    def last_reset(self) -> datetime | None:
+        """Return the start of the represented usageDate so HA statistics don't sum across days."""
+        return self._get_latest_usage_date_reset()
 
     @property
     def native_value(self) -> float | None:
@@ -1205,6 +1240,7 @@ class RedEnergyDailyExportUsageSensor(RedEnergyBaseSensor):
         return {
             "consumer_number": service_data.get("consumer_number"),
             "last_updated": service_data.get("last_updated"),
+            "usage_date": self.coordinator.get_latest_usage_date(self._property_id, self._service_type),
             "service_type": self._service_type,
             "description": "Solar export (generation)"
         }
@@ -1429,6 +1465,11 @@ class RedEnergyDailyImportCostSensor(RedEnergyBaseSensor):
         self._attr_state_class = SensorStateClass.TOTAL
 
     @property
+    def last_reset(self) -> datetime | None:
+        """Return the start of the represented usageDate so HA statistics don't sum across days."""
+        return self._get_latest_usage_date_reset()
+
+    @property
     def native_value(self) -> float | None:
         """Return the current daily import cost."""
         return self.coordinator.get_latest_import_cost(self._property_id, self._service_type)
@@ -1443,6 +1484,7 @@ class RedEnergyDailyImportCostSensor(RedEnergyBaseSensor):
         return {
             "consumer_number": service_data.get("consumer_number"),
             "last_updated": service_data.get("last_updated"),
+            "usage_date": self.coordinator.get_latest_usage_date(self._property_id, self._service_type),
             "service_type": self._service_type,
             "gst_inclusive": False,
             "description": "Cost of grid import for latest day"
@@ -1470,6 +1512,11 @@ class RedEnergyDailyExportCreditSensor(RedEnergyBaseSensor):
         self._attr_icon = "mdi:solar-power"
 
     @property
+    def last_reset(self) -> datetime | None:
+        """Return the start of the represented usageDate so HA statistics don't sum across days."""
+        return self._get_latest_usage_date_reset()
+
+    @property
     def native_value(self) -> float | None:
         """Return the current daily export credit."""
         return self.coordinator.get_latest_export_credit(self._property_id, self._service_type)
@@ -1484,6 +1531,7 @@ class RedEnergyDailyExportCreditSensor(RedEnergyBaseSensor):
         return {
             "consumer_number": service_data.get("consumer_number"),
             "last_updated": service_data.get("last_updated"),
+            "usage_date": self.coordinator.get_latest_usage_date(self._property_id, self._service_type),
             "service_type": self._service_type,
             "description": "Credit from solar export for latest day"
         }

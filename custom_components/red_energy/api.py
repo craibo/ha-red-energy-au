@@ -622,6 +622,7 @@ class RedEnergyAPI:
         # Max demand tracking
         max_demand_kw = 0.0
         max_demand_time = None
+        demand_data_available = False
         
         # Process each 30-minute interval (48 per day)
         breakdown_available = False
@@ -694,7 +695,8 @@ class RedEnergyAPI:
                 
                 # Track max demand from interval detail
                 demand_detail = interval.get("demandDetail", {})
-                if isinstance(demand_detail, dict):
+                if isinstance(demand_detail, dict) and demand_detail:
+                    demand_data_available = True
                     demand_kw = float(demand_detail.get("demandKw", 0.0))
                     if demand_kw > max_demand_kw:
                         max_demand_kw = demand_kw
@@ -728,6 +730,7 @@ class RedEnergyAPI:
         max_demand_detail = entry.get("maxDemandDetail", {})
         if isinstance(max_demand_detail, dict) and max_demand_detail:
             # Use correct field names from API response
+            demand_data_available = True
             daily_max_demand = float(max_demand_detail.get("maxDemandKw", 0.0))
             if daily_max_demand > max_demand_kw:
                 max_demand_kw = daily_max_demand
@@ -767,7 +770,7 @@ class RedEnergyAPI:
             "shoulder_export_usage": round(shoulder_export, 3),
             
             # Demand and environmental
-            "max_demand_kw": round(max_demand_kw, 3),
+            "max_demand_kw": round(max_demand_kw, 3) if demand_data_available else None,
             "max_demand_time": max_demand_time,
             "carbon_emission_tonne": round(carbon_emission, 6),
             
@@ -795,7 +798,7 @@ class RedEnergyAPI:
             "peak_export_usage": 0.0,
             "offpeak_export_usage": 0.0,
             "shoulder_export_usage": 0.0,
-            "max_demand_kw": 0.0,
+            "max_demand_kw": None,
             "max_demand_time": None,
             "carbon_emission_tonne": 0.0
         }
