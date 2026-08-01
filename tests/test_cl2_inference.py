@@ -140,3 +140,106 @@ def test_reconstructed_cost_matches_api_cost_within_tolerance():
     assert result["reconstructed_cost"] == pytest.approx(
         result["api_cost"], abs=0.001
     )
+
+
+from custom_components.red_energy.cl2_inference import resolve_rate_roles
+
+
+def _rate(rate_desc: str, rate_incl_gst_dollars: float) -> dict:
+    return {
+        "rate_code": "irrelevant-for-role-matching",
+        "rate_desc": rate_desc,
+        "rate_incl_gst_dollars": rate_incl_gst_dollars,
+    }
+
+
+def test_resolves_all_four_roles_from_real_account_rates():
+    """Rates and labels from the real account data in issue #61."""
+    rates = [
+        _rate("Peak", 0.45760),
+        _rate("Shoulder", 0.41745),
+        _rate("Off-peak", 0.32483),
+        _rate("CL2", 0.18425),
+    ]
+
+    result = resolve_rate_roles(rates)
+
+    assert result["rates_incl_gst"] == {
+        "PEAK": pytest.approx(0.45760),
+        "SHOULDER": pytest.approx(0.41745),
+        "OFFPEAK": pytest.approx(0.32483),
+    }
+    assert result["cl2_rate_incl_gst"] == pytest.approx(0.18425)
+    assert result["unresolved_roles"] == []
+
+
+@pytest.mark.parametrize(
+    "off_peak_label",
+    ["Off-peak", "Off Peak", "OffPeak", "off peak", "OFF-PEAK"],
+)
+def test_offpeak_label_variants_all_resolve(off_peak_label):
+    rates = [_rate(off_peak_label, 0.32483)]
+    result = resolve_rate_roles(rates)
+    assert result["rates_incl_gst"].get("OFFPEAK") == pytest.approx(0.32483)
+    assert "OFFPEAK" not in result["unresolved_roles"]
+
+
+@pytest.mark.parametrize(
+    "cl2_label",
+    ["CL2", "cl2", "Controlled Load 2", "controlled load"],
+)
+def test_cl2_label_variants_all_resolve(cl2_label):
+    rates = [_rate(cl2_label, 0.18425)]
+    result = resolve_rate_roles(rates)
+    assert result["cl2_rate_incl_gst"] == pytest.approx(0.18425)
+    assert "CL2" not in result["unresolved_roles"]
+
+
+def test_peak_does_not_false_match_offpeak():
+    """"Peak" must not match as a substring of "Off-peak" or vice versa -
+    each role's label set must be distinguishing, not just substring checks."""
+    rates = [_rate("Peak", 0.45760), _rate("Off-peak", 0.32483)]
+    result = resolve_rate_roles(rates)
+    assert result["rates_incl_gst"]["PEAK"] == pytest.approx(0.45760)
+    assert result["rates_incl_gst"]["OFFPEAK"] == pytest.approx(0.32483)
+    assert "PEAK" not in result["unresolved_roles"]
+    assert "OFFPEAK" not in result["unresolved_roles"]
+
+
+def test_role_unresolved_when_no_rate_matches():
+    rates = [_rate("Peak", 0.45760)]  # no Shoulder/Off-peak/CL2 rate present
+    result = resolve_rate_roles(rates)
+    assert "SHOULDER" in result["unresolved_roles"]
+    assert "OFFPEAK" in result["unresolved_roles"]
+    assert "CL2" in result["unresolved_roles"]
+    assert result["cl2_rate_incl_gst"] is None
+    assert "SHOULDER" not in result["rates_incl_gst"]
+
+
+def test_role_unresolved_when_multiple_rates_match_same_role():
+    """Two rate rows that both normalize to the same label (e.g. a plan
+    change mid-period leaving two "Peak" entries) must not be resolved by
+    picking the first/last - ambiguous matches stay unresolved."""
+    rates = [_rate("Peak", 0.45760), _rate("PEAK", 0.40000)]
+    result = resolve_rate_roles(rates)
+    assert "PEAK" in result["unresolved_roles"]
+    assert "PEAK" not in result["rates_incl_gst"]
+
+
+def test_unrelated_rates_are_ignored_not_misclassified():
+    """Solar feed-in and tiered gas rates must not be forced into a role."""
+    rates = [
+        _rate("Peak", 0.45760),
+        _rate("Solar", -0.04),
+        _rate("Anytime Step1", 0.0495),
+    ]
+    result = resolve_rate_roles(rates)
+    assert result["rates_incl_gst"]["PEAK"] == pytest.approx(0.45760)
+    assert "SHOULDER" in result["unresolved_roles"]
+
+
+def test_empty_rates_list_resolves_nothing():
+    result = resolve_rate_roles([])
+    assert result["rates_incl_gst"] == {}
+    assert result["cl2_rate_incl_gst"] is None
+    assert set(result["unresolved_roles"]) == {"PEAK", "OFFPEAK", "SHOULDER", "CL2"}

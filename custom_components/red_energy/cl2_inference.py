@@ -111,3 +111,74 @@ def infer_cl2_interval(
         "accepted": True,
         "reason": None,
     }
+
+
+# Each role matches only when exactly one rate's normalized rate_desc is in
+# its label set. "PEAK" uses an exact match (not substring) so it cannot
+# false-match "Off-peak"/"off peak" - the OFFPEAK label set spells that
+# case out explicitly instead of relying on "peak" appearing in both.
+_ROLE_LABELS: dict[str, frozenset[str]] = {
+    "PEAK": frozenset({"peak"}),
+    "OFFPEAK": frozenset({"off peak", "off-peak", "offpeak"}),
+    "SHOULDER": frozenset({"shoulder"}),
+    "CL2": frozenset({"cl2", "controlled load 2", "controlled load"}),
+}
+
+
+def _normalize_rate_desc(rate_desc: str) -> str:
+    return " ".join(rate_desc.strip().lower().split())
+
+
+def resolve_rate_roles(rates: list[dict[str, Any]]) -> dict[str, Any]:
+    """Match a service's tariff rates to PEAK/OFFPEAK/SHOULDER/CL2 roles.
+
+    Matching is by normalized rate_desc text against a fixed label set per
+    role (see _ROLE_LABELS) - there is no controlled-vocabulary field tying
+    a rate row to a role, so this is inherently best-effort. A role only
+    resolves when exactly one rate in the list matches its label set; zero
+    or multiple matches leave that role unresolved rather than guessing.
+
+    Args:
+        rates: the validated rates list for one service, as returned by
+            coordinator.get_service_rates() (each dict has at least
+            rate_desc and rate_incl_gst_dollars).
+
+    Returns:
+        A dict with rates_incl_gst (dict[str, float], only resolved
+        PEAK/OFFPEAK/SHOULDER roles), cl2_rate_incl_gst (float | None), and
+        unresolved_roles (list[str], the roles that did not resolve).
+    """
+    matches: dict[str, list[float]] = {role: [] for role in _ROLE_LABELS}
+
+    for rate in rates:
+        rate_desc = rate.get("rate_desc")
+        if not isinstance(rate_desc, str):
+            continue
+        normalized = _normalize_rate_desc(rate_desc)
+
+        for role, labels in _ROLE_LABELS.items():
+            if normalized in labels:
+                rate_value = rate.get("rate_incl_gst_dollars")
+                if rate_value is not None:
+                    matches[role].append(float(rate_value))
+
+    rates_incl_gst: dict[str, float] = {}
+    cl2_rate_incl_gst: float | None = None
+    unresolved_roles: list[str] = []
+
+    for role in ("PEAK", "OFFPEAK", "SHOULDER"):
+        if len(matches[role]) == 1:
+            rates_incl_gst[role] = matches[role][0]
+        else:
+            unresolved_roles.append(role)
+
+    if len(matches["CL2"]) == 1:
+        cl2_rate_incl_gst = matches["CL2"][0]
+    else:
+        unresolved_roles.append("CL2")
+
+    return {
+        "rates_incl_gst": rates_incl_gst,
+        "cl2_rate_incl_gst": cl2_rate_incl_gst,
+        "unresolved_roles": unresolved_roles,
+    }
