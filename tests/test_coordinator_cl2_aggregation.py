@@ -18,6 +18,14 @@ RATES_NO_CL2 = [
     {"rate_code": "P1", "rate_desc": "Peak", "rate_incl_gst_dollars": 0.45760},
 ]
 
+# CL2 resolves unambiguously, but there are no separate Peak/Off-peak/Shoulder
+# rates - some accounts use a single flat TOU rate ("Anytime") alongside CL2.
+# PEAK/OFFPEAK/SHOULDER all land in unresolved_roles in this case.
+RATES_CL2_RESOLVED_TOU_UNRESOLVED = [
+    {"rate_code": "A1", "rate_desc": "Anytime", "rate_incl_gst_dollars": 0.35000},
+    {"rate_code": "C1", "rate_desc": "CL2", "rate_incl_gst_dollars": 0.18425},
+]
+
 
 def _shoulder_interval(consumption_kwh=1.702, cost=0.4007, pricing_available=True, pricing_reliable=True):
     return {
@@ -86,6 +94,17 @@ def test_returns_none_when_cl2_rate_unresolved(coordinator):
         coordinator,
         [{"date": "2026-07-23", "intervals": [_shoulder_interval()]}],
         RATES_NO_CL2,
+    )
+    assert coordinator.get_cl2_inference("prop-001", SERVICE_TYPE_ELECTRICITY) is None
+
+
+def test_returns_none_when_tou_roles_unresolved_even_if_cl2_resolves(coordinator):
+    """CL2 alone resolving isn't enough - if PEAK/OFFPEAK/SHOULDER don't all
+    resolve too, inference must not run (see final-review bug report)."""
+    _set_service_data(
+        coordinator,
+        [{"date": "2026-07-23", "intervals": [_shoulder_interval()]}],
+        RATES_CL2_RESOLVED_TOU_UNRESOLVED,
     )
     assert coordinator.get_cl2_inference("prop-001", SERVICE_TYPE_ELECTRICITY) is None
 

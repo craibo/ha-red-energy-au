@@ -17,6 +17,14 @@ RATES_WITHOUT_CL2 = [
     {"rate_code": "P1", "rate_desc": "Peak", "rate_incl_gst_dollars": 0.4576},
 ]
 
+# CL2 resolves unambiguously, but there are no separate Peak/Off-peak/Shoulder
+# rates - some accounts use a single flat TOU rate ("Anytime") alongside CL2.
+# PEAK/OFFPEAK/SHOULDER all land in unresolved_roles in this case.
+RATES_CL2_RESOLVED_TOU_UNRESOLVED = [
+    {"rate_code": "A1", "rate_desc": "Anytime", "rate_incl_gst_dollars": 0.35},
+    {"rate_code": "C1", "rate_desc": "CL2", "rate_incl_gst_dollars": 0.18425},
+]
+
 
 def _make_coordinator(rates):
     coordinator = MagicMock()
@@ -68,6 +76,24 @@ async def test_cl2_sensors_created_when_cl2_rate_resolves():
 @pytest.mark.asyncio
 async def test_cl2_sensors_not_created_when_no_cl2_rate():
     coordinator = _make_coordinator(RATES_WITHOUT_CL2)
+    config_entry = _make_config_entry(advanced_enabled=True)
+    hass = _make_hass(coordinator, config_entry)
+
+    added_entities = []
+    async_add_entities = MagicMock(side_effect=lambda entities: added_entities.extend(entities))
+
+    await async_setup_entry(hass, config_entry, async_add_entities)
+
+    cl2_energy_sensors = [e for e in added_entities if isinstance(e, RedEnergyCl2EnergySensor)]
+    assert len(cl2_energy_sensors) == 0
+
+
+@pytest.mark.asyncio
+async def test_cl2_sensors_not_created_when_tou_roles_unresolved():
+    """CL2 alone resolving isn't enough - if PEAK/OFFPEAK/SHOULDER don't all
+    resolve too, the coordinator's get_cl2_inference() would return None, so
+    the sensors must not be created either (see final-review bug report)."""
+    coordinator = _make_coordinator(RATES_CL2_RESOLVED_TOU_UNRESOLVED)
     config_entry = _make_config_entry(advanced_enabled=True)
     hass = _make_hass(coordinator, config_entry)
 

@@ -609,8 +609,9 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
         """Aggregate CL2/TOU inference across a service's usage period.
 
         Returns None when there's no usage data, or when the account's plan
-        rates don't have an unambiguous CL2 rate (resolve_rate_roles()
-        couldn't resolve "CL2") - most accounts have no controlled load, so
+        rates don't unambiguously resolve all four roles - PEAK, OFFPEAK,
+        SHOULDER, and CL2 (resolve_rate_roles() left one or more roles in
+        "unresolved_roles") - most accounts have no controlled load, so
         this is the normal case for them, not an error.
 
         Uses the account's *current* plan rates for every interval in the
@@ -630,7 +631,7 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
 
         rates = self.get_service_rates(property_id, service_type)
         role_resolution = resolve_rate_roles(rates)
-        if "CL2" in role_resolution["unresolved_roles"]:
+        if role_resolution["unresolved_roles"]:
             return None
 
         rates_incl_gst = role_resolution["rates_incl_gst"]

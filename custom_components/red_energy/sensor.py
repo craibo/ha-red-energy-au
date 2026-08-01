@@ -161,13 +161,17 @@ async def async_setup_entry(
                     RedEnergyCarbonEmissionSensor(coordinator, config_entry, account_id, service_type),
                 ])
 
-            # CL2/TOU derived sensors - only for accounts whose plan has an
-            # unambiguous CL2 rate (see cl2_inference.resolve_rate_roles).
+            # CL2/TOU derived sensors - only for accounts whose plan
+            # unambiguously resolves all four roles: PEAK, OFFPEAK, SHOULDER,
+            # and CL2 (see cl2_inference.resolve_rate_roles). This must match
+            # the gating condition in coordinator.get_cl2_inference() exactly,
+            # otherwise sensors get created that always report unavailable,
+            # or get withheld when they'd actually work.
             # Gated on advanced_sensors_enabled like the other advanced
             # sensors above, since this is a niche, account-specific feature.
             if advanced_sensors_enabled and service_type == SERVICE_TYPE_ELECTRICITY:
                 role_resolution = resolve_rate_roles(coordinator.get_service_rates(account_id, service_type))
-                if "CL2" not in role_resolution["unresolved_roles"]:
+                if not role_resolution["unresolved_roles"]:
                     service_entities.extend([
                         RedEnergyCl2EnergySensor(coordinator, config_entry, account_id, service_type),
                         RedEnergyCorrectedPeakImportSensor(coordinator, config_entry, account_id, service_type),
