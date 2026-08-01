@@ -59,6 +59,15 @@ SENSOR_TYPE_MAX_DEMAND: Final = "max_demand"
 SENSOR_TYPE_MAX_DEMAND_TIME: Final = "max_demand_interval_start"
 SENSOR_TYPE_CARBON_EMISSION: Final = "carbon_emission_tonne"
 
+# CL2 (Controlled Load 2) / TOU inference sensors - only created for
+# accounts whose plan has an unambiguous CL2 rate (see issue #61)
+SENSOR_TYPE_CL2_ENERGY: Final = "cl2_inferred_energy"
+SENSOR_TYPE_CORRECTED_PEAK_IMPORT: Final = "corrected_peak_import"
+SENSOR_TYPE_CORRECTED_SHOULDER_IMPORT: Final = "corrected_shoulder_import"
+SENSOR_TYPE_CORRECTED_OFFPEAK_IMPORT: Final = "corrected_offpeak_import"
+SENSOR_TYPE_CL2_COST: Final = "cl2_inferred_cost"
+SENSOR_TYPE_RECONSTRUCTED_IMPORT_COST: Final = "reconstructed_import_cost"
+
 # Time period values (from API)
 TIME_PERIOD_PEAK: Final = "PEAK"
 TIME_PERIOD_OFFPEAK: Final = "OFFPEAK"
