@@ -435,7 +435,12 @@ def validate_usage_entry(data: dict[str, Any]) -> dict[str, Any]:
         "date": date_str,
         "unit": data.get("unit", "kWh"),
     }
-    
+
+    # Carry through per-interval pricing data, defaulting to an empty list
+    # if the input is missing or malformed (not a list)
+    intervals = data.get("intervals")
+    validated_data["intervals"] = intervals if isinstance(intervals, list) else []
+
     # Validate all numeric fields
     for field in numeric_fields:
         if field in data and data[field] is not None:

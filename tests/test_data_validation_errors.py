@@ -323,6 +323,43 @@ def test_validate_usage_entry_tou_mismatch_still_warns(caplog):
     assert any("breakdown mismatch" in r.message for r in caplog.records if r.levelno >= logging.WARNING)
 
 
+def test_validate_usage_entry_preserves_intervals():
+    """The 'intervals' list (per-interval pricing data) must survive validation unchanged."""
+    intervals = [
+        {"interval_start": "2026-03-24T00:00:00+10:00", "tariff_component": "OFFPEAK", "consumption_kwh": 0.128},
+        {"interval_start": "2026-03-24T00:30:00+10:00", "tariff_component": "PEAK", "consumption_kwh": 0.204},
+    ]
+    entry = {
+        "date": "2026-03-24",
+        "usage": 13.538,
+        "cost": 3.79,
+        "intervals": intervals,
+    }
+    result = validate_usage_entry(entry)
+    assert result["intervals"] == intervals
+
+
+def test_validate_usage_entry_defaults_invalid_intervals_to_empty_list():
+    """Non-list or missing 'intervals' input must default to [] rather than raising."""
+    base_entry = {
+        "date": "2026-03-24",
+        "usage": 13.538,
+        "cost": 3.79,
+    }
+
+    missing = dict(base_entry)
+    result_missing = validate_usage_entry(missing)
+    assert result_missing["intervals"] == []
+
+    none_entry = dict(base_entry, intervals=None)
+    result_none = validate_usage_entry(none_entry)
+    assert result_none["intervals"] == []
+
+    bad_type_entry = dict(base_entry, intervals="not-a-list")
+    result_bad_type = validate_usage_entry(bad_type_entry)
+    assert result_bad_type["intervals"] == []
+
+
 def test_validate_properties_data_handles_address_with_none_house():
     """Test property validation when API returns house: null (e.g. unit-only address)."""
     raw_properties = [
