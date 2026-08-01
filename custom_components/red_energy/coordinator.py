@@ -12,6 +12,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import RedEnergyAPI, RedEnergyAPIError, RedEnergyAuthError
+from .cl2_inference import infer_cl2_interval, resolve_rate_roles
 from .data_validation import (
     DataValidationError,
     validate_customer_data,
@@ -603,6 +604,93 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
             return []
 
         return metadata.get("rates", [])
+
+    def get_cl2_inference(self, property_id: str, service_type: str) -> dict[str, Any] | None:
+        """Aggregate CL2/TOU inference across a service's usage period.
+
+        Returns None when there's no usage data, or when the account's plan
+        rates don't unambiguously resolve all four roles - PEAK, OFFPEAK,
+        SHOULDER, and CL2 (resolve_rate_roles() left one or more roles in
+        "unresolved_roles") - most accounts have no controlled load, so
+        this is the normal case for them, not an error.
+
+        Uses the account's *current* plan rates for every interval in the
+        period, including days earlier in the billing cycle - there is no
+        historical rate-change data available anywhere in the API, so a
+        mid-period rate change will skew inference for days before it. This
+        is a known, documented limitation, not something this method can
+        detect or correct for.
+        """
+        service_data = self.get_service_usage(property_id, service_type)
+        if not service_data or "usage_data" not in service_data:
+            return None
+
+        daily_entries = service_data["usage_data"].get("usage_data", [])
+        if not daily_entries:
+            return None
+
+        rates = self.get_service_rates(property_id, service_type)
+        role_resolution = resolve_rate_roles(rates)
+        if role_resolution["unresolved_roles"]:
+            return None
+
+        rates_incl_gst = role_resolution["rates_incl_gst"]
+        cl2_rate_incl_gst = role_resolution["cl2_rate_incl_gst"]
+
+        cl2_energy_kwh = 0.0
+        corrected_peak_kwh = 0.0
+        corrected_shoulder_kwh = 0.0
+        corrected_offpeak_kwh = 0.0
+        cl2_cost = 0.0
+        reconstructed_import_cost = 0.0
+        api_import_cost = 0.0
+        accepted_interval_count = 0
+        rejected_interval_count = 0
+        rejection_reasons: dict[str, int] = {}
+
+        for daily_entry in daily_entries:
+            intervals = daily_entry.get("intervals", [])
+            if not isinstance(intervals, list):
+                continue
+
+            for interval in intervals:
+                result = infer_cl2_interval(interval, rates_incl_gst, cl2_rate_incl_gst)
+
+                if not result["accepted"]:
+                    rejected_interval_count += 1
+                    reason = result["reason"] or "unknown"
+                    rejection_reasons[reason] = rejection_reasons.get(reason, 0) + 1
+                    continue
+
+                accepted_interval_count += 1
+                cl2_energy_kwh += result["cl2_kwh"]
+                cl2_cost += result["cl2_kwh"] * cl2_rate_incl_gst
+                reconstructed_import_cost += result["reconstructed_cost"]
+                api_import_cost += result["api_cost"]
+
+                tariff_component = interval.get("tariff_component")
+                if tariff_component == "PEAK":
+                    corrected_peak_kwh += result["tou_kwh"]
+                elif tariff_component == "SHOULDER":
+                    corrected_shoulder_kwh += result["tou_kwh"]
+                elif tariff_component == "OFFPEAK":
+                    corrected_offpeak_kwh += result["tou_kwh"]
+
+        return {
+            "cl2_energy_kwh": round(cl2_energy_kwh, 3),
+            "corrected_peak_kwh": round(corrected_peak_kwh, 3),
+            "corrected_shoulder_kwh": round(corrected_shoulder_kwh, 3),
+            "corrected_offpeak_kwh": round(corrected_offpeak_kwh, 3),
+            "cl2_cost": round(cl2_cost, 2),
+            "reconstructed_import_cost": round(reconstructed_import_cost, 2),
+            "api_import_cost": round(api_import_cost, 2),
+            "reconciliation_difference": round(reconstructed_import_cost - api_import_cost, 2),
+            "accepted_interval_count": accepted_interval_count,
+            "rejected_interval_count": rejected_interval_count,
+            "rejection_reasons": rejection_reasons,
+            "rates_used": {**rates_incl_gst, "CL2": cl2_rate_incl_gst},
+            "rates_source": "current plan rates (no historical rate data available)",
+        }
 
     def _get_latest_usage_entry(self, property_id: str, service_type: str) -> dict[str, Any] | None:
         """Return the usage_data entry with the latest usageDate.

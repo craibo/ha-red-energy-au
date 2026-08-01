@@ -28,6 +28,11 @@ from .const import (
     SENSOR_TYPE_BALANCE,
     SENSOR_TYPE_BILLING_FREQUENCY,
     SENSOR_TYPE_CHARGE_CLASS,
+    SENSOR_TYPE_CL2_COST,
+    SENSOR_TYPE_CL2_ENERGY,
+    SENSOR_TYPE_CORRECTED_OFFPEAK_IMPORT,
+    SENSOR_TYPE_CORRECTED_PEAK_IMPORT,
+    SENSOR_TYPE_CORRECTED_SHOULDER_IMPORT,
     SENSOR_TYPE_DAILY_AVERAGE,
     SENSOR_TYPE_DISTRIBUTOR,
     SENSOR_TYPE_EFFICIENCY,
@@ -41,11 +46,13 @@ from .const import (
     SENSOR_TYPE_PEAK_USAGE,
     SENSOR_TYPE_PRODUCT_NAME,
     SENSOR_TYPE_RATE_PREFIX,
+    SENSOR_TYPE_RECONSTRUCTED_IMPORT_COST,
     SENSOR_TYPE_SOLAR,
     SENSOR_TYPE_STATUS,
     SERVICE_TYPE_ELECTRICITY,
     SERVICE_TYPE_GAS,
 )
+from .cl2_inference import resolve_rate_roles
 from .coordinator import RedEnergyDataCoordinator
 
 if TYPE_CHECKING:
@@ -153,6 +160,26 @@ async def async_setup_entry(
                     RedEnergyMaxDemandTimeSensor(coordinator, config_entry, account_id, service_type),
                     RedEnergyCarbonEmissionSensor(coordinator, config_entry, account_id, service_type),
                 ])
+
+            # CL2/TOU derived sensors - only for accounts whose plan
+            # unambiguously resolves all four roles: PEAK, OFFPEAK, SHOULDER,
+            # and CL2 (see cl2_inference.resolve_rate_roles). This must match
+            # the gating condition in coordinator.get_cl2_inference() exactly,
+            # otherwise sensors get created that always report unavailable,
+            # or get withheld when they'd actually work.
+            # Gated on advanced_sensors_enabled like the other advanced
+            # sensors above, since this is a niche, account-specific feature.
+            if advanced_sensors_enabled and service_type == SERVICE_TYPE_ELECTRICITY:
+                role_resolution = resolve_rate_roles(coordinator.get_service_rates(account_id, service_type))
+                if not role_resolution["unresolved_roles"]:
+                    service_entities.extend([
+                        RedEnergyCl2EnergySensor(coordinator, config_entry, account_id, service_type),
+                        RedEnergyCorrectedPeakImportSensor(coordinator, config_entry, account_id, service_type),
+                        RedEnergyCorrectedShoulderImportSensor(coordinator, config_entry, account_id, service_type),
+                        RedEnergyCorrectedOffpeakImportSensor(coordinator, config_entry, account_id, service_type),
+                        RedEnergyCl2CostSensor(coordinator, config_entry, account_id, service_type),
+                        RedEnergyReconstructedImportCostSensor(coordinator, config_entry, account_id, service_type),
+                    ])
 
             if is_basic_meter:
                 for entity in service_entities:
@@ -1914,4 +1941,287 @@ class RedEnergyCarbonEmissionSensor(RedEnergyBaseSensor):
             "emission_factor_kg_per_kwh": round(emission_factor, 3),
             "period": self._get_period_description(),
             "description": "Total carbon emissions from grid consumption"
+        }
+
+
+class RedEnergyCl2EnergySensor(RedEnergyBaseSensor):
+    """Red Energy inferred CL2 (Controlled Load 2) energy sensor.
+
+    Only created for accounts whose plan has an unambiguous CL2 rate (see
+    coordinator.get_cl2_inference() and cl2_inference.resolve_rate_roles()).
+    Inference uses the account's current plan rates for the whole period -
+    see rates_source in extra_state_attributes for that caveat.
+    """
+
+    _electricity_only = True
+
+    def __init__(
+        self,
+        coordinator: RedEnergyDataCoordinator,
+        config_entry: ConfigEntry,
+        property_id: str,
+        service_type: str,
+    ) -> None:
+        """Initialize the CL2 energy sensor."""
+        super().__init__(coordinator, config_entry, property_id, service_type, SENSOR_TYPE_CL2_ENERGY)
+
+        self._attr_device_class = SensorDeviceClass.ENERGY
+        self._attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
+        self._attr_icon = "mdi:water-boiler"
+        self._attr_state_class = SensorStateClass.TOTAL
+
+    @property
+    def last_reset(self) -> datetime | None:
+        """Return the billing period start date so HA statistics reset correctly."""
+        return self._get_last_bill_reset()
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the inferred CL2 energy for the period."""
+        data = self.coordinator.get_cl2_inference(self._property_id, self._service_type)
+        return data.get("cl2_energy_kwh") if data else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Return diagnostic attributes describing inference quality."""
+        data = self.coordinator.get_cl2_inference(self._property_id, self._service_type)
+        if not data:
+            return None
+
+        return {
+            "accepted_interval_count": data.get("accepted_interval_count"),
+            "rejected_interval_count": data.get("rejected_interval_count"),
+            "rejection_reasons": data.get("rejection_reasons"),
+            "rates_used": data.get("rates_used"),
+            "rates_source": data.get("rates_source"),
+            "description": "Inferred controlled-load energy, algebraically separated from blended TOU+CL2 interval data",
+        }
+
+
+class RedEnergyCorrectedPeakImportSensor(RedEnergyBaseSensor):
+    """Red Energy corrected Peak import sensor (CL2 energy excluded)."""
+
+    _electricity_only = True
+
+    def __init__(
+        self,
+        coordinator: RedEnergyDataCoordinator,
+        config_entry: ConfigEntry,
+        property_id: str,
+        service_type: str,
+    ) -> None:
+        """Initialize the corrected Peak import sensor."""
+        super().__init__(coordinator, config_entry, property_id, service_type, SENSOR_TYPE_CORRECTED_PEAK_IMPORT)
+
+        self._attr_device_class = SensorDeviceClass.ENERGY
+        self._attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
+        self._attr_state_class = SensorStateClass.TOTAL
+
+    @property
+    def last_reset(self) -> datetime | None:
+        """Return the billing period start date so HA statistics reset correctly."""
+        return self._get_last_bill_reset()
+
+    @property
+    def native_value(self) -> float | None:
+        """Return corrected Peak import energy with CL2 removed."""
+        data = self.coordinator.get_cl2_inference(self._property_id, self._service_type)
+        return data.get("corrected_peak_kwh") if data else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Return diagnostic attributes describing inference quality."""
+        data = self.coordinator.get_cl2_inference(self._property_id, self._service_type)
+        if not data:
+            return None
+
+        return {
+            "accepted_interval_count": data.get("accepted_interval_count"),
+            "rejected_interval_count": data.get("rejected_interval_count"),
+            "rates_source": data.get("rates_source"),
+            "description": "Peak-period grid import with inferred CL2 energy excluded",
+        }
+
+
+class RedEnergyCorrectedShoulderImportSensor(RedEnergyBaseSensor):
+    """Red Energy corrected Shoulder import sensor (CL2 energy excluded)."""
+
+    _electricity_only = True
+
+    def __init__(
+        self,
+        coordinator: RedEnergyDataCoordinator,
+        config_entry: ConfigEntry,
+        property_id: str,
+        service_type: str,
+    ) -> None:
+        """Initialize the corrected Shoulder import sensor."""
+        super().__init__(coordinator, config_entry, property_id, service_type, SENSOR_TYPE_CORRECTED_SHOULDER_IMPORT)
+
+        self._attr_device_class = SensorDeviceClass.ENERGY
+        self._attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
+        self._attr_state_class = SensorStateClass.TOTAL
+
+    @property
+    def last_reset(self) -> datetime | None:
+        """Return the billing period start date so HA statistics reset correctly."""
+        return self._get_last_bill_reset()
+
+    @property
+    def native_value(self) -> float | None:
+        """Return corrected Shoulder import energy with CL2 removed."""
+        data = self.coordinator.get_cl2_inference(self._property_id, self._service_type)
+        return data.get("corrected_shoulder_kwh") if data else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Return diagnostic attributes describing inference quality."""
+        data = self.coordinator.get_cl2_inference(self._property_id, self._service_type)
+        if not data:
+            return None
+
+        return {
+            "accepted_interval_count": data.get("accepted_interval_count"),
+            "rejected_interval_count": data.get("rejected_interval_count"),
+            "rates_source": data.get("rates_source"),
+            "description": "Shoulder-period grid import with inferred CL2 energy excluded",
+        }
+
+
+class RedEnergyCorrectedOffpeakImportSensor(RedEnergyBaseSensor):
+    """Red Energy corrected Off-peak import sensor (CL2 energy excluded)."""
+
+    _electricity_only = True
+
+    def __init__(
+        self,
+        coordinator: RedEnergyDataCoordinator,
+        config_entry: ConfigEntry,
+        property_id: str,
+        service_type: str,
+    ) -> None:
+        """Initialize the corrected Off-peak import sensor."""
+        super().__init__(coordinator, config_entry, property_id, service_type, SENSOR_TYPE_CORRECTED_OFFPEAK_IMPORT)
+
+        self._attr_device_class = SensorDeviceClass.ENERGY
+        self._attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
+        self._attr_state_class = SensorStateClass.TOTAL
+
+    @property
+    def last_reset(self) -> datetime | None:
+        """Return the billing period start date so HA statistics reset correctly."""
+        return self._get_last_bill_reset()
+
+    @property
+    def native_value(self) -> float | None:
+        """Return corrected Off-peak import energy with CL2 removed."""
+        data = self.coordinator.get_cl2_inference(self._property_id, self._service_type)
+        return data.get("corrected_offpeak_kwh") if data else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Return diagnostic attributes describing inference quality."""
+        data = self.coordinator.get_cl2_inference(self._property_id, self._service_type)
+        if not data:
+            return None
+
+        return {
+            "accepted_interval_count": data.get("accepted_interval_count"),
+            "rejected_interval_count": data.get("rejected_interval_count"),
+            "rates_source": data.get("rates_source"),
+            "description": "Off-peak-period grid import with inferred CL2 energy excluded",
+        }
+
+
+class RedEnergyCl2CostSensor(RedEnergyBaseSensor):
+    """Red Energy inferred CL2 cost sensor."""
+
+    _electricity_only = True
+
+    def __init__(
+        self,
+        coordinator: RedEnergyDataCoordinator,
+        config_entry: ConfigEntry,
+        property_id: str,
+        service_type: str,
+    ) -> None:
+        """Initialize the CL2 cost sensor."""
+        super().__init__(coordinator, config_entry, property_id, service_type, SENSOR_TYPE_CL2_COST)
+
+        self._attr_device_class = SensorDeviceClass.MONETARY
+        self._attr_native_unit_of_measurement = "AUD"
+        self._attr_icon = "mdi:water-boiler"
+        self._attr_state_class = SensorStateClass.TOTAL
+
+    @property
+    def last_reset(self) -> datetime | None:
+        """Return the billing period start date so HA statistics reset correctly."""
+        return self._get_last_bill_reset()
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the inferred CL2 cost for the period."""
+        data = self.coordinator.get_cl2_inference(self._property_id, self._service_type)
+        return data.get("cl2_cost") if data else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Return diagnostic attributes describing inference quality."""
+        data = self.coordinator.get_cl2_inference(self._property_id, self._service_type)
+        if not data:
+            return None
+
+        return {
+            "gst_inclusive": True,
+            "rates_used": data.get("rates_used"),
+            "rates_source": data.get("rates_source"),
+            "description": "Inferred cost of controlled-load energy within the blended interval cost",
+        }
+
+
+class RedEnergyReconstructedImportCostSensor(RedEnergyBaseSensor):
+    """Red Energy reconstructed import cost sensor (TOU + CL2 portions summed from inference)."""
+
+    _electricity_only = True
+
+    def __init__(
+        self,
+        coordinator: RedEnergyDataCoordinator,
+        config_entry: ConfigEntry,
+        property_id: str,
+        service_type: str,
+    ) -> None:
+        """Initialize the reconstructed import cost sensor."""
+        super().__init__(coordinator, config_entry, property_id, service_type, SENSOR_TYPE_RECONSTRUCTED_IMPORT_COST)
+
+        self._attr_device_class = SensorDeviceClass.MONETARY
+        self._attr_native_unit_of_measurement = "AUD"
+        self._attr_state_class = SensorStateClass.TOTAL
+
+    @property
+    def last_reset(self) -> datetime | None:
+        """Return the billing period start date so HA statistics reset correctly."""
+        return self._get_last_bill_reset()
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the reconstructed import cost for the period."""
+        data = self.coordinator.get_cl2_inference(self._property_id, self._service_type)
+        return data.get("reconstructed_import_cost") if data else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Return diagnostic attributes describing reconciliation against the API's own cost."""
+        data = self.coordinator.get_cl2_inference(self._property_id, self._service_type)
+        if not data:
+            return None
+
+        return {
+            "gst_inclusive": True,
+            "api_import_cost": data.get("api_import_cost"),
+            "reconciliation_difference": data.get("reconciliation_difference"),
+            "accepted_interval_count": data.get("accepted_interval_count"),
+            "rejected_interval_count": data.get("rejected_interval_count"),
+            "rates_source": data.get("rates_source"),
+            "description": "Import cost reconstructed from inferred TOU and CL2 components, for comparison against the API's own daily cost",
         }
