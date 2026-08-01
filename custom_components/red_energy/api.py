@@ -623,7 +623,11 @@ class RedEnergyAPI:
         max_demand_kw = 0.0
         max_demand_time = None
         demand_data_available = False
-        
+
+        # Per-interval pricing data for CL2/TOU inference (see issue #61) -
+        # captured alongside the existing daily rollups, not instead of them.
+        intervals: list[dict[str, Any]] = []
+
         # Process each 30-minute interval (48 per day)
         breakdown_available = False
         period_field_found = None
@@ -671,7 +675,22 @@ class RedEnergyAPI:
                 # Only mark breakdown available for known ToU periods (ALLDAY = anytime tariff, no breakdown)
                 if period in ("PEAK", "OFFPEAK", "SHOULDER"):
                     breakdown_available = True
-                
+
+                # Capture per-interval pricing for CL2/TOU inference (issue #61).
+                consumption_dollar_incl_gst_raw = interval.get("consumptionDollarIncGst")
+                intervals.append({
+                    "interval_start": interval.get("intervalStart"),
+                    "consumption_kwh": consumption,
+                    "consumption_dollar_incl_gst": (
+                        float(consumption_dollar_incl_gst_raw)
+                        if consumption_dollar_incl_gst_raw is not None
+                        else None
+                    ),
+                    "tariff_component": period,
+                    "pricing_available": bool(interval.get("isPricingAvailable", False)),
+                    "pricing_reliable": bool(interval.get("isPricingReliable", False)),
+                })
+
                 # Accumulate totals
                 import_usage += consumption
                 export_usage += generation
@@ -775,9 +794,12 @@ class RedEnergyAPI:
             "carbon_emission_tonne": round(carbon_emission, 6),
             
             # Metadata: indicate if breakdown data was available
-            "_breakdown_available": breakdown_available
+            "_breakdown_available": breakdown_available,
+
+            # Per-interval pricing data for CL2/TOU inference (issue #61)
+            "intervals": intervals
         }
-        
+
         return result
     
     def _empty_entry(self) -> dict[str, Any]:
@@ -800,7 +822,8 @@ class RedEnergyAPI:
             "shoulder_export_usage": 0.0,
             "max_demand_kw": None,
             "max_demand_time": None,
-            "carbon_emission_tonne": 0.0
+            "carbon_emission_tonne": 0.0,
+            "intervals": []
         }
     
     def _find_source_key(self, entry: dict[str, Any], possible_keys: list[str]) -> str:
