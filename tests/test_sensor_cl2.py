@@ -3,6 +3,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from homeassistant.components.sensor import SensorStateClass
+
 from custom_components.red_energy.const import SERVICE_TYPE_ELECTRICITY
 from custom_components.red_energy.sensor import (
     RedEnergyCl2CostSensor,
@@ -91,6 +93,23 @@ def test_all_cl2_sensors_are_electricity_only(sensor_cls):
     coordinator = _coordinator()
     sensor = sensor_cls(coordinator, _config_entry(), "prop-001", SERVICE_TYPE_ELECTRICITY)
     assert sensor._electricity_only is True
+
+
+@pytest.mark.parametrize(
+    "sensor_cls",
+    [
+        RedEnergyCl2EnergySensor,
+        RedEnergyCorrectedPeakImportSensor,
+        RedEnergyCorrectedShoulderImportSensor,
+        RedEnergyCorrectedOffpeakImportSensor,
+        RedEnergyCl2CostSensor,
+        RedEnergyReconstructedImportCostSensor,
+    ],
+)
+def test_all_cl2_sensors_have_total_state_class(sensor_cls):
+    coordinator = _coordinator()
+    sensor = sensor_cls(coordinator, _config_entry(), "prop-001", SERVICE_TYPE_ELECTRICITY)
+    assert sensor.state_class == SensorStateClass.TOTAL
 
 
 def test_cl2_energy_sensor_exposes_diagnostic_attributes():

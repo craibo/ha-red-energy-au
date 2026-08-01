@@ -1947,6 +1947,12 @@ class RedEnergyCl2EnergySensor(RedEnergyBaseSensor):
         self._attr_device_class = SensorDeviceClass.ENERGY
         self._attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
         self._attr_icon = "mdi:water-boiler"
+        self._attr_state_class = SensorStateClass.TOTAL
+
+    @property
+    def last_reset(self) -> datetime | None:
+        """Return the billing period start date so HA statistics reset correctly."""
+        return self._get_last_bill_reset()
 
     @property
     def native_value(self) -> float | None:
@@ -1988,6 +1994,12 @@ class RedEnergyCorrectedPeakImportSensor(RedEnergyBaseSensor):
 
         self._attr_device_class = SensorDeviceClass.ENERGY
         self._attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
+        self._attr_state_class = SensorStateClass.TOTAL
+
+    @property
+    def last_reset(self) -> datetime | None:
+        """Return the billing period start date so HA statistics reset correctly."""
+        return self._get_last_bill_reset()
 
     @property
     def native_value(self) -> float | None:
@@ -2027,6 +2039,12 @@ class RedEnergyCorrectedShoulderImportSensor(RedEnergyBaseSensor):
 
         self._attr_device_class = SensorDeviceClass.ENERGY
         self._attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
+        self._attr_state_class = SensorStateClass.TOTAL
+
+    @property
+    def last_reset(self) -> datetime | None:
+        """Return the billing period start date so HA statistics reset correctly."""
+        return self._get_last_bill_reset()
 
     @property
     def native_value(self) -> float | None:
@@ -2066,6 +2084,12 @@ class RedEnergyCorrectedOffpeakImportSensor(RedEnergyBaseSensor):
 
         self._attr_device_class = SensorDeviceClass.ENERGY
         self._attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
+        self._attr_state_class = SensorStateClass.TOTAL
+
+    @property
+    def last_reset(self) -> datetime | None:
+        """Return the billing period start date so HA statistics reset correctly."""
+        return self._get_last_bill_reset()
 
     @property
     def native_value(self) -> float | None:
@@ -2106,6 +2130,12 @@ class RedEnergyCl2CostSensor(RedEnergyBaseSensor):
         self._attr_device_class = SensorDeviceClass.MONETARY
         self._attr_native_unit_of_measurement = "AUD"
         self._attr_icon = "mdi:water-boiler"
+        self._attr_state_class = SensorStateClass.TOTAL
+
+    @property
+    def last_reset(self) -> datetime | None:
+        """Return the billing period start date so HA statistics reset correctly."""
+        return self._get_last_bill_reset()
 
     @property
     def native_value(self) -> float | None:
@@ -2145,6 +2175,12 @@ class RedEnergyReconstructedImportCostSensor(RedEnergyBaseSensor):
 
         self._attr_device_class = SensorDeviceClass.MONETARY
         self._attr_native_unit_of_measurement = "AUD"
+        self._attr_state_class = SensorStateClass.TOTAL
+
+    @property
+    def last_reset(self) -> datetime | None:
+        """Return the billing period start date so HA statistics reset correctly."""
+        return self._get_last_bill_reset()
 
     @property
     def native_value(self) -> float | None:
