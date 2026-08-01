@@ -126,6 +126,73 @@ async def test_coordinator_handles_400_error_gracefully(coordinator, caplog):
 
 
 @pytest.mark.asyncio
+async def test_coordinator_logs_no_interval_usage_as_info_not_warning(coordinator, caplog):
+    """BASIC/manual-read meters returning 'does not have interval usages' is
+    expected behaviour for every request, not a failure - it must log at
+    INFO, not WARNING, so it doesn't read as an ongoing problem."""
+    caplog.set_level(logging.INFO)
+
+    def mock_get_usage_data(consumer_number, start_date, end_date):
+        return {
+            "error": True,
+            "error_type": "bad_request",
+            "error_message": (
+                "customerNumber=5545090, consumerNumber=1234567890 has a BASIC "
+                "meter or is for a Gas utility so does not have interval usages"
+            ),
+            "error_details": "No additional details",
+            "consumer_number": consumer_number,
+            "from_date": start_date.strftime('%Y-%m-%d'),
+            "to_date": end_date.strftime('%Y-%m-%d'),
+            "usage_data": []
+        }
+
+    coordinator.api.get_usage_data = AsyncMock(side_effect=mock_get_usage_data)
+
+    await coordinator._async_update_data()
+
+    assert "does not have interval usages" in caplog.text
+    for record in caplog.records:
+        if "does not have interval usages" in record.message:
+            assert record.levelname == "INFO"
+
+
+@pytest.mark.asyncio
+async def test_coordinator_logs_unselected_property_as_info_not_warning(coordinator, caplog):
+    """A property that exists on the account but isn't in selected_accounts
+    (e.g. a service the user hasn't added yet) is routine, not a problem -
+    it must log at INFO, not WARNING."""
+    caplog.set_level(logging.INFO)
+
+    coordinator._properties.append({
+        "id": "prop3",
+        "name": "Unselected Property",
+        "services": [
+            {
+                "type": "electricity",
+                "consumer_number": "5555555555",
+                "active": True,
+                "lastBillDate": RECENT_BILL_DATE
+            }
+        ]
+    })
+
+    coordinator.api.get_usage_data = AsyncMock(return_value={
+        "consumer_number": "0",
+        "from_date": "2024-01-01",
+        "to_date": "2024-01-02",
+        "usage_data": [{"date": "2024-01-01", "usage": 15.5, "cost": 25.50}]
+    })
+
+    await coordinator._async_update_data()
+
+    assert "not in selected_accounts" in caplog.text
+    for record in caplog.records:
+        if "not in selected_accounts" in record.message:
+            assert record.levelname == "INFO"
+
+
+@pytest.mark.asyncio
 async def test_coordinator_handles_all_services_failing(coordinator, caplog):
     """Test coordinator behavior when all services return 400 errors.
 

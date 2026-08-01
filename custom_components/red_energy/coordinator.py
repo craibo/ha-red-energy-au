@@ -145,7 +145,7 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
                 # Convert to string for comparison since selected_accounts are strings
                 property_id_str = str(property_id)
                 if property_id_str not in self.selected_accounts:
-                    _LOGGER.warning(
+                    _LOGGER.info(
                         "Property '%s' (ID: %s) not in selected_accounts %s - SKIPPING",
                         property_name, property_id, self.selected_accounts
                     )
@@ -199,12 +199,18 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
                         
                         # Check if API returned an error response
                         if isinstance(raw_usage, dict) and raw_usage.get("error"):
-                            _LOGGER.warning(
+                            error_message = raw_usage.get("error_message", "Unknown error")
+                            # BASIC/manual-read gas meters don't have half-hourly
+                            # interval usage - the API returns this as an error
+                            # for every request, which is expected, not a failure.
+                            is_no_interval_usage = "does not have interval usages" in error_message
+                            log_method = _LOGGER.info if is_no_interval_usage else _LOGGER.warning
+                            log_method(
                                 "API returned error for %s service (consumer %s): %s - %s. "
                                 "Skipping this service but continuing with others.",
                                 service_type,
                                 consumer_number,
-                                raw_usage.get("error_message", "Unknown error"),
+                                error_message,
                                 raw_usage.get("error_details", "No details")
                             )
                             # Skip this service but continue with others
@@ -421,12 +427,18 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
                 
                 # Check if API returned an error response
                 if isinstance(raw_usage, dict) and raw_usage.get("error"):
-                    _LOGGER.warning(
+                    error_message = raw_usage.get("error_message", "Unknown error")
+                    # BASIC/manual-read gas meters don't have half-hourly
+                    # interval usage - the API returns this as an error for
+                    # every request, which is expected, not a failure.
+                    is_no_interval_usage = "does not have interval usages" in error_message
+                    log_method = _LOGGER.info if is_no_interval_usage else _LOGGER.warning
+                    log_method(
                         "API returned error for %s service (consumer %s): %s - %s. "
                         "Skipping this service but continuing with others.",
                         service_type,
                         consumer_number,
-                        raw_usage.get("error_message", "Unknown error"),
+                        error_message,
                         raw_usage.get("error_details", "No details")
                     )
                     # Skip this service but continue with others
