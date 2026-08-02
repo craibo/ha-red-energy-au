@@ -824,9 +824,17 @@ class RedEnergyRateSensor(RedEnergyBaseSensor):
 
         self._attr_name = f"Rate {self._rate_desc}"
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
-        self._attr_device_class = SensorDeviceClass.MONETARY
-        self._attr_native_unit_of_measurement = "AUD"
         self._attr_icon = "mdi:currency-usd"
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+
+        # Home Assistant's monetary device class requires an ISO 4217
+        # currency-code-only unit (e.g. "AUD") and cannot represent a rate
+        # like "AUD/kWh" - the two are mutually exclusive, so this sensor
+        # has no device_class and uses a plain custom unit string instead.
+        if service_type == SERVICE_TYPE_ELECTRICITY:
+            self._attr_native_unit_of_measurement = "AUD/kWh"
+        elif service_type == SERVICE_TYPE_GAS:
+            self._attr_native_unit_of_measurement = "AUD/MJ"
 
     def _find_rate(self) -> dict[str, Any] | None:
         rates = self.coordinator.get_service_rates(self._property_id, self._service_type)

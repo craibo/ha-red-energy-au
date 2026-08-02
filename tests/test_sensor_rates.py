@@ -5,6 +5,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from homeassistant.components.sensor import SensorStateClass
 from homeassistant.helpers.entity import EntityCategory
 
 from custom_components.red_energy.const import DOMAIN, SERVICE_TYPE_ELECTRICITY, SERVICE_TYPE_GAS
@@ -190,13 +191,29 @@ def test_rate_sensor_native_value_and_attributes():
     assert sensor.native_value == pytest.approx(0.27005)
     assert sensor._attr_name == "Rate Peak"
     assert sensor._attr_entity_category == EntityCategory.DIAGNOSTIC
-    assert sensor._attr_device_class.value == "monetary"
+    assert sensor.device_class is None
+    assert sensor.native_unit_of_measurement == "AUD/kWh"
+    assert sensor.state_class == SensorStateClass.MEASUREMENT
 
     attrs = sensor.extra_state_attributes
     assert attrs["rate_code"] == "80008279798P"
     assert attrs["type"] == "PR"
     assert attrs["unit"] == "kWh"
     assert "rate_incl_gst_dollars" not in attrs
+
+
+def test_rate_sensor_gas_unit_is_aud_per_mj():
+    coordinator = _coordinator(GAS_SERVICE_METADATA, SERVICE_TYPE_GAS)
+    config_entry = MagicMock()
+    config_entry.entry_id = "entry1"
+
+    sensor = RedEnergyRateSensor(
+        coordinator, config_entry, "2000002", SERVICE_TYPE_GAS, GAS_TIERED_RATES[0]
+    )
+
+    assert sensor.device_class is None
+    assert sensor.native_unit_of_measurement == "AUD/MJ"
+    assert sensor.state_class == SensorStateClass.MEASUREMENT
 
 
 def test_rate_sensor_handles_negative_solar_value():
