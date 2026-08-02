@@ -831,10 +831,16 @@ class RedEnergyRateSensor(RedEnergyBaseSensor):
         # currency-code-only unit (e.g. "AUD") and cannot represent a rate
         # like "AUD/kWh" - the two are mutually exclusive, so this sensor
         # has no device_class and uses a plain custom unit string instead.
-        if service_type == SERVICE_TYPE_ELECTRICITY:
-            self._attr_native_unit_of_measurement = "AUD/kWh"
-        elif service_type == SERVICE_TYPE_GAS:
-            self._attr_native_unit_of_measurement = "AUD/MJ"
+        # The denominator comes from the rate's own "unit" field (kWh, MJ,
+        # day, etc. - service_type alone doesn't distinguish an energy
+        # rate from a per-day supply/service charge on the same service),
+        # used verbatim since it's already the exact string the retailer's
+        # own payload uses. The currency is always AUD for this integration.
+        rate_unit = rate.get("unit")
+        if rate_unit:
+            self._attr_native_unit_of_measurement = f"AUD/{rate_unit}"
+        else:
+            self._attr_native_unit_of_measurement = "AUD"
 
     def _find_rate(self) -> dict[str, Any] | None:
         rates = self.coordinator.get_service_rates(self._property_id, self._service_type)
