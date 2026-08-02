@@ -64,6 +64,30 @@ GAS_TIERED_RATES = [
     },
 ]
 
+SUPPLY_CHARGE_RATE = {
+    "rate_code": "80008279798S",
+    "rate_desc": "Daily Supply Charge",
+    "rate_incl_gst_dollars": 1.78145,
+    "type": "SC",
+    "rate_excl_gst_cents": 161.95,
+    "discounted_rate_excl_gst_in_cents": 161.95,
+    "discounted_rate_incl_gst_in_cents": 178.145,
+    "unit": "day",
+    "unit_step_desc": None,
+}
+
+RATE_WITH_MISSING_UNIT = {
+    "rate_code": "80008279798X",
+    "rate_desc": "Unknown Unit Rate",
+    "rate_incl_gst_dollars": 0.1,
+    "type": "PR",
+    "rate_excl_gst_cents": 9.09,
+    "discounted_rate_excl_gst_in_cents": 9.09,
+    "discounted_rate_incl_gst_in_cents": 10.0,
+    "unit": None,
+    "unit_step_desc": None,
+}
+
 ELECTRICITY_SERVICE_METADATA = {
     "type": SERVICE_TYPE_ELECTRICITY,
     "consumer_number": "elec-1",
@@ -214,6 +238,36 @@ def test_rate_sensor_gas_unit_is_aud_per_mj():
     assert sensor.device_class is None
     assert sensor.native_unit_of_measurement == "AUD/MJ"
     assert sensor.state_class == SensorStateClass.MEASUREMENT
+
+
+def test_rate_sensor_supply_charge_unit_is_aud_per_day():
+    """A rate whose unit is "day" (e.g. a daily supply/service charge) must
+    get "AUD/day", not the service-type-based AUD/kWh or AUD/MJ that a
+    prior fix incorrectly hardcoded for every rate on the service."""
+    coordinator = _coordinator(ELECTRICITY_SERVICE_METADATA, SERVICE_TYPE_ELECTRICITY)
+    config_entry = MagicMock()
+    config_entry.entry_id = "entry1"
+
+    sensor = RedEnergyRateSensor(
+        coordinator, config_entry, "2000002", SERVICE_TYPE_ELECTRICITY, SUPPLY_CHARGE_RATE
+    )
+
+    assert sensor.native_unit_of_measurement == "AUD/day"
+
+
+def test_rate_sensor_falls_back_to_plain_aud_when_unit_missing():
+    """A rate with no unit field (validate_rates() never defaults this
+    field, so a real payload can omit it) must fall back to plain "AUD"
+    rather than constructing "AUD/None"."""
+    coordinator = _coordinator(ELECTRICITY_SERVICE_METADATA, SERVICE_TYPE_ELECTRICITY)
+    config_entry = MagicMock()
+    config_entry.entry_id = "entry1"
+
+    sensor = RedEnergyRateSensor(
+        coordinator, config_entry, "2000002", SERVICE_TYPE_ELECTRICITY, RATE_WITH_MISSING_UNIT
+    )
+
+    assert sensor.native_unit_of_measurement == "AUD"
 
 
 def test_rate_sensor_handles_negative_solar_value():
