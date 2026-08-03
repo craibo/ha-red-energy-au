@@ -615,6 +615,25 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
 
         return metadata.get("rates", [])
 
+    def _find_service_charge_rate(self, property_id: str, service_type: str) -> dict[str, Any] | None:
+        """Find the daily service/supply charge rate for a property and service.
+
+        Identified by type == "SC" and unit == "day" together - neither
+        field alone reliably distinguishes the service charge from other
+        rates on the same plan. If more than one rate matches, the first
+        in list order is used.
+        """
+        rates = self.get_service_rates(property_id, service_type)
+        return next(
+            (r for r in rates if r.get("type") == "SC" and r.get("unit") == "day"),
+            None,
+        )
+
+    def get_daily_service_charge(self, property_id: str, service_type: str) -> float | None:
+        """Get the daily service/supply charge amount, GST-inclusive."""
+        rate = self._find_service_charge_rate(property_id, service_type)
+        return rate.get("rate_incl_gst_dollars") if rate else None
+
     def get_cl2_inference(self, property_id: str, service_type: str) -> dict[str, Any] | None:
         """Aggregate CL2/TOU inference across a service's usage period.
 
