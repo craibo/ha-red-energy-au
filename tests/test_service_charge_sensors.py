@@ -323,3 +323,108 @@ class TestBillingPeriodServiceChargeSensor:
             coordinator, _config_entry(), "2000002", SERVICE_TYPE_ELECTRICITY
         )
         assert sensor.last_reset.date().isoformat() == "2025-07-26"
+
+
+from custom_components.red_energy.const import DOMAIN, CONF_ENABLE_ADVANCED_SENSORS, SERVICE_TYPE_GAS
+from custom_components.red_energy.sensor import async_setup_entry
+
+
+def _mock_coordinator_for_setup(rates, service_type=SERVICE_TYPE_ELECTRICITY, property_id="2000002"):
+    coordinator = MagicMock()
+    service_metadata = {
+        "type": service_type,
+        "consumer_number": "elec-1",
+        "meterType": "INTERVAL",
+        "rates": rates,
+    }
+    coordinator.data = {
+        "usage_data": {
+            property_id: {
+                "property": {"name": "Test property", "address": {}, "services": [service_metadata]},
+                "services": {},
+            },
+        }
+    }
+    coordinator.last_update_success = True
+    coordinator.get_property_data = MagicMock(
+        side_effect=lambda pid: coordinator.data["usage_data"].get(str(pid))
+    )
+
+    def get_service_metadata(prop_id, svc_type):
+        property_data = coordinator.data["usage_data"].get(str(prop_id))
+        if not property_data:
+            return None
+        services = property_data["property"].get("services", [])
+        return next((s for s in services if s.get("type") == svc_type), None)
+
+    coordinator.get_service_metadata = MagicMock(side_effect=get_service_metadata)
+
+    def get_service_rates(prop_id, svc_type):
+        metadata = get_service_metadata(prop_id, svc_type)
+        return metadata.get("rates", []) if metadata else []
+
+    coordinator.get_service_rates = MagicMock(side_effect=get_service_rates)
+    coordinator.get_service_usage = MagicMock(return_value=None)
+    return coordinator
+
+
+@pytest.mark.asyncio
+async def test_service_charge_sensors_not_created_when_advanced_disabled():
+    coordinator = _mock_coordinator_for_setup([SUPPLY_CHARGE_RATE])
+    config_entry = MagicMock()
+    config_entry.entry_id = "entry1"
+    config_entry.options = {}
+
+    hass = MagicMock()
+    hass.data = {
+        DOMAIN: {
+            "entry1": {
+                "coordinator": coordinator,
+                "selected_accounts": ["2000002"],
+                "services": [SERVICE_TYPE_ELECTRICITY],
+            }
+        }
+    }
+
+    added_entities = []
+    async_add_entities = MagicMock(side_effect=lambda entities: added_entities.extend(entities))
+    await async_setup_entry(hass, config_entry, async_add_entities)
+
+    charge_sensors = [
+        e for e in added_entities
+        if isinstance(e, (RedEnergyDailyServiceChargeSensor, RedEnergyBillingPeriodServiceChargeSensor))
+    ]
+    assert charge_sensors == []
+
+
+@pytest.mark.asyncio
+async def test_service_charge_sensors_created_for_electricity_and_gas_when_advanced_enabled():
+    coordinator = _mock_coordinator_for_setup([SUPPLY_CHARGE_RATE], service_type=SERVICE_TYPE_ELECTRICITY)
+    gas_coordinator_data = coordinator.data["usage_data"]["2000002"]["property"]["services"]
+    gas_coordinator_data.append({**gas_coordinator_data[0], "type": SERVICE_TYPE_GAS})
+
+    config_entry = MagicMock()
+    config_entry.entry_id = "entry1"
+    config_entry.options = {CONF_ENABLE_ADVANCED_SENSORS: True}
+
+    hass = MagicMock()
+    hass.data = {
+        DOMAIN: {
+            "entry1": {
+                "coordinator": coordinator,
+                "selected_accounts": ["2000002"],
+                "services": [SERVICE_TYPE_ELECTRICITY, SERVICE_TYPE_GAS],
+            }
+        }
+    }
+
+    added_entities = []
+    async_add_entities = MagicMock(side_effect=lambda entities: added_entities.extend(entities))
+    await async_setup_entry(hass, config_entry, async_add_entities)
+
+    daily_charge_sensors = [e for e in added_entities if isinstance(e, RedEnergyDailyServiceChargeSensor)]
+    billing_charge_sensors = [
+        e for e in added_entities if isinstance(e, RedEnergyBillingPeriodServiceChargeSensor)
+    ]
+    assert len(daily_charge_sensors) == 2
+    assert len(billing_charge_sensors) == 2
