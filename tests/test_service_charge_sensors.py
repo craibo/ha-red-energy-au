@@ -8,13 +8,10 @@ import pytest
 
 from custom_components.red_energy.coordinator import RedEnergyDataCoordinator
 from custom_components.red_energy.const import SERVICE_TYPE_ELECTRICITY
-
-# TEMPORARY: Commented out pending Task 4 (sensor classes not yet implemented).
-# Restore this import block in Task 4 Step 1.
-# from custom_components.red_energy.sensor import (
-#     RedEnergyDailyServiceChargeSensor,
-#     RedEnergyBillingPeriodServiceChargeSensor,
-# )
+from custom_components.red_energy.sensor import (
+    RedEnergyDailyServiceChargeSensor,
+    RedEnergyBillingPeriodServiceChargeSensor,
+)
 
 SUPPLY_CHARGE_RATE = {
     "rate_code": "80008279798S",
@@ -219,3 +216,110 @@ class TestGetBillingPeriodServiceCharge:
         )
         result = coordinator.get_billing_period_service_charge("2000002", SERVICE_TYPE_ELECTRICITY)
         assert result == pytest.approx(1 * 1.78145)
+
+
+from homeassistant.components.sensor import SensorDeviceClass, SensorStateClass
+
+
+def _config_entry():
+    entry = MagicMock()
+    entry.entry_id = "entry1"
+    return entry
+
+
+class TestDailyServiceChargeSensor:
+    def test_native_value_and_metadata(self, coordinator):
+        _set_coordinator_data(coordinator, [SUPPLY_CHARGE_RATE])
+        sensor = RedEnergyDailyServiceChargeSensor(
+            coordinator, _config_entry(), "2000002", SERVICE_TYPE_ELECTRICITY
+        )
+        assert sensor.native_value == pytest.approx(1.78145)
+        assert sensor.device_class == SensorDeviceClass.MONETARY
+        assert sensor.native_unit_of_measurement == "AUD"
+        assert sensor.state_class == SensorStateClass.TOTAL
+
+    def test_native_value_none_when_no_rate(self, coordinator):
+        _set_coordinator_data(coordinator, [ENERGY_RATE])
+        sensor = RedEnergyDailyServiceChargeSensor(
+            coordinator, _config_entry(), "2000002", SERVICE_TYPE_ELECTRICITY
+        )
+        assert sensor.native_value is None
+        assert sensor.extra_state_attributes is None
+
+    def test_attributes(self, coordinator):
+        _set_coordinator_data(
+            coordinator,
+            [SUPPLY_CHARGE_RATE],
+            usage_entries=[{"date": "2025-08-01", "import_usage": 10.0}],
+        )
+        sensor = RedEnergyDailyServiceChargeSensor(
+            coordinator, _config_entry(), "2000002", SERVICE_TYPE_ELECTRICITY
+        )
+        attrs = sensor.extra_state_attributes
+        assert attrs["usage_date"] == "2025-08-01"
+        assert attrs["service_rate_incl_gst"] == pytest.approx(1.78145)
+        assert attrs["service_rate_excl_gst"] == pytest.approx(1.6195)
+        assert attrs["represented_day_count"] == 1
+        assert "calculation" in attrs
+
+    def test_last_reset_is_latest_usage_date(self, coordinator):
+        _set_coordinator_data(
+            coordinator,
+            [SUPPLY_CHARGE_RATE],
+            usage_entries=[{"date": "2025-08-01", "import_usage": 10.0}],
+        )
+        sensor = RedEnergyDailyServiceChargeSensor(
+            coordinator, _config_entry(), "2000002", SERVICE_TYPE_ELECTRICITY
+        )
+        assert sensor.last_reset.date().isoformat() == "2025-08-01"
+
+
+class TestBillingPeriodServiceChargeSensor:
+    def test_native_value_and_attributes(self, coordinator):
+        _set_coordinator_data(
+            coordinator,
+            [SUPPLY_CHARGE_RATE],
+            usage_entries=[{"date": "2025-08-01", "import_usage": 10.0}],
+            last_bill_date="2025-07-25",
+        )
+        sensor = RedEnergyBillingPeriodServiceChargeSensor(
+            coordinator, _config_entry(), "2000002", SERVICE_TYPE_ELECTRICITY
+        )
+        assert sensor.native_value == pytest.approx(7 * 1.78145)
+        assert sensor.device_class == SensorDeviceClass.MONETARY
+        assert sensor.native_unit_of_measurement == "AUD"
+        assert sensor.state_class == SensorStateClass.TOTAL
+
+        attrs = sensor.extra_state_attributes
+        assert attrs["billing_period_start"] == "2025-07-26"
+        assert attrs["billing_period_end"] == "2025-08-01"
+        assert attrs["latest_usage_date"] == "2025-08-01"
+        assert attrs["represented_day_count"] == 7
+        assert attrs["service_rate_incl_gst"] == pytest.approx(1.78145)
+        assert attrs["service_rate_excl_gst"] == pytest.approx(1.6195)
+        assert "calculation" in attrs
+
+    def test_native_value_none_when_no_rate(self, coordinator):
+        _set_coordinator_data(
+            coordinator,
+            [ENERGY_RATE],
+            usage_entries=[{"date": "2025-08-01", "import_usage": 10.0}],
+            last_bill_date="2025-07-25",
+        )
+        sensor = RedEnergyBillingPeriodServiceChargeSensor(
+            coordinator, _config_entry(), "2000002", SERVICE_TYPE_ELECTRICITY
+        )
+        assert sensor.native_value is None
+        assert sensor.extra_state_attributes is None
+
+    def test_last_reset_is_billing_period_start(self, coordinator):
+        _set_coordinator_data(
+            coordinator,
+            [SUPPLY_CHARGE_RATE],
+            usage_entries=[{"date": "2025-08-01", "import_usage": 10.0}],
+            last_bill_date="2025-07-25",
+        )
+        sensor = RedEnergyBillingPeriodServiceChargeSensor(
+            coordinator, _config_entry(), "2000002", SERVICE_TYPE_ELECTRICITY
+        )
+        assert sensor.last_reset.date().isoformat() == "2025-07-26"
