@@ -634,6 +634,36 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
         rate = self._find_service_charge_rate(property_id, service_type)
         return rate.get("rate_incl_gst_dollars") if rate else None
 
+    def get_billing_period_service_charge(self, property_id: str, service_type: str) -> float | None:
+        """Get the accumulated service charge from the billing period start
+        through the latest completed usageDate, inclusive.
+
+        Uses the latest completed usageDate as the period end - not
+        datetime.now() - so a day with no confirmed usage data yet is
+        never counted as a represented day.
+        """
+        rate = self._find_service_charge_rate(property_id, service_type)
+        if rate is None:
+            return None
+
+        latest_usage_date_str = self.get_latest_usage_date(property_id, service_type)
+        if not latest_usage_date_str:
+            return None
+
+        try:
+            billing_period_end = datetime.strptime(latest_usage_date_str, "%Y-%m-%d").date()
+        except (ValueError, TypeError):
+            return None
+
+        service_metadata = self.get_service_metadata(property_id, service_type) or {}
+        billing_period_start = self._get_billing_period_start(service_metadata).date()
+
+        if billing_period_end < billing_period_start:
+            return None
+
+        represented_day_count = (billing_period_end - billing_period_start).days + 1
+        return rate["rate_incl_gst_dollars"] * represented_day_count
+
     def get_cl2_inference(self, property_id: str, service_type: str) -> dict[str, Any] | None:
         """Aggregate CL2/TOU inference across a service's usage period.
 

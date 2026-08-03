@@ -154,3 +154,68 @@ class TestGetDailyServiceCharge:
     def test_returns_none_when_no_matching_rate(self, coordinator):
         _set_coordinator_data(coordinator, [ENERGY_RATE])
         assert coordinator.get_daily_service_charge("2000002", SERVICE_TYPE_ELECTRICITY) is None
+
+
+class TestGetBillingPeriodServiceCharge:
+    def test_seven_day_period_matches_issue_example(self, coordinator):
+        last_bill_date = "2025-07-25"
+        _set_coordinator_data(
+            coordinator,
+            [SUPPLY_CHARGE_RATE],
+            usage_entries=[{"date": "2025-08-01", "import_usage": 10.0}],
+            last_bill_date=last_bill_date,
+        )
+        result = coordinator.get_billing_period_service_charge("2000002", SERVICE_TYPE_ELECTRICITY)
+        assert result == pytest.approx(7 * 1.78145)
+
+    def test_returns_none_when_no_matching_rate(self, coordinator):
+        _set_coordinator_data(
+            coordinator,
+            [ENERGY_RATE],
+            usage_entries=[{"date": "2025-08-01", "import_usage": 10.0}],
+            last_bill_date="2025-07-25",
+        )
+        assert coordinator.get_billing_period_service_charge("2000002", SERVICE_TYPE_ELECTRICITY) is None
+
+    def test_returns_none_when_no_usage_data(self, coordinator):
+        _set_coordinator_data(
+            coordinator,
+            [SUPPLY_CHARGE_RATE],
+            usage_entries=[],
+            last_bill_date="2025-07-25",
+        )
+        assert coordinator.get_billing_period_service_charge("2000002", SERVICE_TYPE_ELECTRICITY) is None
+
+    def test_returns_none_when_latest_usage_date_before_period_start(self, coordinator):
+        """Stale/cached usage predating a just-rolled billing period must not produce a negative day count."""
+        _set_coordinator_data(
+            coordinator,
+            [SUPPLY_CHARGE_RATE],
+            usage_entries=[{"date": "2025-07-20", "import_usage": 10.0}],
+            last_bill_date="2025-07-25",
+        )
+        assert coordinator.get_billing_period_service_charge("2000002", SERVICE_TYPE_ELECTRICITY) is None
+
+    def test_falls_back_to_30_day_period_when_last_bill_date_missing(self, coordinator):
+        today = datetime.now()
+        latest_usage_date = today.strftime("%Y-%m-%d")
+        _set_coordinator_data(
+            coordinator,
+            [SUPPLY_CHARGE_RATE],
+            usage_entries=[{"date": latest_usage_date, "import_usage": 10.0}],
+            last_bill_date=None,
+        )
+        result = coordinator.get_billing_period_service_charge("2000002", SERVICE_TYPE_ELECTRICITY)
+        expected_days = (today.date() - (today - timedelta(days=30)).date()).days + 1
+        assert result == pytest.approx(expected_days * 1.78145)
+
+    def test_single_day_period_counts_as_one_day(self, coordinator):
+        """lastBillDate + 1 == latest usageDate must count as exactly 1 day, not 0."""
+        _set_coordinator_data(
+            coordinator,
+            [SUPPLY_CHARGE_RATE],
+            usage_entries=[{"date": "2025-07-26", "import_usage": 10.0}],
+            last_bill_date="2025-07-25",
+        )
+        result = coordinator.get_billing_period_service_charge("2000002", SERVICE_TYPE_ELECTRICITY)
+        assert result == pytest.approx(1 * 1.78145)
