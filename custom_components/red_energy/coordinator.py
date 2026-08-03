@@ -71,16 +71,21 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
             update_interval=timedelta(seconds=DEFAULT_SCAN_INTERVAL),
         )
 
-    def _get_usage_period_dates(self, service: dict[str, Any]) -> tuple[datetime, datetime]:
+    def _get_billing_period_start(self, service: dict[str, Any]) -> datetime:
+        """Resolve the current billing period's start date.
+
+        lastBillDate is the final day of the *previous* billing period, so
+        the new period's usage starts the following day - otherwise that
+        day's usage/cost is double-counted across both periods. Falls back
+        to a 30-day window when lastBillDate is missing, invalid, in the
+        future, or implausibly old (>90 days).
+        """
         end_date = datetime.now()
         start_date = None
-        
+
         last_bill_date = service.get("lastBillDate")
         if last_bill_date:
             try:
-                # lastBillDate is the final day of the *previous* billing period,
-                # so the new period's usage starts the following day - otherwise
-                # that day's usage/cost is double-counted across both periods.
                 start_date = datetime.strptime(last_bill_date, "%Y-%m-%d") + timedelta(days=1)
 
                 if start_date > end_date:
@@ -98,13 +103,18 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
             except (ValueError, TypeError) as err:
                 _LOGGER.warning("Invalid lastBillDate format '%s': %s, falling back to 30-day period", last_bill_date, err)
                 start_date = None
-        
+
         if start_date is None:
             start_date = end_date - timedelta(days=30)
-            _LOGGER.info("Using 30-day fallback period: %s to %s", 
-                       start_date.strftime('%Y-%m-%d'), 
+            _LOGGER.info("Using 30-day fallback period: %s to %s",
+                       start_date.strftime('%Y-%m-%d'),
                        end_date.strftime('%Y-%m-%d'))
-        
+
+        return start_date
+
+    def _get_usage_period_dates(self, service: dict[str, Any]) -> tuple[datetime, datetime]:
+        end_date = datetime.now()
+        start_date = self._get_billing_period_start(service)
         return start_date, end_date
 
     async def _async_update_data(self) -> dict[str, Any]:

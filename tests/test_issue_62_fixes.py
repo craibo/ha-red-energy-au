@@ -174,6 +174,19 @@ class TestBillingPeriodBoundary:
         start_date, end_date = coordinator._get_usage_period_dates({})
         assert (end_date - start_date).days == 30
 
+    def test_get_billing_period_start_matches_get_usage_period_dates(self, coordinator):
+        last_bill_date = (datetime.now() - timedelta(days=10)).strftime("%Y-%m-%d")
+        service = {"lastBillDate": last_bill_date}
+
+        start_from_helper = coordinator._get_billing_period_start(service)
+        start_from_period_dates, _ = coordinator._get_usage_period_dates(service)
+
+        assert start_from_helper.date() == start_from_period_dates.date()
+
+    def test_get_billing_period_start_falls_back_to_30_days_when_missing(self, coordinator):
+        start = coordinator._get_billing_period_start({})
+        assert (datetime.now() - start).days == 30
+
 
 class TestLatestDaySelection:
     """Bug #5: latest-day values should be selected by max usageDate, not list position."""
