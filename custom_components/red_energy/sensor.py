@@ -959,10 +959,7 @@ class RedEnergyBillingPeriodServiceChargeSensor(RedEnergyBaseSensor):
     @property
     def last_reset(self) -> datetime | None:
         """Return the billing period start date so HA statistics reset correctly."""
-        start_date = self._billing_period_start_date()
-        if start_date is None:
-            return None
-        return dt_util.as_utc(start_date)
+        return self._get_last_bill_reset()
 
     @property
     def native_value(self) -> float | None:

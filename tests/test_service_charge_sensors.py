@@ -312,7 +312,7 @@ class TestBillingPeriodServiceChargeSensor:
         assert sensor.native_value is None
         assert sensor.extra_state_attributes is None
 
-    def test_last_reset_is_billing_period_start(self, coordinator):
+    def test_last_reset_matches_last_bill_date(self, coordinator):
         _set_coordinator_data(
             coordinator,
             [SUPPLY_CHARGE_RATE],
@@ -322,7 +322,24 @@ class TestBillingPeriodServiceChargeSensor:
         sensor = RedEnergyBillingPeriodServiceChargeSensor(
             coordinator, _config_entry(), "2000002", SERVICE_TYPE_ELECTRICITY
         )
-        assert sensor.last_reset.date().isoformat() == "2025-07-26"
+        # last_reset must match the sibling billing-period TOTAL sensors
+        # (_get_last_bill_reset -> raw lastBillDate), not the +1-day
+        # billing_period_start used for the day-count/attribute math.
+        assert sensor.last_reset.date().isoformat() == "2025-07-25"
+
+    def test_last_reset_is_none_when_last_bill_date_missing(self, coordinator):
+        _set_coordinator_data(
+            coordinator,
+            [SUPPLY_CHARGE_RATE],
+            usage_entries=[{"date": "2025-08-01", "import_usage": 10.0}],
+        )
+        sensor = RedEnergyBillingPeriodServiceChargeSensor(
+            coordinator, _config_entry(), "2000002", SERVICE_TYPE_ELECTRICITY
+        )
+        # Without lastBillDate, last_reset must be None (stable), not a
+        # datetime.now()-based fallback that drifts on every poll and would
+        # reset HA's statistics accumulation each update.
+        assert sensor.last_reset is None
 
 
 from custom_components.red_energy.const import DOMAIN, CONF_ENABLE_ADVANCED_SENSORS, SERVICE_TYPE_GAS
