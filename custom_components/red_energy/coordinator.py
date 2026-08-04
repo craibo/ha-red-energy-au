@@ -618,14 +618,16 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
     def _find_service_charge_rate(self, property_id: str, service_type: str) -> dict[str, Any] | None:
         """Find the daily service/supply charge rate for a property and service.
 
-        Identified by type == "SC" and unit == "day" together - neither
-        field alone reliably distinguishes the service charge from other
-        rates on the same plan. If more than one rate matches, the first
-        in list order is used.
+        Identified by a bare "day" unit (case-insensitive) - real payloads
+        use rate type "F" for both this charge (unit "Day") and demand
+        charges (unit "KW/day"), so type alone can't distinguish them and
+        isn't used here; unit is compared case-insensitively since the API
+        has been observed to send both "day" and "Day". If more than one
+        rate matches, the first in list order is used.
         """
         rates = self.get_service_rates(property_id, service_type)
         return next(
-            (r for r in rates if r.get("type") == "SC" and r.get("unit") == "day"),
+            (r for r in rates if isinstance(r.get("unit"), str) and r["unit"].lower() == "day"),
             None,
         )
 
