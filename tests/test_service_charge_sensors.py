@@ -13,14 +13,14 @@ from custom_components.red_energy.sensor import (
 )
 
 SUPPLY_CHARGE_RATE = {
-    "rate_code": "80008279798S",
-    "rate_desc": "Daily Supply Charge",
+    "rate_code": "80008279798F",
+    "rate_desc": "Service To Property",
     "rate_incl_gst_dollars": 1.78145,
-    "type": "SC",
+    "type": "F",
     "rate_excl_gst_cents": 161.95,
     "discounted_rate_excl_gst_in_cents": 161.95,
     "discounted_rate_incl_gst_in_cents": 178.145,
-    "unit": "day",
+    "unit": "Day",
     "unit_step_desc": None,
 }
 
@@ -36,11 +36,23 @@ ENERGY_RATE = {
     "unit_step_desc": None,
 }
 
+DEMAND_CHARGE_RATE = {
+    "rate_code": "80008279798FB",
+    "rate_desc": "Demand Summer",
+    "rate_incl_gst_dollars": 0.253,
+    "type": "F",
+    "rate_excl_gst_cents": 23,
+    "discounted_rate_excl_gst_in_cents": 23,
+    "discounted_rate_incl_gst_in_cents": 25.3,
+    "unit": "KW/day",
+    "unit_step_desc": None,
+}
+
 SECOND_SUPPLY_CHARGE_RATE = {
-    "rate_code": "80008279798S2",
-    "rate_desc": "Second Daily Supply Charge",
+    "rate_code": "80008279798F2",
+    "rate_desc": "Second Service To Property",
     "rate_incl_gst_dollars": 0.5,
-    "type": "SC",
+    "type": "F",
     "rate_excl_gst_cents": 45.45,
     "discounted_rate_excl_gst_in_cents": 45.45,
     "discounted_rate_incl_gst_in_cents": 50.0,
@@ -117,27 +129,48 @@ class TestFindServiceChargeRate:
         _set_coordinator_data(coordinator, [])
         assert coordinator._find_service_charge_rate("2000002", SERVICE_TYPE_ELECTRICITY) is None
 
-    def test_returns_none_when_no_sc_day_rate(self, coordinator):
+    def test_returns_none_when_no_day_rate(self, coordinator):
         _set_coordinator_data(coordinator, [ENERGY_RATE])
         assert coordinator._find_service_charge_rate("2000002", SERVICE_TYPE_ELECTRICITY) is None
 
-    def test_finds_the_sc_day_rate_among_others(self, coordinator):
-        _set_coordinator_data(coordinator, [ENERGY_RATE, SUPPLY_CHARGE_RATE])
+    def test_finds_the_day_rate_among_others(self, coordinator):
+        _set_coordinator_data(coordinator, [ENERGY_RATE, DEMAND_CHARGE_RATE, SUPPLY_CHARGE_RATE])
         result = coordinator._find_service_charge_rate("2000002", SERVICE_TYPE_ELECTRICITY)
         assert result == SUPPLY_CHARGE_RATE
 
-    def test_uses_first_match_when_multiple_sc_day_rates(self, coordinator):
+    def test_uses_first_match_when_multiple_day_rates(self, coordinator):
         _set_coordinator_data(coordinator, [SUPPLY_CHARGE_RATE, SECOND_SUPPLY_CHARGE_RATE])
         result = coordinator._find_service_charge_rate("2000002", SERVICE_TYPE_ELECTRICITY)
         assert result == SUPPLY_CHARGE_RATE
 
-    def test_type_sc_without_day_unit_does_not_match(self, coordinator):
+    def test_non_day_unit_does_not_match(self, coordinator):
         rate = {**SUPPLY_CHARGE_RATE, "unit": "kWh"}
         _set_coordinator_data(coordinator, [rate])
         assert coordinator._find_service_charge_rate("2000002", SERVICE_TYPE_ELECTRICITY) is None
 
-    def test_day_unit_without_type_sc_does_not_match(self, coordinator):
+    def test_type_is_irrelevant_to_matching(self, coordinator):
+        """type alone can't distinguish the service charge - real payloads use
+        the same type ("F") for both this charge and demand charges - so a
+        rate with a different type still matches as long as unit == "day"."""
         rate = {**SUPPLY_CHARGE_RATE, "type": "PR"}
+        _set_coordinator_data(coordinator, [rate])
+        assert coordinator._find_service_charge_rate("2000002", SERVICE_TYPE_ELECTRICITY) == rate
+
+    def test_demand_charge_kw_per_day_unit_does_not_match(self, coordinator):
+        """Demand charges share type "F" with the service charge but use
+        unit "KW/day", not a bare "day" - must not be mistaken for it."""
+        _set_coordinator_data(coordinator, [DEMAND_CHARGE_RATE])
+        assert coordinator._find_service_charge_rate("2000002", SERVICE_TYPE_ELECTRICITY) is None
+
+    def test_unit_matching_is_case_insensitive(self, coordinator):
+        """Real payloads have been observed sending both "day" and "Day" for
+        this same charge across different accounts/services."""
+        rate = {**SUPPLY_CHARGE_RATE, "unit": "day"}
+        _set_coordinator_data(coordinator, [rate])
+        assert coordinator._find_service_charge_rate("2000002", SERVICE_TYPE_ELECTRICITY) == rate
+
+    def test_non_string_unit_does_not_match(self, coordinator):
+        rate = {**SUPPLY_CHARGE_RATE, "unit": None}
         _set_coordinator_data(coordinator, [rate])
         assert coordinator._find_service_charge_rate("2000002", SERVICE_TYPE_ELECTRICITY) is None
 
