@@ -629,11 +629,6 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
             None,
         )
 
-    def get_daily_service_charge(self, property_id: str, service_type: str) -> float | None:
-        """Get the daily service/supply charge amount, GST-inclusive."""
-        rate = self._find_service_charge_rate(property_id, service_type)
-        return rate.get("rate_incl_gst_dollars") if rate else None
-
     def get_billing_period_service_charge(self, property_id: str, service_type: str) -> float | None:
         """Get the accumulated service charge from the billing period start
         through the latest completed usageDate, inclusive.

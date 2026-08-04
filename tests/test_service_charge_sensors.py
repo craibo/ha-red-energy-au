@@ -1,4 +1,4 @@
-"""Tests for Daily Service Charge and Billing Period Service Charge sensors (issue #71)."""
+"""Tests for the Billing Period Service Charge sensor (issue #71)."""
 from __future__ import annotations
 
 from datetime import datetime, timedelta
@@ -9,7 +9,6 @@ import pytest
 from custom_components.red_energy.coordinator import RedEnergyDataCoordinator
 from custom_components.red_energy.const import SERVICE_TYPE_ELECTRICITY
 from custom_components.red_energy.sensor import (
-    RedEnergyDailyServiceChargeSensor,
     RedEnergyBillingPeriodServiceChargeSensor,
 )
 
@@ -143,16 +142,6 @@ class TestFindServiceChargeRate:
         assert coordinator._find_service_charge_rate("2000002", SERVICE_TYPE_ELECTRICITY) is None
 
 
-class TestGetDailyServiceCharge:
-    def test_returns_rate_incl_gst_dollars(self, coordinator):
-        _set_coordinator_data(coordinator, [SUPPLY_CHARGE_RATE])
-        assert coordinator.get_daily_service_charge("2000002", SERVICE_TYPE_ELECTRICITY) == pytest.approx(1.78145)
-
-    def test_returns_none_when_no_matching_rate(self, coordinator):
-        _set_coordinator_data(coordinator, [ENERGY_RATE])
-        assert coordinator.get_daily_service_charge("2000002", SERVICE_TYPE_ELECTRICITY) is None
-
-
 class TestGetBillingPeriodServiceCharge:
     def test_seven_day_period_matches_issue_example(self, coordinator):
         last_bill_date = "2025-07-25"
@@ -225,53 +214,6 @@ def _config_entry():
     entry = MagicMock()
     entry.entry_id = "entry1"
     return entry
-
-
-class TestDailyServiceChargeSensor:
-    def test_native_value_and_metadata(self, coordinator):
-        _set_coordinator_data(coordinator, [SUPPLY_CHARGE_RATE])
-        sensor = RedEnergyDailyServiceChargeSensor(
-            coordinator, _config_entry(), "2000002", SERVICE_TYPE_ELECTRICITY
-        )
-        assert sensor.native_value == pytest.approx(1.78145)
-        assert sensor.device_class == SensorDeviceClass.MONETARY
-        assert sensor.native_unit_of_measurement == "AUD"
-        assert sensor.state_class == SensorStateClass.TOTAL
-
-    def test_native_value_none_when_no_rate(self, coordinator):
-        _set_coordinator_data(coordinator, [ENERGY_RATE])
-        sensor = RedEnergyDailyServiceChargeSensor(
-            coordinator, _config_entry(), "2000002", SERVICE_TYPE_ELECTRICITY
-        )
-        assert sensor.native_value is None
-        assert sensor.extra_state_attributes is None
-
-    def test_attributes(self, coordinator):
-        _set_coordinator_data(
-            coordinator,
-            [SUPPLY_CHARGE_RATE],
-            usage_entries=[{"date": "2025-08-01", "import_usage": 10.0}],
-        )
-        sensor = RedEnergyDailyServiceChargeSensor(
-            coordinator, _config_entry(), "2000002", SERVICE_TYPE_ELECTRICITY
-        )
-        attrs = sensor.extra_state_attributes
-        assert attrs["usage_date"] == "2025-08-01"
-        assert attrs["service_rate_incl_gst"] == pytest.approx(1.78145)
-        assert attrs["service_rate_excl_gst"] == pytest.approx(1.6195)
-        assert attrs["represented_day_count"] == 1
-        assert "calculation" in attrs
-
-    def test_last_reset_is_latest_usage_date(self, coordinator):
-        _set_coordinator_data(
-            coordinator,
-            [SUPPLY_CHARGE_RATE],
-            usage_entries=[{"date": "2025-08-01", "import_usage": 10.0}],
-        )
-        sensor = RedEnergyDailyServiceChargeSensor(
-            coordinator, _config_entry(), "2000002", SERVICE_TYPE_ELECTRICITY
-        )
-        assert sensor.last_reset.date().isoformat() == "2025-08-01"
 
 
 class TestBillingPeriodServiceChargeSensor:
@@ -409,7 +351,7 @@ async def test_service_charge_sensors_not_created_when_advanced_disabled():
 
     charge_sensors = [
         e for e in added_entities
-        if isinstance(e, (RedEnergyDailyServiceChargeSensor, RedEnergyBillingPeriodServiceChargeSensor))
+        if isinstance(e, RedEnergyBillingPeriodServiceChargeSensor)
     ]
     assert charge_sensors == []
 
@@ -439,9 +381,7 @@ async def test_service_charge_sensors_created_for_electricity_and_gas_when_advan
     async_add_entities = MagicMock(side_effect=lambda entities: added_entities.extend(entities))
     await async_setup_entry(hass, config_entry, async_add_entities)
 
-    daily_charge_sensors = [e for e in added_entities if isinstance(e, RedEnergyDailyServiceChargeSensor)]
     billing_charge_sensors = [
         e for e in added_entities if isinstance(e, RedEnergyBillingPeriodServiceChargeSensor)
     ]
-    assert len(daily_charge_sensors) == 2
     assert len(billing_charge_sensors) == 2
