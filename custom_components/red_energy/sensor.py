@@ -27,6 +27,7 @@ from .const import (
     SENSOR_TYPE_ARREARS,
     SENSOR_TYPE_BALANCE,
     SENSOR_TYPE_BILLING_FREQUENCY,
+    SENSOR_TYPE_BILLING_PERIOD_SERVICE_CHARGE,
     SENSOR_TYPE_CHARGE_CLASS,
     SENSOR_TYPE_CL2_COST,
     SENSOR_TYPE_CL2_ENERGY,
@@ -159,6 +160,8 @@ async def async_setup_entry(
                     RedEnergyMaxDemandSensor(coordinator, config_entry, account_id, service_type),
                     RedEnergyMaxDemandTimeSensor(coordinator, config_entry, account_id, service_type),
                     RedEnergyCarbonEmissionSensor(coordinator, config_entry, account_id, service_type),
+                    # NEW: Service/supply charge sensor
+                    RedEnergyBillingPeriodServiceChargeSensor(coordinator, config_entry, account_id, service_type),
                 ])
 
             # CL2/TOU derived sensors - only for accounts whose plan
@@ -866,6 +869,76 @@ class RedEnergyRateSensor(RedEnergyBaseSensor):
             return None
 
         return {key: value for key, value in rate.items() if key != "rate_incl_gst_dollars"}
+
+
+class RedEnergyBillingPeriodServiceChargeSensor(RedEnergyBaseSensor):
+    """Red Energy billing period service/supply charge sensor.
+
+    Represents the accumulated service charge from the start of the
+    current billing period through the latest completed usageDate,
+    inclusive. Unavailable when the plan has no daily supply-charge
+    rate, or when the represented day count cannot be determined.
+    """
+
+    def __init__(
+        self,
+        coordinator: RedEnergyDataCoordinator,
+        config_entry: ConfigEntry,
+        property_id: str,
+        service_type: str,
+    ) -> None:
+        """Initialize the billing period service charge sensor."""
+        super().__init__(
+            coordinator, config_entry, property_id, service_type, SENSOR_TYPE_BILLING_PERIOD_SERVICE_CHARGE
+        )
+
+        self._attr_device_class = SensorDeviceClass.MONETARY
+        self._attr_native_unit_of_measurement = "AUD"
+        self._attr_state_class = SensorStateClass.TOTAL
+        self._attr_icon = "mdi:currency-usd"
+
+    def _billing_period_start_date(self) -> datetime | None:
+        service_metadata = self.coordinator.get_service_metadata(self._property_id, self._service_type) or {}
+        return self.coordinator._get_billing_period_start(service_metadata)
+
+    @property
+    def last_reset(self) -> datetime | None:
+        """Return the billing period start date so HA statistics reset correctly."""
+        return self._get_last_bill_reset()
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the accumulated billing period service charge, GST-inclusive."""
+        return self.coordinator.get_billing_period_service_charge(self._property_id, self._service_type)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Return the rate basis, day count, and calculation for the billing period service charge."""
+        if self.native_value is None:
+            return None
+
+        rate = self.coordinator._find_service_charge_rate(self._property_id, self._service_type)
+        latest_usage_date = self.coordinator.get_latest_usage_date(self._property_id, self._service_type)
+        billing_period_start = self._billing_period_start_date()
+
+        rate_incl_gst = rate.get("rate_incl_gst_dollars") if rate else None
+        rate_excl_gst_cents = rate.get("rate_excl_gst_cents") if rate else None
+        rate_excl_gst = round(rate_excl_gst_cents / 100, 5) if rate_excl_gst_cents is not None else None
+
+        represented_day_count = None
+        if billing_period_start is not None and latest_usage_date:
+            end_date = datetime.strptime(latest_usage_date, "%Y-%m-%d").date()
+            represented_day_count = (end_date - billing_period_start.date()).days + 1
+
+        return {
+            "billing_period_start": billing_period_start.strftime("%Y-%m-%d") if billing_period_start else None,
+            "billing_period_end": latest_usage_date,
+            "latest_usage_date": latest_usage_date,
+            "represented_day_count": represented_day_count,
+            "service_rate_incl_gst": rate_incl_gst,
+            "service_rate_excl_gst": rate_excl_gst,
+            "calculation": f"service_rate_incl_gst × {represented_day_count} days",
+        }
 
 
 class RedEnergyAddressSensor(RedEnergyBaseSensor):
