@@ -46,6 +46,7 @@ from .const import (
     SENSOR_TYPE_PAYMENT_TYPE,
     SENSOR_TYPE_PEAK_USAGE,
     SENSOR_TYPE_PRODUCT_NAME,
+    SENSOR_TYPE_PROJECTED_CHARGES,
     SENSOR_TYPE_RATE_PREFIX,
     SENSOR_TYPE_RECONSTRUCTED_IMPORT_COST,
     SENSOR_TYPE_SOLAR,
@@ -162,6 +163,8 @@ async def async_setup_entry(
                     RedEnergyCarbonEmissionSensor(coordinator, config_entry, account_id, service_type),
                     # NEW: Service/supply charge sensor
                     RedEnergyBillingPeriodServiceChargeSensor(coordinator, config_entry, account_id, service_type),
+                    # NEW: Projected charges (estimated, issue #75)
+                    RedEnergyProjectedChargesSensor(coordinator, config_entry, account_id, service_type),
                 ])
 
             # CL2/TOU derived sensors - only for accounts whose plan
@@ -938,6 +941,53 @@ class RedEnergyBillingPeriodServiceChargeSensor(RedEnergyBaseSensor):
             "service_rate_incl_gst": rate_incl_gst,
             "service_rate_excl_gst": rate_excl_gst,
             "calculation": f"service_rate_incl_gst × {represented_day_count} days",
+        }
+
+
+class RedEnergyProjectedChargesSensor(RedEnergyBaseSensor):
+    """Red Energy projected charges sensor (issue #75).
+
+    Red Energy's API has no "projected charges" field - this is a linear
+    extrapolation of net cost-to-date across the full billing cycle
+    (see coordinator.get_projected_charges), not Red Energy's own figure.
+    state_class is intentionally left unset (not TOTAL/MEASUREMENT): this
+    is a forward-looking estimate that can jump around as usage patterns
+    change, not an accumulating total suitable for long-term statistics.
+    """
+
+    def __init__(
+        self,
+        coordinator: RedEnergyDataCoordinator,
+        config_entry: ConfigEntry,
+        property_id: str,
+        service_type: str,
+    ) -> None:
+        """Initialize the projected charges sensor."""
+        super().__init__(coordinator, config_entry, property_id, service_type, SENSOR_TYPE_PROJECTED_CHARGES)
+
+        self._attr_device_class = SensorDeviceClass.MONETARY
+        self._attr_native_unit_of_measurement = "AUD"
+        self._attr_state_class = None
+        self._attr_icon = "mdi:cash-clock"
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the estimated total charge for the current billing cycle."""
+        result = self.coordinator.get_projected_charges(self._property_id, self._service_type)
+        return round(result["projected_charges"], 2) if result is not None else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Return the inputs used to derive the projection."""
+        result = self.coordinator.get_projected_charges(self._property_id, self._service_type)
+        if result is None:
+            return None
+
+        return {
+            "net_cost_to_date": result["net_cost_to_date"],
+            "days_elapsed": result["days_elapsed"],
+            "days_in_cycle": result["days_in_cycle"],
+            "estimation_method": "linear",
         }
 
 

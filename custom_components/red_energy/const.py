@@ -31,6 +31,7 @@ SENSOR_TYPE_DAILY_AVERAGE: Final = "daily_average"
 SENSOR_TYPE_MONTHLY_AVERAGE: Final = "monthly_average"
 SENSOR_TYPE_PEAK_USAGE: Final = "peak_usage"
 SENSOR_TYPE_EFFICIENCY: Final = "efficiency"
+SENSOR_TYPE_PROJECTED_CHARGES: Final = "projected_charges"
 
 # Breakdown sensor types - Daily (CORE)
 SENSOR_TYPE_DAILY_IMPORT_USAGE: Final = "daily_import_usage"
