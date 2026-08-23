@@ -661,6 +661,76 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
         represented_day_count = (billing_period_end - billing_period_start).days + 1
         return rate["rate_incl_gst_dollars"] * represented_day_count
 
+    def get_projected_charges(self, property_id: str, service_type: str) -> dict[str, Any] | None:
+        """Estimate the current billing cycle's total charge.
+
+        Red Energy's API has no "projected charges" field (see issue #75) -
+        this linearly extrapolates net cost-to-date (get_total_cost, which
+        is import cost minus export credit) across the full billing cycle:
+
+            net_cost_to_date / days_elapsed * days_in_cycle
+
+        days_elapsed uses the latest completed usageDate as the period end
+        (not datetime.now()) so a day with no confirmed usage yet is never
+        counted, matching get_billing_period_service_charge. days_in_cycle
+        requires nextBillDate - unlike billing_period_start, which falls
+        back to a 30-day window, there's no sane fallback for the cycle's
+        end date, so a missing/invalid/non-later nextBillDate returns None.
+
+        Returns a dict with "projected_charges", "net_cost_to_date",
+        "days_elapsed", and "days_in_cycle" so sensor attributes can be
+        sourced from the same calculation rather than re-deriving it.
+        """
+        net_cost_to_date = self.get_total_cost(property_id, service_type)
+        if net_cost_to_date is None:
+            return None
+
+        latest_usage_date_str = self.get_latest_usage_date(property_id, service_type)
+        if not latest_usage_date_str:
+            return None
+
+        try:
+            billing_period_end = datetime.strptime(latest_usage_date_str, "%Y-%m-%d").date()
+        except (ValueError, TypeError):
+            return None
+
+        service_metadata = self.get_service_metadata(property_id, service_type) or {}
+        billing_period_start = self._get_billing_period_start(service_metadata).date()
+
+        if billing_period_end < billing_period_start:
+            return None
+
+        days_elapsed = (billing_period_end - billing_period_start).days + 1
+
+        next_bill_date_str = service_metadata.get("nextBillDate")
+        if not next_bill_date_str:
+            return None
+
+        try:
+            next_bill_date = datetime.strptime(next_bill_date_str, "%Y-%m-%d").date()
+        except (ValueError, TypeError):
+            return None
+
+        last_bill_date_str = service_metadata.get("lastBillDate")
+        if last_bill_date_str:
+            try:
+                cycle_start = datetime.strptime(last_bill_date_str, "%Y-%m-%d").date()
+            except (ValueError, TypeError):
+                cycle_start = billing_period_start - timedelta(days=1)
+        else:
+            cycle_start = billing_period_start - timedelta(days=1)
+
+        days_in_cycle = (next_bill_date - cycle_start).days
+        if days_in_cycle <= 0:
+            return None
+
+        return {
+            "projected_charges": net_cost_to_date / days_elapsed * days_in_cycle,
+            "net_cost_to_date": net_cost_to_date,
+            "days_elapsed": days_elapsed,
+            "days_in_cycle": days_in_cycle,
+        }
+
     def get_cl2_inference(self, property_id: str, service_type: str) -> dict[str, Any] | None:
         """Aggregate CL2/TOU inference across a service's usage period.
 
