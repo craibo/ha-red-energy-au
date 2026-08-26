@@ -34,6 +34,11 @@ from .const import (
     SENSOR_TYPE_CORRECTED_OFFPEAK_IMPORT,
     SENSOR_TYPE_CORRECTED_PEAK_IMPORT,
     SENSOR_TYPE_CORRECTED_SHOULDER_IMPORT,
+    SENSOR_TYPE_CURRENT_PERIOD_EXPORT_CREDIT,
+    SENSOR_TYPE_CURRENT_PERIOD_EXPORT_USAGE,
+    SENSOR_TYPE_CURRENT_PERIOD_IMPORT_COST,
+    SENSOR_TYPE_CURRENT_PERIOD_IMPORT_USAGE,
+    SENSOR_TYPE_CURRENT_PERIOD_NET_COST,
     SENSOR_TYPE_DAILY_AVERAGE,
     SENSOR_TYPE_DISTRIBUTOR,
     SENSOR_TYPE_EFFICIENCY,
@@ -347,7 +352,7 @@ class RedEnergyBaseSensor(CoordinatorEntity, SensorEntity):
 
 
 class RedEnergyCostSensor(RedEnergyBaseSensor):
-    """Red Energy total cost sensor."""
+    """Red Energy current billing period net cost sensor (to date, resets each cycle)."""
 
     def __init__(
         self,
@@ -357,7 +362,7 @@ class RedEnergyCostSensor(RedEnergyBaseSensor):
         service_type: str,
     ) -> None:
         """Initialize the cost sensor."""
-        super().__init__(coordinator, config_entry, property_id, service_type, "total_cost")
+        super().__init__(coordinator, config_entry, property_id, service_type, SENSOR_TYPE_CURRENT_PERIOD_NET_COST)
         
         self._attr_device_class = SensorDeviceClass.MONETARY
         self._attr_native_unit_of_measurement = "AUD"
@@ -1411,7 +1416,7 @@ class RedEnergyDailyExportUsageSensor(RedEnergyBaseSensor):
 
 
 class RedEnergyTotalImportUsageSensor(RedEnergyBaseSensor):
-    """Red Energy total import usage sensor (30-day period)."""
+    """Red Energy current billing period import usage sensor (to date, resets each cycle)."""
 
     def __init__(
         self,
@@ -1420,8 +1425,10 @@ class RedEnergyTotalImportUsageSensor(RedEnergyBaseSensor):
         property_id: str,
         service_type: str,
     ) -> None:
-        """Initialize the total import usage sensor."""
-        super().__init__(coordinator, config_entry, property_id, service_type, "total_import_usage")
+        """Initialize the current period import usage sensor."""
+        super().__init__(
+            coordinator, config_entry, property_id, service_type, SENSOR_TYPE_CURRENT_PERIOD_IMPORT_USAGE
+        )
 
         if service_type == SERVICE_TYPE_ELECTRICITY:
             self._attr_device_class = SensorDeviceClass.ENERGY
@@ -1465,7 +1472,7 @@ class RedEnergyTotalImportUsageSensor(RedEnergyBaseSensor):
 
 
 class RedEnergyTotalExportUsageSensor(RedEnergyBaseSensor):
-    """Red Energy total export usage sensor (30-day period)."""
+    """Red Energy current billing period export usage sensor (to date, resets each cycle)."""
 
     _electricity_only = True
 
@@ -1476,8 +1483,10 @@ class RedEnergyTotalExportUsageSensor(RedEnergyBaseSensor):
         property_id: str,
         service_type: str,
     ) -> None:
-        """Initialize the total export usage sensor."""
-        super().__init__(coordinator, config_entry, property_id, service_type, "total_export_usage")
+        """Initialize the current period export usage sensor."""
+        super().__init__(
+            coordinator, config_entry, property_id, service_type, SENSOR_TYPE_CURRENT_PERIOD_EXPORT_USAGE
+        )
 
         if service_type == SERVICE_TYPE_ELECTRICITY:
             self._attr_device_class = SensorDeviceClass.ENERGY
@@ -1522,7 +1531,7 @@ class RedEnergyTotalExportUsageSensor(RedEnergyBaseSensor):
 
 
 class RedEnergyTotalImportCostSensor(RedEnergyBaseSensor):
-    """Red Energy total import cost sensor."""
+    """Red Energy current billing period import cost sensor (to date, resets each cycle)."""
 
     def __init__(
         self,
@@ -1531,8 +1540,10 @@ class RedEnergyTotalImportCostSensor(RedEnergyBaseSensor):
         property_id: str,
         service_type: str,
     ) -> None:
-        """Initialize the total import cost sensor."""
-        super().__init__(coordinator, config_entry, property_id, service_type, "total_import_cost")
+        """Initialize the current period import cost sensor."""
+        super().__init__(
+            coordinator, config_entry, property_id, service_type, SENSOR_TYPE_CURRENT_PERIOD_IMPORT_COST
+        )
 
         self._attr_device_class = SensorDeviceClass.MONETARY
         self._attr_native_unit_of_measurement = "AUD"
@@ -1566,7 +1577,7 @@ class RedEnergyTotalImportCostSensor(RedEnergyBaseSensor):
 
 
 class RedEnergyTotalExportCreditSensor(RedEnergyBaseSensor):
-    """Red Energy total export credit sensor."""
+    """Red Energy current billing period export credit sensor (to date, resets each cycle)."""
 
     _electricity_only = True
 
@@ -1577,8 +1588,10 @@ class RedEnergyTotalExportCreditSensor(RedEnergyBaseSensor):
         property_id: str,
         service_type: str,
     ) -> None:
-        """Initialize the total export credit sensor."""
-        super().__init__(coordinator, config_entry, property_id, service_type, "total_export_credit")
+        """Initialize the current period export credit sensor."""
+        super().__init__(
+            coordinator, config_entry, property_id, service_type, SENSOR_TYPE_CURRENT_PERIOD_EXPORT_CREDIT
+        )
 
         self._attr_device_class = SensorDeviceClass.MONETARY
         self._attr_native_unit_of_measurement = "AUD"

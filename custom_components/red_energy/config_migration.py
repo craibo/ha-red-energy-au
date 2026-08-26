@@ -34,7 +34,19 @@ CONFIG_VERSION_6 = 6  # Removed client_id from user config (now hardcoded)
 CONFIG_VERSION_7 = 7  # Removed service-type selection (always monitor both)
 CONFIG_VERSION_8 = 8  # Composite property IDs (fix accounts with shared accountNumber)
 CONFIG_VERSION_9 = 9  # Repair entries left with stale IDs by the v7->v8 migration
-CURRENT_CONFIG_VERSION = CONFIG_VERSION_9
+CONFIG_VERSION_10 = 10  # Renamed "Total" sensors to "Current Period" (issue #78)
+CURRENT_CONFIG_VERSION = CONFIG_VERSION_10
+
+# sensor_type suffixes renamed in v9->v10, old -> new. "Total" implied a
+# complete/lifetime figure, but these reset every billing cycle and only
+# ever represent a partial sum accruing since lastBillDate (issue #78).
+SENSOR_TYPE_RENAMES_V10: dict[str, str] = {
+    "total_cost": "current_period_net_cost",
+    "total_import_usage": "current_period_import_usage",
+    "total_export_usage": "current_period_export_usage",
+    "total_import_cost": "current_period_import_cost",
+    "total_export_credit": "current_period_export_credit",
+}
 
 
 class ConfigValidationError(Exception):
@@ -95,6 +107,10 @@ class RedEnergyConfigMigrator:
             # Migrate from version 8 to 9
             if current_version < CONFIG_VERSION_9:
                 migration_success &= await self._migrate_v8_to_v9(config_entry)
+
+            # Migrate from version 9 to 10
+            if current_version < CONFIG_VERSION_10:
+                migration_success &= await self._migrate_v9_to_v10(config_entry)
 
             if migration_success:
                 # Update version in config entry
@@ -375,6 +391,55 @@ class RedEnergyConfigMigrator:
         """
         _LOGGER.info("Migrating config entry from v8 to v9 - Repairing stale property IDs")
         return await self._remap_stale_property_ids(config_entry, "v8 to v9")
+
+    async def _migrate_v9_to_v10(self, config_entry: ConfigEntry) -> bool:
+        """Migrate from version 9 to 10 - Rename "Total" sensors to "Current Period".
+
+        "Total Cost", "Total Import Usage", "Total Export Usage", "Total
+        Import Cost", and "Total Export Credit" all report a partial sum
+        accruing since lastBillDate, reset every billing cycle - never a
+        complete/lifetime total (see issue #78). Their sensor_type suffix
+        is renamed here (SENSOR_TYPE_RENAMES_V10) so existing entities keep
+        their entity_id, history, and Energy Dashboard statistics rather
+        than going stale and being recreated under a new entity_id.
+
+        No API call is needed - unlike the v7->v8/v8->v9 property ID
+        repair, this is a purely local unique_id string rename.
+        """
+        _LOGGER.info("Migrating config entry from v9 to v10 - Renaming Total sensors to Current Period")
+
+        try:
+            from homeassistant.helpers import entity_registry as er
+
+            entity_registry = er.async_get(self.hass)
+            renamed_count = 0
+
+            for entity in er.async_entries_for_config_entry(entity_registry, config_entry.entry_id):
+                for old_suffix, new_suffix in SENSOR_TYPE_RENAMES_V10.items():
+                    old_segment = f"_{old_suffix}"
+                    if not entity.unique_id.endswith(old_segment):
+                        continue
+                    new_unique_id = entity.unique_id[: -len(old_segment)] + f"_{new_suffix}"
+                    entity_registry.async_update_entity(
+                        entity.entity_id, new_unique_id=new_unique_id
+                    )
+                    _LOGGER.info(
+                        "Migrated entity %s unique_id from %s to %s",
+                        entity.entity_id, entity.unique_id, new_unique_id
+                    )
+                    renamed_count += 1
+                    break
+
+            _LOGGER.info(
+                "Successfully completed v9 to v10 migration, renamed %d entit(ies)", renamed_count
+            )
+            return True
+
+        except Exception as err:
+            _LOGGER.error("Failed v9 to v10 migration: %s", err, exc_info=True)
+            # Don't fail the entire migration - the rename still applies for
+            # new entity creation, existing ones just won't be renamed.
+            return True
 
     async def _remap_stale_property_ids(self, config_entry: ConfigEntry, migration_label: str) -> bool:
         """Re-fetch properties and remap any selected_accounts entries that

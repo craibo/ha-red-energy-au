@@ -37,13 +37,17 @@ SENSOR_TYPE_PROJECTED_CHARGES: Final = "projected_charges"
 SENSOR_TYPE_DAILY_IMPORT_USAGE: Final = "daily_import_usage"
 SENSOR_TYPE_DAILY_EXPORT_USAGE: Final = "daily_export_usage"
 
-# Breakdown sensor types - Total (CORE)
-SENSOR_TYPE_TOTAL_IMPORT_USAGE: Final = "total_import_usage"
-SENSOR_TYPE_TOTAL_EXPORT_USAGE: Final = "total_export_usage"
+# Breakdown sensor types - Current billing period to date (CORE)
+# Named "current_period_*", not "total_*" - these reset every billing
+# cycle (see _get_last_bill_reset) and only ever represent a partial sum
+# accruing since lastBillDate, never a complete/lifetime total (issue #78).
+SENSOR_TYPE_CURRENT_PERIOD_IMPORT_USAGE: Final = "current_period_import_usage"
+SENSOR_TYPE_CURRENT_PERIOD_EXPORT_USAGE: Final = "current_period_export_usage"
 
-# Breakdown sensor types - Cost (CORE)
-SENSOR_TYPE_TOTAL_IMPORT_COST: Final = "total_import_cost"
-SENSOR_TYPE_TOTAL_EXPORT_CREDIT: Final = "total_export_credit"
+# Breakdown sensor types - Current billing period to date, cost (CORE)
+SENSOR_TYPE_CURRENT_PERIOD_IMPORT_COST: Final = "current_period_import_cost"
+SENSOR_TYPE_CURRENT_PERIOD_EXPORT_CREDIT: Final = "current_period_export_credit"
+SENSOR_TYPE_CURRENT_PERIOD_NET_COST: Final = "current_period_net_cost"
 
 # Breakdown sensor types - Time period import (ADVANCED)
 SENSOR_TYPE_PEAK_IMPORT_USAGE: Final = "peak_import_usage"

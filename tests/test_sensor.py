@@ -164,15 +164,17 @@ class TestSensorDisplayNames:
         assert "prop-001" not in sensor._attr_name
         assert "Test Property" not in sensor._attr_name
 
-    def test_total_cost_sensor_display_name(self):
-        """Test total_cost sensor display name."""
+    def test_current_period_net_cost_sensor_display_name(self):
+        """Test current_period_net_cost sensor display name.
+
+        Not "Total Cost" - this is a partial sum accruing since the current
+        billing cycle's lastBillDate, not a complete/lifetime total (#78)."""
         coordinator = create_mock_coordinator()
         config_entry = create_mock_config_entry()
-        
+
         sensor = RedEnergyCostSensor(coordinator, config_entry, "prop-001", SERVICE_TYPE_ELECTRICITY)
-        
-        assert "Total Cost" in sensor._attr_name
-        assert "Total_Cost" not in sensor._attr_name
+
+        assert sensor._attr_name == "Current Period Net Cost"
 
     def test_daily_average_sensor_display_name(self):
         """Test daily_average sensor display name."""
@@ -370,46 +372,50 @@ class TestImportExportSensors:
         assert sensor.icon == "mdi:solar-power"
 
     def test_total_import_usage_sensor(self):
-        """Test total import usage sensor."""
+        """Test current period import usage sensor."""
         coordinator = create_mock_coordinator()
         config_entry = create_mock_config_entry()
-        
+
         sensor = RedEnergyTotalImportUsageSensor(coordinator, config_entry, "prop-001", SERVICE_TYPE_ELECTRICITY)
-        
+
         assert sensor.native_value == 83.0
         assert sensor.state_class == SensorStateClass.TOTAL
+        assert sensor._attr_name == "Current Period Import Usage"
 
     def test_total_export_usage_sensor(self):
-        """Test total export usage sensor."""
+        """Test current period export usage sensor."""
         coordinator = create_mock_coordinator()
         config_entry = create_mock_config_entry()
-        
+
         sensor = RedEnergyTotalExportUsageSensor(coordinator, config_entry, "prop-001", SERVICE_TYPE_ELECTRICITY)
-        
+
         assert sensor.native_value == 15.0
+        assert sensor._attr_name == "Current Period Export Usage"
 
 
 class TestCostCreditSensors:
     """Test cost and credit sensors."""
 
     def test_total_import_cost_sensor(self):
-        """Test total import cost sensor."""
+        """Test current period import cost sensor."""
         coordinator = create_mock_coordinator()
         config_entry = create_mock_config_entry()
-        
+
         sensor = RedEnergyTotalImportCostSensor(coordinator, config_entry, "prop-001", SERVICE_TYPE_ELECTRICITY)
-        
+
         assert sensor.native_value == 23.24
         assert sensor.native_unit_of_measurement == "AUD"
+        assert sensor._attr_name == "Current Period Import Cost"
 
     def test_total_export_credit_sensor(self):
-        """Test total export credit sensor."""
+        """Test current period export credit sensor."""
         coordinator = create_mock_coordinator()
         config_entry = create_mock_config_entry()
-        
+
         sensor = RedEnergyTotalExportCreditSensor(coordinator, config_entry, "prop-001", SERVICE_TYPE_ELECTRICITY)
-        
+
         assert sensor.native_value == 2.10
+        assert sensor._attr_name == "Current Period Export Credit"
 
 
 class TestTimePeriodSensors:
