@@ -92,11 +92,11 @@ Since electricity-only concepts (solar, export, time-of-use tariffs, demand, car
 - Daily Export Usage *(electricity only)* - Daily exported energy (kWh)
 - Current Period Import Usage - Imported energy since last bill
 - Current Period Export Usage *(electricity only)* - Exported energy since last bill
-- Daily Import Cost - Daily import cost (AUD)
+- Daily Import Cost - Daily import cost, GST-exclusive (AUD)
 - Daily Export Credit *(electricity only)* - Daily export credit (AUD)
-- Current Period Import Cost - Import cost since last bill (AUD)
+- Current Period Import Cost - Import cost since last bill, GST-exclusive (AUD)
 - Current Period Export Credit *(electricity only)* - Export credit since last bill (AUD)
-- Current Period Net Cost - Net cost (import minus export credit) since last bill (AUD)
+- Current Period Net Cost - Net cost (GST-exclusive import minus export credit) since last bill (AUD)
 
 **Account & Service Information:**
 - NMI - National Meter Identifier
@@ -128,6 +128,8 @@ Enabled via the "Advanced Sensors" integration option. **13 sensors for electric
 - Monthly Average - Projected monthly usage (billing period-adjusted)
 - Peak Usage - Highest single-day usage with date
 - Efficiency *(electricity only)* - Usage consistency efficiency rating (0-100%)
+- Projected Net Cost - Estimated net energy cost (import minus export credit) for the full billing cycle, extrapolated from usage to date. GST-inclusive; not Red Energy's own figure
+- Projected Charges - Projected Net Cost plus the daily service/supply charge projected across the full cycle, for a fuller bill estimate. GST-inclusive; not Red Energy's own figure
 
 **Time-of-Use Breakdown** *(electricity only - gas has no ToU tariff)*:
 - Peak/Offpeak/Shoulder Import Usage

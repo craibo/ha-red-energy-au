@@ -31,6 +31,10 @@ SENSOR_TYPE_DAILY_AVERAGE: Final = "daily_average"
 SENSOR_TYPE_MONTHLY_AVERAGE: Final = "monthly_average"
 SENSOR_TYPE_PEAK_USAGE: Final = "peak_usage"
 SENSOR_TYPE_EFFICIENCY: Final = "efficiency"
+# Forward-looking estimates, not Red Energy's own figures (issues #75, #77).
+# "Projected" (not "Current Period") distinguishes these forecast sensors
+# from the actual/to-date SENSOR_TYPE_CURRENT_PERIOD_NET_COST sensor above.
+SENSOR_TYPE_PROJECTED_NET_COST: Final = "projected_net_cost"
 SENSOR_TYPE_PROJECTED_CHARGES: Final = "projected_charges"
 
 # Breakdown sensor types - Daily (CORE)
@@ -112,6 +116,13 @@ SERVICE_TYPE_ELECTRICITY: Final = "electricity"
 SERVICE_TYPE_GAS: Final = "gas"
 
 API_TIMEOUT: Final = 30
+
+# Red Energy's consumptionDollar/import_cost field is ex-GST (see api.py's
+# _normalize_usage_entry docstring); every cost/estimate/projection sensor
+# in this integration must be GST-inclusive, so this uplifts the import
+# component wherever it's read. generationDollar/export_credit (FIT/solar
+# export credit) has no GST component and is never uplifted.
+GST_MULTIPLIER: Final = 1.10
 
 # Configuration flow
 STEP_USER: Final = "user"

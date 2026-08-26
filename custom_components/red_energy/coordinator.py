@@ -24,6 +24,7 @@ from .performance import PerformanceMonitor, DataProcessor
 from .const import (
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
+    GST_MULTIPLIER,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -576,12 +577,15 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
         return usage_data[-1].get("usage", 0.0)
 
     def get_total_cost(self, property_id: str, service_type: str) -> float | None:
-        """Get the total cost for a property and service."""
-        service_data = self.get_service_usage(property_id, service_type)
-        if not service_data or "usage_data" not in service_data:
-            return None
-        
-        return service_data["usage_data"].get("total_cost", 0.0)
+        """Get the total (GST-exclusive, net of export credit) cost for a property and service.
+
+        Delegates to get_net_total_cost, which sums import_cost/export_credit
+        directly, rather than reading the pre-aggregated usage_data["total_cost"]
+        field - both are ex-GST on the import side, but computing it here
+        keeps this and get_net_total_cost as a single source of truth rather
+        than two aggregations that could drift apart.
+        """
+        return self.get_net_total_cost(property_id, service_type)
 
     def get_total_usage(self, property_id: str, service_type: str) -> float | None:
         """Get the total usage for a property and service."""
@@ -662,13 +666,20 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
         return rate["rate_incl_gst_dollars"] * represented_day_count
 
     def get_projected_charges(self, property_id: str, service_type: str) -> dict[str, Any] | None:
-        """Estimate the current billing cycle's total charge.
+        """Estimate the current billing cycle's total charge, GST-inclusive.
 
         Red Energy's API has no "projected charges" field (see issue #75) -
-        this linearly extrapolates net cost-to-date (get_total_cost, which
-        is import cost minus export credit) across the full billing cycle:
+        this linearly extrapolates GST-inclusive net cost-to-date across the
+        full billing cycle:
 
             net_cost_to_date / days_elapsed * days_in_cycle
+
+        net_cost_to_date is (import_cost * GST_MULTIPLIER) - export_credit,
+        computed here rather than via get_total_cost/get_net_total_cost -
+        those are GST-exclusive (feed Current Period Import Cost/Net Cost,
+        which disclose their ex-GST basis via a "gst_basis" attribute) -
+        uplifting their already-net result would incorrectly inflate the
+        export_credit component too, since it has no GST component itself.
 
         days_elapsed uses the latest completed usageDate as the period end
         (not datetime.now()) so a day with no confirmed usage yet is never
@@ -681,9 +692,11 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
         "days_elapsed", and "days_in_cycle" so sensor attributes can be
         sourced from the same calculation rather than re-deriving it.
         """
-        net_cost_to_date = self.get_total_cost(property_id, service_type)
-        if net_cost_to_date is None:
+        import_cost_ex_gst = self.get_total_import_cost(property_id, service_type)
+        export_credit = self.get_total_export_credit(property_id, service_type)
+        if import_cost_ex_gst is None or export_credit is None:
             return None
+        net_cost_to_date = (import_cost_ex_gst * GST_MULTIPLIER) - export_credit
 
         latest_usage_date_str = self.get_latest_usage_date(property_id, service_type)
         if not latest_usage_date_str:
@@ -711,16 +724,12 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
         except (ValueError, TypeError):
             return None
 
-        last_bill_date_str = service_metadata.get("lastBillDate")
-        if last_bill_date_str:
-            try:
-                cycle_start = datetime.strptime(last_bill_date_str, "%Y-%m-%d").date()
-            except (ValueError, TypeError):
-                cycle_start = billing_period_start - timedelta(days=1)
-        else:
-            cycle_start = billing_period_start - timedelta(days=1)
-
-        days_in_cycle = (next_bill_date - cycle_start).days
+        # nextBillDate is an exclusive boundary - the first day of the *next*
+        # cycle, not a chargeable day of this one - symmetric with lastBillDate
+        # being excluded via the +1 day in billing_period_start above. Using
+        # billing_period_start (not lastBillDate) as the cycle_days anchor
+        # keeps both boundaries treated the same way (issue #70 follow-up).
+        days_in_cycle = (next_bill_date - billing_period_start).days
         if days_in_cycle <= 0:
             return None
 
@@ -729,6 +738,41 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
             "net_cost_to_date": net_cost_to_date,
             "days_elapsed": days_elapsed,
             "days_in_cycle": days_in_cycle,
+        }
+
+    def get_estimated_current_period_charges(self, property_id: str, service_type: str) -> dict[str, Any] | None:
+        """Estimate the full billing cycle's total charge, energy + service charge (issue #77).
+
+        get_projected_charges alone is energy-only (net usage cost), not a
+        full bill estimate - it excludes the daily service/supply charge.
+        This adds that charge, projected across the same days_in_cycle:
+
+            estimated_charges = projected_net_cost + (service_charge_rate * days_in_cycle)
+
+        Both terms are GST-inclusive (get_projected_charges computes its
+        own GST-inclusive net_cost_to_date; rate_incl_gst_dollars already
+        is), so no further GST adjustment is needed here.
+
+        Returns None when there's no daily service-charge rate (some plans
+        don't have one) or when the underlying net-cost projection itself
+        is unavailable.
+        """
+        rate = self._find_service_charge_rate(property_id, service_type)
+        if rate is None:
+            return None
+
+        projection = self.get_projected_charges(property_id, service_type)
+        if projection is None:
+            return None
+
+        estimated_service_charge = rate["rate_incl_gst_dollars"] * projection["days_in_cycle"]
+
+        return {
+            "estimated_charges": projection["projected_charges"] + estimated_service_charge,
+            "estimated_net_cost": projection["projected_charges"],
+            "estimated_service_charge": estimated_service_charge,
+            "days_in_cycle": projection["days_in_cycle"],
+            "service_rate_incl_gst": rate["rate_incl_gst_dollars"],
         }
 
     def get_cl2_inference(self, property_id: str, service_type: str) -> dict[str, Any] | None:
@@ -893,31 +937,45 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
         return sum(entry.get(field_name, 0) for entry in usage_data)
 
     def get_total_import_cost(self, property_id: str, service_type: str) -> float | None:
-        """Get total import cost over period."""
+        """Get total import cost over period, GST-exclusive.
+
+        entry["import_cost"] is sourced from consumptionDollar, which Red
+        Energy's API returns ex-GST (see api.py's _normalize_usage_entry
+        docstring) and is returned here as-is. Feeds Current Period Import
+        Cost / Current Period Net Cost, which are ex-GST and disclose this
+        via a "gst_basis" attribute. get_projected_charges applies its own
+        GST uplift for the forward-looking Projected Net Cost/Charges
+        sensors, which are GST-inclusive.
+        """
         service_data = self.get_service_usage(property_id, service_type)
         if not service_data or "usage_data" not in service_data:
             return None
-        
+
         usage_data = service_data["usage_data"].get("usage_data", [])
         return sum(entry.get("import_cost", 0) for entry in usage_data)
 
     def get_total_export_credit(self, property_id: str, service_type: str) -> float | None:
-        """Get total export credit over period."""
+        """Get total export credit over period.
+
+        Not GST-uplifted: generationDollar (FIT/solar export credit) is not
+        a GST-bearing supply, so entry["export_credit"] has no GST component
+        to add or strip.
+        """
         service_data = self.get_service_usage(property_id, service_type)
         if not service_data or "usage_data" not in service_data:
             return None
-        
+
         usage_data = service_data["usage_data"].get("usage_data", [])
         return sum(entry.get("export_credit", 0) for entry in usage_data)
 
     def get_net_total_cost(self, property_id: str, service_type: str) -> float | None:
-        """Get net total cost (import - export) over period."""
+        """Get net total cost (GST-exclusive import - export credit) over period."""
         import_cost = self.get_total_import_cost(property_id, service_type)
         export_credit = self.get_total_export_credit(property_id, service_type)
-        
+
         if import_cost is None or export_credit is None:
             return None
-        
+
         return import_cost - export_credit
 
     def get_max_demand_data(self, property_id: str, service_type: str) -> dict[str, Any] | None:
@@ -962,7 +1020,7 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
         return sum(entry.get("carbon_emission_tonne", 0) for entry in usage_data)
 
     def get_latest_import_cost(self, property_id: str, service_type: str) -> float | None:
-        """Get the most recent daily import cost."""
+        """Get the most recent daily import cost, GST-exclusive (see get_total_import_cost)."""
         entry = self._get_latest_usage_entry(property_id, service_type)
         return entry.get("import_cost", 0.0) if entry else None
 

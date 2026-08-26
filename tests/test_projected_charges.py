@@ -1,12 +1,26 @@
-"""Tests for the Projected Charges sensor (issue #75).
+"""Tests for the Projected Net Cost / Projected Charges sensors
+(issues #75, #77, and the #70 follow-up comment).
 
-Projected charges is not a value the Red Energy API exposes anywhere -
-unlike the billing period service charge (issue #71), which is derived
-from a real rate the API does return. This is a linear extrapolation of
-net cost-to-date (import cost minus export credit) across the full
-billing cycle, so it must never be confused with an authoritative
-Red Energy figure - hence the "estimation_method" attribute on the
-sensor and the "estimated" framing throughout.
+Neither value is exposed by the Red Energy API - both are linear
+extrapolations built from usage/billing metadata the integration already
+has, so they must never be confused with an authoritative Red Energy
+figure - hence the "estimation_method" attribute on both sensors.
+
+Three corrections from the original #75 implementation are covered here:
+- GST: import_cost (sourced from consumptionDollar) is ex-GST at the API
+  boundary; every cost/estimate/projection sensor must be GST-inclusive,
+  so get_total_import_cost/get_latest_import_cost uplift it by
+  GST_MULTIPLIER. export_credit (FIT/solar credit) has no GST component
+  and is never uplifted.
+- days_in_cycle off-by-one: nextBillDate is an exclusive boundary (first
+  day of the *next* cycle), symmetric with lastBillDate being excluded via
+  the +1 day in billing_period_start - using billing_period_start (not
+  raw lastBillDate) as the days_in_cycle anchor keeps both boundaries
+  treated the same way.
+- The original "Projected Charges" sensor is renamed to "Projected Net
+  Cost" to disclose it's energy-only (no service charge). A new
+  "Projected Charges" sensor takes its old name and adds the service
+  charge for a fuller bill estimate.
 """
 from __future__ import annotations
 
@@ -19,13 +33,27 @@ from custom_components.red_energy.coordinator import RedEnergyDataCoordinator
 from custom_components.red_energy.const import (
     CONF_ENABLE_ADVANCED_SENSORS,
     DOMAIN,
+    GST_MULTIPLIER,
     SERVICE_TYPE_ELECTRICITY,
     SERVICE_TYPE_GAS,
 )
 from custom_components.red_energy.sensor import (
     RedEnergyProjectedChargesSensor,
+    RedEnergyProjectedNetCostSensor,
     async_setup_entry,
 )
+
+SUPPLY_CHARGE_RATE = {
+    "rate_code": "80008279798F",
+    "rate_desc": "Service To Property",
+    "rate_incl_gst_dollars": 1.78145,
+    "type": "F",
+    "rate_excl_gst_cents": 161.95,
+    "discounted_rate_excl_gst_in_cents": 161.95,
+    "discounted_rate_incl_gst_in_cents": 178.145,
+    "unit": "Day",
+    "unit_step_desc": None,
+}
 
 
 @pytest.fixture
@@ -58,16 +86,18 @@ def _set_coordinator_data(
     usage_entries=None,
     last_bill_date=None,
     next_bill_date=None,
-    total_cost=None,
+    rates=None,
 ):
     """Build coordinator.data with both the property.services (metadata)
     and top-level services (usage) shapes get_service_metadata/get_service_usage
-    expect."""
+    expect. usage_entries carry raw import_cost/export_credit (ex-GST on
+    import) so get_total_import_cost's uplift is exercised end to end,
+    rather than pre-computing a "total_cost" the old fixture shape used."""
     service_metadata = {
         "type": SERVICE_TYPE_ELECTRICITY,
         "consumer_number": "elec-1",
         "meterType": "INTERVAL",
-        "rates": [],
+        "rates": rates or [],
     }
     if last_bill_date is not None:
         service_metadata["lastBillDate"] = last_bill_date
@@ -83,7 +113,6 @@ def _set_coordinator_data(
                 "from_date": "2024-01-01",
                 "to_date": "2024-01-30",
                 "usage_data": usage_entries,
-                "total_cost": total_cost if total_cost is not None else 0.0,
             },
         }
 
@@ -101,23 +130,43 @@ def _set_coordinator_data(
     }
 
 
+def _entry(date, import_cost, export_credit=0.0):
+    return {"date": date, "import_usage": 10.0, "import_cost": import_cost, "export_credit": export_credit}
+
+
 class TestGetProjectedCharges:
     def test_seven_day_period_extrapolates_to_full_cycle(self, coordinator):
-        """7 days elapsed, $35 net cost so far, 28-day cycle -> $140 projected."""
+        """7 days elapsed, $35 ex-GST import cost so far (no export), 28-day
+        cycle -> GST-inclusive net cost extrapolated across 28 days."""
         _set_coordinator_data(
             coordinator,
-            usage_entries=[{"date": "2025-08-01", "import_usage": 10.0}],
+            usage_entries=[_entry("2025-08-01", 35.0)],
             last_bill_date="2025-07-25",
             next_bill_date="2025-08-22",
-            total_cost=35.0,
         )
         result = coordinator.get_projected_charges("2000002", SERVICE_TYPE_ELECTRICITY)
         # elapsed = 2025-07-26..2025-08-01 inclusive = 7 days
-        # cycle = 2025-07-25..2025-08-22 = 28 days
-        assert result["projected_charges"] == pytest.approx(35.0 / 7 * 28)
-        assert result["net_cost_to_date"] == pytest.approx(35.0)
+        # cycle = billing_period_start (2025-07-26) .. nextBillDate (2025-08-22) = 27 days
+        net_cost_to_date = 35.0 * GST_MULTIPLIER
+        assert result["net_cost_to_date"] == pytest.approx(net_cost_to_date)
         assert result["days_elapsed"] == 7
-        assert result["days_in_cycle"] == 28
+        assert result["days_in_cycle"] == 27
+        assert result["projected_charges"] == pytest.approx(net_cost_to_date / 7 * 27)
+
+    def test_days_in_cycle_excludes_next_bill_date_as_a_charge_day(self, coordinator):
+        """Reproduces the #70 follow-up comment's real-world case: cycle
+        26 Jul-25 Aug (31 charge days), latest usage 24 Aug (30 days
+        elapsed). nextBillDate (26 Aug) must not be counted as part of this
+        cycle - days_in_cycle must be 31, not 32."""
+        _set_coordinator_data(
+            coordinator,
+            usage_entries=[_entry("2026-08-24", 300.0)],
+            last_bill_date="2026-07-25",
+            next_bill_date="2026-08-26",
+        )
+        result = coordinator.get_projected_charges("2000002", SERVICE_TYPE_ELECTRICITY)
+        assert result["days_in_cycle"] == 31
+        assert result["days_elapsed"] == 30
 
     def test_returns_none_when_no_usage_data(self, coordinator):
         _set_coordinator_data(
@@ -131,20 +180,18 @@ class TestGetProjectedCharges:
     def test_returns_none_when_next_bill_date_missing(self, coordinator):
         _set_coordinator_data(
             coordinator,
-            usage_entries=[{"date": "2025-08-01", "import_usage": 10.0}],
+            usage_entries=[_entry("2025-08-01", 35.0)],
             last_bill_date="2025-07-25",
             next_bill_date=None,
-            total_cost=35.0,
         )
         assert coordinator.get_projected_charges("2000002", SERVICE_TYPE_ELECTRICITY) is None
 
     def test_returns_none_when_next_bill_date_invalid(self, coordinator):
         _set_coordinator_data(
             coordinator,
-            usage_entries=[{"date": "2025-08-01", "import_usage": 10.0}],
+            usage_entries=[_entry("2025-08-01", 35.0)],
             last_bill_date="2025-07-25",
             next_bill_date="not-a-date",
-            total_cost=35.0,
         )
         assert coordinator.get_projected_charges("2000002", SERVICE_TYPE_ELECTRICITY) is None
 
@@ -152,10 +199,9 @@ class TestGetProjectedCharges:
         """A stale/inconsistent nextBillDate must not produce a zero or negative cycle length."""
         _set_coordinator_data(
             coordinator,
-            usage_entries=[{"date": "2025-08-01", "import_usage": 10.0}],
+            usage_entries=[_entry("2025-08-01", 35.0)],
             last_bill_date="2025-07-25",
-            next_bill_date="2025-07-25",
-            total_cost=35.0,
+            next_bill_date="2025-07-26",  # == billing_period_start, so days_in_cycle == 0
         )
         assert coordinator.get_projected_charges("2000002", SERVICE_TYPE_ELECTRICITY) is None
 
@@ -163,10 +209,9 @@ class TestGetProjectedCharges:
         """Stale/cached usage predating a just-rolled billing period must not produce a negative day count."""
         _set_coordinator_data(
             coordinator,
-            usage_entries=[{"date": "2025-07-20", "import_usage": 10.0}],
+            usage_entries=[_entry("2025-07-20", 35.0)],
             last_bill_date="2025-07-25",
             next_bill_date="2025-08-22",
-            total_cost=35.0,
         )
         assert coordinator.get_projected_charges("2000002", SERVICE_TYPE_ELECTRICITY) is None
 
@@ -174,14 +219,15 @@ class TestGetProjectedCharges:
         """lastBillDate + 1 == latest usageDate must count as exactly 1 day, not 0."""
         _set_coordinator_data(
             coordinator,
-            usage_entries=[{"date": "2025-07-26", "import_usage": 10.0}],
+            usage_entries=[_entry("2025-07-26", 5.0)],
             last_bill_date="2025-07-25",
             next_bill_date="2025-08-22",
-            total_cost=5.0,
         )
         result = coordinator.get_projected_charges("2000002", SERVICE_TYPE_ELECTRICITY)
-        # elapsed = 1 day, cycle = 28 days
-        assert result["projected_charges"] == pytest.approx(5.0 / 1 * 28)
+        assert result["days_elapsed"] == 1
+        assert result["days_in_cycle"] == 27
+        net_cost_to_date = 5.0 * GST_MULTIPLIER
+        assert result["projected_charges"] == pytest.approx(net_cost_to_date / 1 * 27)
 
     def test_falls_back_to_30_day_period_when_last_bill_date_missing(self, coordinator):
         today = datetime.now()
@@ -189,30 +235,71 @@ class TestGetProjectedCharges:
         next_bill_date = (today + timedelta(days=5)).strftime("%Y-%m-%d")
         _set_coordinator_data(
             coordinator,
-            usage_entries=[{"date": latest_usage_date, "import_usage": 10.0}],
+            usage_entries=[_entry(latest_usage_date, 60.0)],
             last_bill_date=None,
             next_bill_date=next_bill_date,
-            total_cost=60.0,
         )
-        # billing_period_start falls back to (today - 30 days); nextBillDate
-        # is still used verbatim as the cycle end even though lastBillDate
-        # (the true cycle start metadata field) is missing.
         result = coordinator.get_projected_charges("2000002", SERVICE_TYPE_ELECTRICITY)
         assert result is not None
 
     def test_uses_net_cost_not_gross(self, coordinator):
-        """total_cost already reflects import minus export credit
-        (see data_validation.py aggregation of the per-day "cost" field) -
-        the projection must use it as-is, not re-derive a gross figure."""
+        """Export credit reduces the GST-inclusive import cost; the
+        projection must reflect that net figure, not gross import alone."""
         _set_coordinator_data(
             coordinator,
-            usage_entries=[{"date": "2025-08-01", "import_usage": 10.0}],
+            usage_entries=[_entry("2025-08-01", 5.0, export_credit=10.0)],
             last_bill_date="2025-07-25",
             next_bill_date="2025-08-22",
-            total_cost=-2.0,  # net exporter/credit for the period so far
         )
         result = coordinator.get_projected_charges("2000002", SERVICE_TYPE_ELECTRICITY)
-        assert result["projected_charges"] == pytest.approx(-2.0 / 7 * 28)
+        net_cost_to_date = 5.0 * GST_MULTIPLIER - 10.0
+        assert net_cost_to_date < 0  # net exporter/credit for the period so far
+        assert result["net_cost_to_date"] == pytest.approx(net_cost_to_date)
+        assert result["projected_charges"] == pytest.approx(net_cost_to_date / 7 * 27)
+
+
+class TestGetEstimatedCurrentPeriodCharges:
+    def test_adds_service_charge_projected_across_full_cycle(self, coordinator):
+        _set_coordinator_data(
+            coordinator,
+            usage_entries=[_entry("2025-08-01", 35.0)],
+            last_bill_date="2025-07-25",
+            next_bill_date="2025-08-22",
+            rates=[SUPPLY_CHARGE_RATE],
+        )
+        result = coordinator.get_estimated_current_period_charges("2000002", SERVICE_TYPE_ELECTRICITY)
+
+        net_cost_to_date = 35.0 * GST_MULTIPLIER
+        expected_net_projection = net_cost_to_date / 7 * 27
+        expected_service_charge = SUPPLY_CHARGE_RATE["rate_incl_gst_dollars"] * 27
+
+        assert result["days_in_cycle"] == 27
+        assert result["estimated_net_cost"] == pytest.approx(expected_net_projection)
+        assert result["estimated_service_charge"] == pytest.approx(expected_service_charge)
+        assert result["estimated_charges"] == pytest.approx(expected_net_projection + expected_service_charge)
+        assert result["service_rate_incl_gst"] == pytest.approx(SUPPLY_CHARGE_RATE["rate_incl_gst_dollars"])
+
+    def test_returns_none_when_no_service_charge_rate(self, coordinator):
+        _set_coordinator_data(
+            coordinator,
+            usage_entries=[_entry("2025-08-01", 35.0)],
+            last_bill_date="2025-07-25",
+            next_bill_date="2025-08-22",
+            rates=[],
+        )
+        assert coordinator.get_estimated_current_period_charges("2000002", SERVICE_TYPE_ELECTRICITY) is None
+
+    def test_returns_none_when_projection_unavailable(self, coordinator):
+        """No rate for the service charge, and separately, no usable
+        projection (missing nextBillDate) - either alone must return None."""
+        _set_coordinator_data(
+            coordinator,
+            usage_entries=[_entry("2025-08-01", 35.0)],
+            last_bill_date="2025-07-25",
+            next_bill_date=None,
+            rates=[SUPPLY_CHARGE_RATE],
+        )
+        assert coordinator.get_estimated_current_period_charges("2000002", SERVICE_TYPE_ELECTRICITY) is None
 
 
 from homeassistant.components.sensor import SensorDeviceClass
@@ -224,35 +311,78 @@ def _config_entry():
     return entry
 
 
-class TestProjectedChargesSensor:
+class TestProjectedNetCostSensor:
     def test_native_value_and_attributes(self, coordinator):
         _set_coordinator_data(
             coordinator,
-            usage_entries=[{"date": "2025-08-01", "import_usage": 10.0}],
+            usage_entries=[_entry("2025-08-01", 35.0)],
             last_bill_date="2025-07-25",
             next_bill_date="2025-08-22",
-            total_cost=35.0,
         )
-        sensor = RedEnergyProjectedChargesSensor(
+        sensor = RedEnergyProjectedNetCostSensor(
             coordinator, _config_entry(), "2000002", SERVICE_TYPE_ELECTRICITY
         )
-        assert sensor.native_value == pytest.approx(35.0 / 7 * 28)
+        net_cost_to_date = 35.0 * GST_MULTIPLIER
+        assert sensor.native_value == pytest.approx(net_cost_to_date / 7 * 27, abs=0.01)
         assert sensor.device_class == SensorDeviceClass.MONETARY
         assert sensor.native_unit_of_measurement == "AUD"
         assert sensor.state_class is None
 
         attrs = sensor.extra_state_attributes
-        assert attrs["net_cost_to_date"] == pytest.approx(35.0)
+        assert attrs["net_cost_to_date"] == pytest.approx(net_cost_to_date)
         assert attrs["days_elapsed"] == 7
-        assert attrs["days_in_cycle"] == 28
-        assert attrs["estimation_method"] == "linear"
+        assert attrs["days_in_cycle"] == 27
+        assert attrs["gst_basis"] == "inclusive"
 
     def test_native_value_none_when_next_bill_date_missing(self, coordinator):
         _set_coordinator_data(
             coordinator,
-            usage_entries=[{"date": "2025-08-01", "import_usage": 10.0}],
+            usage_entries=[_entry("2025-08-01", 35.0)],
             last_bill_date="2025-07-25",
-            total_cost=35.0,
+        )
+        sensor = RedEnergyProjectedNetCostSensor(
+            coordinator, _config_entry(), "2000002", SERVICE_TYPE_ELECTRICITY
+        )
+        assert sensor.native_value is None
+        assert sensor.extra_state_attributes is None
+
+
+class TestProjectedChargesSensor:
+    def test_native_value_and_attributes(self, coordinator):
+        _set_coordinator_data(
+            coordinator,
+            usage_entries=[_entry("2025-08-01", 35.0)],
+            last_bill_date="2025-07-25",
+            next_bill_date="2025-08-22",
+            rates=[SUPPLY_CHARGE_RATE],
+        )
+        sensor = RedEnergyProjectedChargesSensor(
+            coordinator, _config_entry(), "2000002", SERVICE_TYPE_ELECTRICITY
+        )
+
+        net_cost_to_date = 35.0 * GST_MULTIPLIER
+        expected_net_projection = net_cost_to_date / 7 * 27
+        expected_service_charge = SUPPLY_CHARGE_RATE["rate_incl_gst_dollars"] * 27
+
+        assert sensor.native_value == pytest.approx(
+            expected_net_projection + expected_service_charge, abs=0.01
+        )
+        assert sensor.device_class == SensorDeviceClass.MONETARY
+        assert sensor.native_unit_of_measurement == "AUD"
+        assert sensor.state_class is None
+
+        attrs = sensor.extra_state_attributes
+        assert attrs["days_in_cycle"] == 27
+        assert attrs["gst_basis"] == "inclusive"
+        assert attrs["service_rate_incl_gst"] == pytest.approx(SUPPLY_CHARGE_RATE["rate_incl_gst_dollars"])
+
+    def test_native_value_none_when_no_service_charge_rate(self, coordinator):
+        _set_coordinator_data(
+            coordinator,
+            usage_entries=[_entry("2025-08-01", 35.0)],
+            last_bill_date="2025-07-25",
+            next_bill_date="2025-08-22",
+            rates=[],
         )
         sensor = RedEnergyProjectedChargesSensor(
             coordinator, _config_entry(), "2000002", SERVICE_TYPE_ELECTRICITY
@@ -296,7 +426,7 @@ def _mock_coordinator_for_setup(service_type=SERVICE_TYPE_ELECTRICITY, property_
 
 
 @pytest.mark.asyncio
-async def test_projected_charges_sensor_not_created_when_advanced_disabled():
+async def test_projected_sensors_not_created_when_advanced_disabled():
     coordinator = _mock_coordinator_for_setup()
     config_entry = MagicMock()
     config_entry.entry_id = "entry1"
@@ -317,14 +447,12 @@ async def test_projected_charges_sensor_not_created_when_advanced_disabled():
     async_add_entities = MagicMock(side_effect=lambda entities: added_entities.extend(entities))
     await async_setup_entry(hass, config_entry, async_add_entities)
 
-    projected_sensors = [
-        e for e in added_entities if isinstance(e, RedEnergyProjectedChargesSensor)
-    ]
-    assert projected_sensors == []
+    assert not [e for e in added_entities if isinstance(e, RedEnergyProjectedNetCostSensor)]
+    assert not [e for e in added_entities if isinstance(e, RedEnergyProjectedChargesSensor)]
 
 
 @pytest.mark.asyncio
-async def test_projected_charges_sensor_created_for_electricity_and_gas_when_advanced_enabled():
+async def test_projected_sensors_created_for_electricity_and_gas_when_advanced_enabled():
     coordinator = _mock_coordinator_for_setup(service_type=SERVICE_TYPE_ELECTRICITY)
     gas_coordinator_data = coordinator.data["usage_data"]["2000002"]["property"]["services"]
     gas_coordinator_data.append({**gas_coordinator_data[0], "type": SERVICE_TYPE_GAS})
@@ -348,7 +476,11 @@ async def test_projected_charges_sensor_created_for_electricity_and_gas_when_adv
     async_add_entities = MagicMock(side_effect=lambda entities: added_entities.extend(entities))
     await async_setup_entry(hass, config_entry, async_add_entities)
 
-    projected_sensors = [
+    net_cost_sensors = [
+        e for e in added_entities if isinstance(e, RedEnergyProjectedNetCostSensor)
+    ]
+    charges_sensors = [
         e for e in added_entities if isinstance(e, RedEnergyProjectedChargesSensor)
     ]
-    assert len(projected_sensors) == 2
+    assert len(net_cost_sensors) == 2
+    assert len(charges_sensors) == 2

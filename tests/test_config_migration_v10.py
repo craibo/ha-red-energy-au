@@ -146,8 +146,12 @@ async def test_already_renamed_entity_is_a_noop():
     mock_entity_registry.async_update_entity.assert_not_called()
 
 
-def test_config_version_10_is_current():
-    assert CURRENT_CONFIG_VERSION == CONFIG_VERSION_10
+def test_config_version_10_value():
+    """CONFIG_VERSION_10 == 10 is a fixed historical fact, independent of
+    whichever version is CURRENT_CONFIG_VERSION today. The "is this the
+    current version" and "does ConfigFlow.VERSION match" checks belong to
+    whichever migration test file introduced the latest version - see
+    test_config_migration_v11.py."""
     assert CONFIG_VERSION_10 == 10
 
 
@@ -162,13 +166,3 @@ def test_sensor_type_renames_v10_covers_all_total_sensors():
         "total_import_cost": "current_period_import_cost",
         "total_export_credit": "current_period_export_credit",
     }
-
-
-def test_config_flow_version_matches_current_config_version():
-    """Home Assistant core only calls async_migrate_entry when
-    ConfigEntry.version != ConfigFlow.VERSION - if these two drift apart,
-    every migration in this file becomes dead code for existing entries,
-    regardless of how correct the migration logic itself is."""
-    from custom_components.red_energy.config_flow import ConfigFlow
-
-    assert ConfigFlow.VERSION == CURRENT_CONFIG_VERSION
