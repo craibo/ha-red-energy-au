@@ -92,11 +92,11 @@ Since electricity-only concepts (solar, export, time-of-use tariffs, demand, car
 - Daily Export Usage *(electricity only)* - Daily exported energy (kWh)
 - Current Period Import Usage - Imported energy since last bill
 - Current Period Export Usage *(electricity only)* - Exported energy since last bill
-- Daily Import Cost - Daily import cost, GST-inclusive (AUD)
+- Daily Import Cost - Daily import cost, GST-exclusive (AUD)
 - Daily Export Credit *(electricity only)* - Daily export credit (AUD)
-- Current Period Import Cost - Import cost since last bill, GST-inclusive (AUD)
+- Current Period Import Cost - Import cost since last bill, GST-exclusive (AUD)
 - Current Period Export Credit *(electricity only)* - Export credit since last bill (AUD)
-- Current Period Net Cost - Net cost (GST-inclusive import minus export credit) since last bill (AUD)
+- Current Period Net Cost - Net cost (GST-exclusive import minus export credit) since last bill (AUD)
 
 **Account & Service Information:**
 - NMI - National Meter Identifier

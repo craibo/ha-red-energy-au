@@ -204,8 +204,7 @@ class TestLatestDaySelection:
 
         assert coordinator.get_latest_import_usage("prop-001", SERVICE_TYPE_ELECTRICITY) == 99.0
         assert coordinator.get_latest_export_usage("prop-001", SERVICE_TYPE_ELECTRICITY) == 9.0
-        # import_cost is GST-uplifted (x1.10) at the source; 20.0 ex-GST -> 22.0 inc-GST
-        assert coordinator.get_latest_import_cost("prop-001", SERVICE_TYPE_ELECTRICITY) == pytest.approx(22.0)
+        assert coordinator.get_latest_import_cost("prop-001", SERVICE_TYPE_ELECTRICITY) == 20.0
         assert coordinator.get_latest_export_credit("prop-001", SERVICE_TYPE_ELECTRICITY) == 2.0
         assert coordinator.get_latest_usage_date("prop-001", SERVICE_TYPE_ELECTRICITY) == "2024-01-15"
 

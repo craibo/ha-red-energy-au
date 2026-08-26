@@ -388,6 +388,7 @@ class RedEnergyCostSensor(RedEnergyBaseSensor):
             "last_updated": service_data.get("last_updated"),
             "service_type": self._service_type,
             "period": self._get_period_description(),
+            "gst_basis": "exclusive",
         }
 
 
@@ -1631,7 +1632,7 @@ class RedEnergyTotalImportCostSensor(RedEnergyBaseSensor):
             "last_updated": service_data.get("last_updated"),
             "service_type": self._service_type,
             "period": self._get_period_description(),
-            "gst_inclusive": False,
+            "gst_basis": "exclusive",
             "description": "Total cost of grid import"
         }
 
@@ -1723,7 +1724,7 @@ class RedEnergyDailyImportCostSensor(RedEnergyBaseSensor):
             "last_updated": service_data.get("last_updated"),
             "usage_date": self.coordinator.get_latest_usage_date(self._property_id, self._service_type),
             "service_type": self._service_type,
-            "gst_inclusive": False,
+            "gst_basis": "exclusive",
             "description": "Cost of grid import for latest day"
         }
 
