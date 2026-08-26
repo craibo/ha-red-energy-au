@@ -52,6 +52,7 @@ from .const import (
     SENSOR_TYPE_PEAK_USAGE,
     SENSOR_TYPE_PRODUCT_NAME,
     SENSOR_TYPE_PROJECTED_CHARGES,
+    SENSOR_TYPE_PROJECTED_NET_COST,
     SENSOR_TYPE_RATE_PREFIX,
     SENSOR_TYPE_RECONSTRUCTED_IMPORT_COST,
     SENSOR_TYPE_SOLAR,
@@ -168,7 +169,9 @@ async def async_setup_entry(
                     RedEnergyCarbonEmissionSensor(coordinator, config_entry, account_id, service_type),
                     # NEW: Service/supply charge sensor
                     RedEnergyBillingPeriodServiceChargeSensor(coordinator, config_entry, account_id, service_type),
-                    # NEW: Projected charges (estimated, issue #75)
+                    # NEW: Projected net cost (energy only, issues #75, #77)
+                    RedEnergyProjectedNetCostSensor(coordinator, config_entry, account_id, service_type),
+                    # NEW: Projected charges (net cost + service charge, issue #77)
                     RedEnergyProjectedChargesSensor(coordinator, config_entry, account_id, service_type),
                 ])
 
@@ -949,12 +952,19 @@ class RedEnergyBillingPeriodServiceChargeSensor(RedEnergyBaseSensor):
         }
 
 
-class RedEnergyProjectedChargesSensor(RedEnergyBaseSensor):
-    """Red Energy projected charges sensor (issue #75).
+class RedEnergyProjectedNetCostSensor(RedEnergyBaseSensor):
+    """Red Energy projected net cost sensor (issues #75, #77).
 
-    Red Energy's API has no "projected charges" field - this is a linear
+    Red Energy's API has no bill-forecast field - this is a linear
     extrapolation of net cost-to-date across the full billing cycle
     (see coordinator.get_projected_charges), not Red Energy's own figure.
+    "Net cost" because it's energy only (import minus export credit) - it
+    excludes the daily service/supply charge, so it isn't a full bill
+    estimate. See RedEnergyProjectedChargesSensor for that. Distinct from
+    RedEnergyCostSensor ("Current Period Net Cost"), which is the actual
+    to-date figure, not a forecast - "Projected" is this sensor's
+    distinguisher, not "Current Period" (issue #78 already used that for
+    the actual-value sensors).
     state_class is intentionally left unset (not TOTAL/MEASUREMENT): this
     is a forward-looking estimate that can jump around as usage patterns
     change, not an accumulating total suitable for long-term statistics.
@@ -967,8 +977,8 @@ class RedEnergyProjectedChargesSensor(RedEnergyBaseSensor):
         property_id: str,
         service_type: str,
     ) -> None:
-        """Initialize the projected charges sensor."""
-        super().__init__(coordinator, config_entry, property_id, service_type, SENSOR_TYPE_PROJECTED_CHARGES)
+        """Initialize the projected net cost sensor."""
+        super().__init__(coordinator, config_entry, property_id, service_type, SENSOR_TYPE_PROJECTED_NET_COST)
 
         self._attr_device_class = SensorDeviceClass.MONETARY
         self._attr_native_unit_of_measurement = "AUD"
@@ -977,7 +987,7 @@ class RedEnergyProjectedChargesSensor(RedEnergyBaseSensor):
 
     @property
     def native_value(self) -> float | None:
-        """Return the estimated total charge for the current billing cycle."""
+        """Return the projected net energy cost for the current billing cycle."""
         result = self.coordinator.get_projected_charges(self._property_id, self._service_type)
         return round(result["projected_charges"], 2) if result is not None else None
 
@@ -993,6 +1003,56 @@ class RedEnergyProjectedChargesSensor(RedEnergyBaseSensor):
             "days_elapsed": result["days_elapsed"],
             "days_in_cycle": result["days_in_cycle"],
             "estimation_method": "linear",
+            "gst_basis": "inclusive",
+        }
+
+
+class RedEnergyProjectedChargesSensor(RedEnergyBaseSensor):
+    """Red Energy projected charges sensor (issue #77).
+
+    Projected net energy cost (see RedEnergyProjectedNetCostSensor) plus
+    the daily service/supply charge projected across the full billing
+    cycle, giving a fuller bill estimate. Unavailable when the plan has no
+    daily service-charge rate, or when the underlying net-cost projection
+    itself is unavailable (see coordinator.get_estimated_current_period_charges).
+    Both components are GST-inclusive.
+    """
+
+    def __init__(
+        self,
+        coordinator: RedEnergyDataCoordinator,
+        config_entry: ConfigEntry,
+        property_id: str,
+        service_type: str,
+    ) -> None:
+        """Initialize the projected charges sensor."""
+        super().__init__(coordinator, config_entry, property_id, service_type, SENSOR_TYPE_PROJECTED_CHARGES)
+
+        self._attr_device_class = SensorDeviceClass.MONETARY
+        self._attr_native_unit_of_measurement = "AUD"
+        self._attr_state_class = None
+        self._attr_icon = "mdi:receipt-text-clock"
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the estimated total bill charge for the current billing cycle."""
+        result = self.coordinator.get_estimated_current_period_charges(self._property_id, self._service_type)
+        return round(result["estimated_charges"], 2) if result is not None else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Return the inputs used to derive the estimate."""
+        result = self.coordinator.get_estimated_current_period_charges(self._property_id, self._service_type)
+        if result is None:
+            return None
+
+        return {
+            "estimated_net_cost": round(result["estimated_net_cost"], 2),
+            "estimated_service_charge": round(result["estimated_service_charge"], 2),
+            "days_in_cycle": result["days_in_cycle"],
+            "service_rate_incl_gst": result["service_rate_incl_gst"],
+            "estimation_method": "linear",
+            "gst_basis": "inclusive",
         }
 
 

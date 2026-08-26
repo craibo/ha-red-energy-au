@@ -35,7 +35,8 @@ CONFIG_VERSION_7 = 7  # Removed service-type selection (always monitor both)
 CONFIG_VERSION_8 = 8  # Composite property IDs (fix accounts with shared accountNumber)
 CONFIG_VERSION_9 = 9  # Repair entries left with stale IDs by the v7->v8 migration
 CONFIG_VERSION_10 = 10  # Renamed "Total" sensors to "Current Period" (issue #78)
-CURRENT_CONFIG_VERSION = CONFIG_VERSION_10
+CONFIG_VERSION_11 = 11  # Renamed Projected Charges to Projected Net Cost (issue #77)
+CURRENT_CONFIG_VERSION = CONFIG_VERSION_11
 
 # sensor_type suffixes renamed in v9->v10, old -> new. "Total" implied a
 # complete/lifetime figure, but these reset every billing cycle and only
@@ -46,6 +47,15 @@ SENSOR_TYPE_RENAMES_V10: dict[str, str] = {
     "total_export_usage": "current_period_export_usage",
     "total_import_cost": "current_period_import_cost",
     "total_export_credit": "current_period_export_credit",
+}
+
+# sensor_type suffixes renamed in v10->v11, old -> new. The original
+# "Projected Charges" sensor (issue #75) is renamed to "Projected Net
+# Cost" to disclose it's energy-only (no service charge) and to make room
+# for a new "Projected Charges" sensor that includes the service charge
+# (issue #77).
+SENSOR_TYPE_RENAMES_V11: dict[str, str] = {
+    "projected_charges": "projected_net_cost",
 }
 
 
@@ -111,6 +121,10 @@ class RedEnergyConfigMigrator:
             # Migrate from version 9 to 10
             if current_version < CONFIG_VERSION_10:
                 migration_success &= await self._migrate_v9_to_v10(config_entry)
+
+            # Migrate from version 10 to 11
+            if current_version < CONFIG_VERSION_11:
+                migration_success &= await self._migrate_v10_to_v11(config_entry)
 
             if migration_success:
                 # Update version in config entry
@@ -402,11 +416,38 @@ class RedEnergyConfigMigrator:
         is renamed here (SENSOR_TYPE_RENAMES_V10) so existing entities keep
         their entity_id, history, and Energy Dashboard statistics rather
         than going stale and being recreated under a new entity_id.
+        """
+        return await self._remap_sensor_type_suffixes(
+            config_entry, SENSOR_TYPE_RENAMES_V10, "v9 to v10"
+        )
+
+    async def _migrate_v10_to_v11(self, config_entry: ConfigEntry) -> bool:
+        """Migrate from version 10 to 11 - Rename Projected Charges to Projected Net Cost.
+
+        The original "Projected Charges" sensor (issue #75) didn't disclose
+        it's energy-only (excludes the daily service/supply charge) - see
+        issue #77. Renamed to "Projected Net Cost" (SENSOR_TYPE_RENAMES_V11)
+        so existing entities keep their entity_id, history, and Energy
+        Dashboard statistics, and to free up "Projected Charges" for the new
+        sensor that does include the service charge.
+        """
+        return await self._remap_sensor_type_suffixes(
+            config_entry, SENSOR_TYPE_RENAMES_V11, "v10 to v11"
+        )
+
+    async def _remap_sensor_type_suffixes(
+        self, config_entry: ConfigEntry, renames: dict[str, str], migration_label: str
+    ) -> bool:
+        """Rename any entity whose unique_id ends in one of `renames`' old
+        sensor_type suffixes to the corresponding new suffix, in place -
+        preserving entity_id, history, and Energy Dashboard statistics
+        rather than the old entity going stale and being recreated fresh.
 
         No API call is needed - unlike the v7->v8/v8->v9 property ID
-        repair, this is a purely local unique_id string rename.
+        repair, this is a purely local unique_id string rename. Shared by
+        the v9->v10 and v10->v11 steps.
         """
-        _LOGGER.info("Migrating config entry from v9 to v10 - Renaming Total sensors to Current Period")
+        _LOGGER.info("Migrating config entry %s - Renaming sensor types", migration_label)
 
         try:
             from homeassistant.helpers import entity_registry as er
@@ -415,7 +456,7 @@ class RedEnergyConfigMigrator:
             renamed_count = 0
 
             for entity in er.async_entries_for_config_entry(entity_registry, config_entry.entry_id):
-                for old_suffix, new_suffix in SENSOR_TYPE_RENAMES_V10.items():
+                for old_suffix, new_suffix in renames.items():
                     old_segment = f"_{old_suffix}"
                     if not entity.unique_id.endswith(old_segment):
                         continue
@@ -431,12 +472,12 @@ class RedEnergyConfigMigrator:
                     break
 
             _LOGGER.info(
-                "Successfully completed v9 to v10 migration, renamed %d entit(ies)", renamed_count
+                "Successfully completed %s migration, renamed %d entit(ies)", migration_label, renamed_count
             )
             return True
 
         except Exception as err:
-            _LOGGER.error("Failed v9 to v10 migration: %s", err, exc_info=True)
+            _LOGGER.error("Failed %s migration: %s", migration_label, err, exc_info=True)
             # Don't fail the entire migration - the rename still applies for
             # new entity creation, existing ones just won't be renamed.
             return True
