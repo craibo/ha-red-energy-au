@@ -188,6 +188,71 @@ class TestBillingPeriodBoundary:
         assert (datetime.now() - start).days == 30
 
 
+class TestUsagePeriodEndCappedByNextBillDate:
+    """Issue #81: while billing metadata is stale, the usage query window must
+    not extend past the current cycle's exclusive nextBillDate boundary, even
+    though real time (and newly published usageDate entries) keep moving on."""
+
+    def test_end_date_capped_when_next_bill_date_has_passed(self, coordinator):
+        last_bill_date = (datetime.now() - timedelta(days=35)).strftime("%Y-%m-%d")
+        next_bill_date = (datetime.now() - timedelta(days=3)).strftime("%Y-%m-%d")
+        service = {"lastBillDate": last_bill_date, "nextBillDate": next_bill_date}
+
+        _start_date, end_date = coordinator._get_usage_period_dates(service)
+
+        expected_end = datetime.strptime(next_bill_date, "%Y-%m-%d") - timedelta(days=1)
+        assert end_date.date() == expected_end.date()
+
+    def test_end_date_not_capped_when_next_bill_date_in_future(self, coordinator):
+        last_bill_date = (datetime.now() - timedelta(days=5)).strftime("%Y-%m-%d")
+        next_bill_date = (datetime.now() + timedelta(days=10)).strftime("%Y-%m-%d")
+        service = {"lastBillDate": last_bill_date, "nextBillDate": next_bill_date}
+
+        _start_date, end_date = coordinator._get_usage_period_dates(service)
+
+        assert end_date.date() == datetime.now().date()
+
+    def test_end_date_uncapped_when_next_bill_date_missing(self, coordinator):
+        last_bill_date = (datetime.now() - timedelta(days=35)).strftime("%Y-%m-%d")
+        service = {"lastBillDate": last_bill_date}
+
+        _start_date, end_date = coordinator._get_usage_period_dates(service)
+
+        assert end_date.date() == datetime.now().date()
+
+    def test_end_date_uncapped_when_next_bill_date_invalid(self, coordinator):
+        last_bill_date = (datetime.now() - timedelta(days=35)).strftime("%Y-%m-%d")
+        service = {"lastBillDate": last_bill_date, "nextBillDate": "not-a-date"}
+
+        _start_date, end_date = coordinator._get_usage_period_dates(service)
+
+        assert end_date.date() == datetime.now().date()
+
+    def test_progressive_overrun_stays_bounded_across_multiple_days(self, coordinator):
+        """Regression check for the reporter's 31 -> 32 -> 33 day drift: the
+        represented period must stay pinned to nextBillDate - 1 day no matter
+        how many days pass while the metadata remains stale."""
+        last_bill_date = (datetime.now() - timedelta(days=34)).strftime("%Y-%m-%d")
+        next_bill_date = (datetime.now() - timedelta(days=2)).strftime("%Y-%m-%d")
+        service = {"lastBillDate": last_bill_date, "nextBillDate": next_bill_date}
+
+        start_date, end_date = coordinator._get_usage_period_dates(service)
+        represented_days = (end_date - start_date).days + 1
+
+        assert represented_days == 31
+
+    def test_end_date_never_precedes_start_date(self, coordinator):
+        """Defensive floor: an implausible nextBillDate before lastBillDate
+        must not produce an inverted (negative-length) query window."""
+        last_bill_date = (datetime.now() - timedelta(days=5)).strftime("%Y-%m-%d")
+        next_bill_date = (datetime.now() - timedelta(days=20)).strftime("%Y-%m-%d")
+        service = {"lastBillDate": last_bill_date, "nextBillDate": next_bill_date}
+
+        start_date, end_date = coordinator._get_usage_period_dates(service)
+
+        assert end_date >= start_date
+
+
 class TestLatestDaySelection:
     """Bug #5: latest-day values should be selected by max usageDate, not list position."""
 
