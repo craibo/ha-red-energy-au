@@ -114,8 +114,34 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
         return start_date
 
     def _get_usage_period_dates(self, service: dict[str, Any]) -> tuple[datetime, datetime]:
+        """Resolve the usage query window, capped at the current cycle's exclusive end.
+
+        end_date defaults to now, but while lastBillDate/nextBillDate still
+        describe a completed cycle (Red Energy typically takes a few days to
+        roll billing metadata forward after the cycle actually ends - issue
+        #81), the window must not extend into the next cycle just because
+        time has passed and new usageDate entries exist. nextBillDate is the
+        exclusive start of the next cycle, so the cap is nextBillDate minus
+        one day. A missing/invalid nextBillDate leaves end_date uncapped -
+        there's no sane fallback boundary, matching _get_billing_period_start's
+        handling of a missing lastBillDate.
+        """
         end_date = datetime.now()
         start_date = self._get_billing_period_start(service)
+
+        next_bill_date_str = service.get("nextBillDate")
+        if next_bill_date_str:
+            try:
+                next_bill_date = datetime.strptime(next_bill_date_str, "%Y-%m-%d")
+                cycle_end_cap = next_bill_date - timedelta(days=1)
+                if cycle_end_cap < end_date:
+                    end_date = cycle_end_cap
+            except (ValueError, TypeError) as err:
+                _LOGGER.warning("Invalid nextBillDate format '%s': %s, not capping usage window", next_bill_date_str, err)
+
+        if end_date < start_date:
+            end_date = start_date
+
         return start_date, end_date
 
     async def _async_update_data(self) -> dict[str, Any]:
