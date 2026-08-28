@@ -903,6 +903,10 @@ class RedEnergyBillingPeriodServiceChargeSensor(RedEnergyBaseSensor):
         super().__init__(
             coordinator, config_entry, property_id, service_type, SENSOR_TYPE_BILLING_PERIOD_SERVICE_CHARGE
         )
+        # Named "Current Period" for consistency with the other current-cycle
+        # sensors (Current Period Import Usage, etc.) - unique_id is left on
+        # "billing_period_service_charge" for backward compatibility.
+        self._attr_name = "Current Period Service Charge"
 
         self._attr_device_class = SensorDeviceClass.MONETARY
         self._attr_native_unit_of_measurement = "AUD"

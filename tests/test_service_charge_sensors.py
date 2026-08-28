@@ -264,6 +264,8 @@ class TestBillingPeriodServiceChargeSensor:
         assert sensor.device_class == SensorDeviceClass.MONETARY
         assert sensor.native_unit_of_measurement == "AUD"
         assert sensor.state_class == SensorStateClass.TOTAL
+        assert sensor._attr_name == "Current Period Service Charge"
+        assert sensor._attr_unique_id.endswith("_billing_period_service_charge")
 
         attrs = sensor.extra_state_attributes
         assert attrs["billing_period_start"] == "2025-07-26"
