@@ -382,6 +382,113 @@ class TestGetBillingPeriodServiceCharge:
         assert result == pytest.approx(1 * 1.78145)
 
 
+class TestGetBillingPeriodDemandCharge:
+    def test_computes_accrued_demand_charge(self, coordinator):
+        _set_coordinator_data(
+            coordinator,
+            [DEMAND_CHARGE_RATE, DEMAND_CHARGE_RATE_NON_SUMMER, DEMAND_CHARGE_RATE_TEMPERATE],
+            usage_entries=[{"date": "2026-01-18", "import_usage": 10.0, "max_demand_kw": 4.608}],
+            last_bill_date="2026-01-01",
+            plan_name="Residential Demand Solar",
+        )
+        with patch("custom_components.red_energy.coordinator.datetime") as mock_dt:
+            mock_dt.now.return_value = datetime(2026, 1, 18)
+            mock_dt.strptime = datetime.strptime
+            result = coordinator.get_billing_period_demand_charge("2000002", SERVICE_TYPE_ELECTRICITY)
+
+        assert result is not None
+        # represented_day_count = 2026-01-02 (lastBillDate + 1) .. 2026-01-18 inclusive = 17 days
+        assert result["represented_day_count"] == 17
+        assert result["max_demand_kw"] == 4.608
+        assert result["demand_rate_incl_gst"] == pytest.approx(0.253)
+        assert result["demand_rate_desc"] == "Demand Summer"
+        assert result["demand_charge"] == pytest.approx(4.608 * 0.253 * 17)
+
+    def test_none_when_not_demand_plan(self, coordinator):
+        _set_coordinator_data(
+            coordinator,
+            [DEMAND_CHARGE_RATE, DEMAND_CHARGE_RATE_NON_SUMMER, DEMAND_CHARGE_RATE_TEMPERATE],
+            usage_entries=[{"date": "2026-01-18", "import_usage": 10.0, "max_demand_kw": 4.608}],
+            last_bill_date="2026-01-01",
+            plan_name="Residential Time of Use",
+        )
+        with patch("custom_components.red_energy.coordinator.datetime") as mock_dt:
+            mock_dt.now.return_value = datetime(2026, 1, 18)
+            mock_dt.strptime = datetime.strptime
+            result = coordinator.get_billing_period_demand_charge("2000002", SERVICE_TYPE_ELECTRICITY)
+        assert result is None
+
+    def test_none_when_no_resolvable_demand_rate(self, coordinator):
+        """Only a Non-Summer demand rate is present; resolving for a
+        Summer date must not fall back to guessing it."""
+        _set_coordinator_data(
+            coordinator,
+            [DEMAND_CHARGE_RATE_NON_SUMMER],
+            usage_entries=[{"date": "2026-01-18", "import_usage": 10.0, "max_demand_kw": 4.608}],
+            last_bill_date="2026-01-01",
+            plan_name="Residential Demand Solar",
+        )
+        with patch("custom_components.red_energy.coordinator.datetime") as mock_dt:
+            mock_dt.now.return_value = datetime(2026, 1, 18)
+            mock_dt.strptime = datetime.strptime
+            result = coordinator.get_billing_period_demand_charge("2000002", SERVICE_TYPE_ELECTRICITY)
+        assert result is None
+
+    def test_none_when_no_max_demand_data(self, coordinator):
+        _set_coordinator_data(
+            coordinator,
+            [DEMAND_CHARGE_RATE, DEMAND_CHARGE_RATE_NON_SUMMER, DEMAND_CHARGE_RATE_TEMPERATE],
+            usage_entries=[{"date": "2026-01-18", "import_usage": 10.0}],  # no max_demand_kw
+            last_bill_date="2026-01-01",
+            plan_name="Residential Demand Solar",
+        )
+        with patch("custom_components.red_energy.coordinator.datetime") as mock_dt:
+            mock_dt.now.return_value = datetime(2026, 1, 18)
+            mock_dt.strptime = datetime.strptime
+            result = coordinator.get_billing_period_demand_charge("2000002", SERVICE_TYPE_ELECTRICITY)
+        assert result is None
+
+    def test_none_when_no_usage_data(self, coordinator):
+        _set_coordinator_data(
+            coordinator,
+            [DEMAND_CHARGE_RATE, DEMAND_CHARGE_RATE_NON_SUMMER, DEMAND_CHARGE_RATE_TEMPERATE],
+            usage_entries=[],
+            last_bill_date="2026-01-01",
+            plan_name="Residential Demand Solar",
+        )
+        result = coordinator.get_billing_period_demand_charge("2000002", SERVICE_TYPE_ELECTRICITY)
+        assert result is None
+
+    def test_none_when_latest_usage_date_before_period_start(self, coordinator):
+        """Stale/cached usage predating a just-rolled billing period must not produce a negative day count."""
+        _set_coordinator_data(
+            coordinator,
+            [DEMAND_CHARGE_RATE, DEMAND_CHARGE_RATE_NON_SUMMER, DEMAND_CHARGE_RATE_TEMPERATE],
+            usage_entries=[{"date": "2025-12-20", "import_usage": 10.0, "max_demand_kw": 4.608}],
+            last_bill_date="2026-01-01",
+            plan_name="Residential Demand Solar",
+        )
+        result = coordinator.get_billing_period_demand_charge("2000002", SERVICE_TYPE_ELECTRICITY)
+        assert result is None
+
+    def test_single_day_period_counts_as_one_day(self, coordinator):
+        """lastBillDate + 1 == latest usageDate must count as exactly 1 day, not 0."""
+        _set_coordinator_data(
+            coordinator,
+            [DEMAND_CHARGE_RATE, DEMAND_CHARGE_RATE_NON_SUMMER, DEMAND_CHARGE_RATE_TEMPERATE],
+            usage_entries=[{"date": "2026-01-02", "import_usage": 10.0, "max_demand_kw": 4.608}],
+            last_bill_date="2026-01-01",
+            plan_name="Residential Demand Solar",
+        )
+        with patch("custom_components.red_energy.coordinator.datetime") as mock_dt:
+            mock_dt.now.return_value = datetime(2026, 1, 2)
+            mock_dt.strptime = datetime.strptime
+            result = coordinator.get_billing_period_demand_charge("2000002", SERVICE_TYPE_ELECTRICITY)
+        assert result is not None
+        assert result["represented_day_count"] == 1
+        assert result["demand_charge"] == pytest.approx(4.608 * 0.253 * 1)
+
+
 from homeassistant.components.sensor import SensorDeviceClass, SensorStateClass
 
 
