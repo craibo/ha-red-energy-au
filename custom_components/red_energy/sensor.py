@@ -1118,10 +1118,12 @@ class RedEnergyProjectedChargesSensor(RedEnergyBaseSensor):
 
     Projected net energy cost (see RedEnergyProjectedNetCostSensor) plus
     the daily service/supply charge projected across the full billing
-    cycle, giving a fuller bill estimate. Unavailable when the plan has no
-    daily service-charge rate, or when the underlying net-cost projection
-    itself is unavailable (see coordinator.get_estimated_current_period_charges).
-    Both components are GST-inclusive.
+    cycle, giving a fuller bill estimate. For Demand-tariff plans with a
+    resolvable seasonal demand rate, the projected demand charge is added
+    as a third term (see coordinator.get_estimated_current_period_charges).
+    Unavailable when the plan has no daily service-charge rate, or when the
+    underlying net-cost projection itself is unavailable. All components
+    are GST-inclusive.
     """
 
     def __init__(
@@ -1152,7 +1154,7 @@ class RedEnergyProjectedChargesSensor(RedEnergyBaseSensor):
         if result is None:
             return None
 
-        return {
+        attributes = {
             "estimated_net_cost": round(result["estimated_net_cost"], 2),
             "estimated_service_charge": round(result["estimated_service_charge"], 2),
             "days_in_cycle": result["days_in_cycle"],
@@ -1160,6 +1162,12 @@ class RedEnergyProjectedChargesSensor(RedEnergyBaseSensor):
             "estimation_method": "linear",
             "gst_basis": "inclusive",
         }
+
+        if "estimated_demand_charge" in result:
+            attributes["estimated_demand_charge"] = round(result["estimated_demand_charge"], 2)
+            attributes["demand_rate_incl_gst"] = result["demand_rate_incl_gst"]
+
+        return attributes
 
 
 class RedEnergyAddressSensor(RedEnergyBaseSensor):

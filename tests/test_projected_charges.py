@@ -528,6 +528,57 @@ class TestProjectedChargesSensor:
         assert sensor.native_value is None
         assert sensor.extra_state_attributes is None
 
+    def test_attributes_include_demand_charge_for_demand_plan(self, coordinator):
+        """On a Demand plan with a resolvable seasonal rate and max demand
+        data, the projected demand charge and its rate are surfaced as
+        extra_state_attributes alongside the existing keys."""
+        _set_coordinator_data(
+            coordinator,
+            usage_entries=[_entry("2026-01-18", 35.0, max_demand_kw=4.608)],
+            last_bill_date="2026-01-01",
+            next_bill_date="2026-01-31",
+            rates=[SUPPLY_CHARGE_RATE, DEMAND_CHARGE_RATE, DEMAND_CHARGE_RATE_NON_SUMMER, DEMAND_CHARGE_RATE_TEMPERATE],
+            plan_name="Residential Demand Solar",
+        )
+        sensor = RedEnergyProjectedChargesSensor(
+            coordinator, _config_entry(), "2000002", SERVICE_TYPE_ELECTRICITY
+        )
+
+        with patch("custom_components.red_energy.coordinator.datetime") as mock_dt:
+            mock_dt.now.return_value = datetime(2026, 1, 18)
+            mock_dt.strptime = datetime.strptime
+            attrs = sensor.extra_state_attributes
+
+        expected_demand_charge = 4.608 * 0.253 * 29
+        assert attrs["estimated_demand_charge"] == pytest.approx(round(expected_demand_charge, 2))
+        assert attrs["demand_rate_incl_gst"] == pytest.approx(0.253)
+        # existing keys must still be present and unaffected
+        assert attrs["days_in_cycle"] == 29
+        assert attrs["gst_basis"] == "inclusive"
+
+    def test_attributes_omit_demand_charge_for_non_demand_plan(self, coordinator):
+        """Non-Demand-plan accounts (e.g. Time of Use) must not expose the
+        demand-charge attributes at all - the keys must be absent, not
+        present with a None value."""
+        _set_coordinator_data(
+            coordinator,
+            usage_entries=[_entry("2025-08-01", 35.0)],
+            last_bill_date="2025-07-25",
+            next_bill_date="2025-08-22",
+            rates=[SUPPLY_CHARGE_RATE],
+            plan_name="Residential Time of Use",
+        )
+        sensor = RedEnergyProjectedChargesSensor(
+            coordinator, _config_entry(), "2000002", SERVICE_TYPE_ELECTRICITY
+        )
+
+        attrs = sensor.extra_state_attributes
+        assert "estimated_demand_charge" not in attrs
+        assert "demand_rate_incl_gst" not in attrs
+        # existing keys unaffected
+        assert attrs["days_in_cycle"] == 27
+        assert attrs["gst_basis"] == "inclusive"
+
 
 def _mock_coordinator_for_setup(service_type=SERVICE_TYPE_ELECTRICITY, property_id="2000002"):
     coordinator = MagicMock()

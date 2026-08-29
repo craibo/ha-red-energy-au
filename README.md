@@ -122,7 +122,7 @@ Since electricity-only concepts (solar, export, time-of-use tariffs, demand, car
 One diagnostic sensor per rate on the account's actual plan (e.g. Peak, Off-Peak, Shoulder, Supply, Demand, or tiered gas usage steps), named `Rate {rate description}`. The state is the rate in dollars including GST; unit, excl-GST rate, and step description are exposed as attributes. The number of these sensors depends entirely on the plan's tariff structure.
 
 ### Advanced Sensors (Optional)
-Enabled via the "Advanced Sensors" integration option. **12 sensors for electricity accounts, 3 for gas accounts** (gas accounts only get Daily/Monthly Average and Peak Usage, which apply to total usage regardless of service):
+Enabled via the "Advanced Sensors" integration option. **13 sensors for electricity accounts, 3 for gas accounts** (gas accounts only get Daily/Monthly Average and Peak Usage, which apply to total usage regardless of service):
 
 **Statistical Analysis:**
 - Daily Average - Average daily usage
@@ -130,7 +130,7 @@ Enabled via the "Advanced Sensors" integration option. **12 sensors for electric
 - Peak Usage - Highest single-day usage with date
 - Efficiency *(electricity only)* - Usage consistency efficiency rating (0-100%)
 - Projected Net Cost - Estimated net energy cost (import minus export credit) for the full billing cycle, extrapolated from usage to date. GST-inclusive; not Red Energy's own figure
-- Projected Charges - Projected Net Cost plus the daily service/supply charge projected across the full cycle, for a fuller bill estimate. GST-inclusive; not Red Energy's own figure
+- Projected Charges - Projected Net Cost plus the daily service/supply charge projected across the full cycle, for a fuller bill estimate; for Demand-tariff plans this also includes the projected demand charge. GST-inclusive; not Red Energy's own figure
 
 **Time-of-Use Breakdown** *(electricity only - gas has no ToU tariff)*:
 - Peak/Offpeak/Shoulder Import Usage
@@ -138,6 +138,7 @@ Enabled via the "Advanced Sensors" integration option. **12 sensors for electric
 
 **Demand & Environmental** *(electricity only)*:
 - Max Demand - Maximum demand (kW)
+- Current Period Demand Charge - Accumulated demand charge from the start of the current billing period to the latest completed usage day, for Demand-tariff plans. GST-inclusive; not Red Energy's own figure
 - Carbon Emission Tonne - Carbon emissions (tonnes CO₂e)
 
 ### Diagnostics Button
