@@ -135,7 +135,7 @@ The `/usage/interval` endpoint returns an **array of daily summaries**, each wit
 
 Two tiers of sensors per service (electricity or gas) per property:
 
-- **Core sensors** (22 per service, always created): daily/total import/export usage and cost, account metadata, billing dates
+- **Core sensors** (23 per service, always created): daily/total import/export usage and cost, account metadata, billing dates, plan name
 - **Advanced sensors** (12 for electricity, 3 for gas, optional toggle): time-of-use breakdown (peak/offpeak/shoulder), peak demand, carbon emissions
 
 Unique IDs follow the pattern: `{domain}_{entry_id}_{property_id}_{service_type}_{sensor_type}`
