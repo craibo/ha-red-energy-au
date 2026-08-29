@@ -1,7 +1,7 @@
 """Red Energy sensor platform."""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 import logging
 from typing import TYPE_CHECKING, Any
 
@@ -324,7 +324,12 @@ class RedEnergyBaseSensor(CoordinatorEntity, SensorEntity):
         return f"{period_days} days (since last bill)"
 
     def _get_last_bill_reset(self) -> datetime | None:
-        """Return the last bill date as a UTC datetime for last_reset."""
+        """Return the current billing period start as a UTC datetime for last_reset.
+
+        lastBillDate is the last day of the *previous* billing period, not
+        the first day of the current one - matches _get_billing_period_start
+        in coordinator.py.
+        """
         metadata = self.coordinator.get_service_metadata(self._property_id, self._service_type)
         if not metadata:
             return None
@@ -332,7 +337,8 @@ class RedEnergyBaseSensor(CoordinatorEntity, SensorEntity):
         if not last_bill:
             return None
         try:
-            return dt_util.as_utc(datetime.strptime(last_bill, "%Y-%m-%d"))
+            billing_period_start = datetime.strptime(last_bill, "%Y-%m-%d") + timedelta(days=1)
+            return dt_util.as_utc(billing_period_start)
         except (ValueError, TypeError):
             return None
 
