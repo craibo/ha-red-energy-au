@@ -668,6 +668,75 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
             None,
         )
 
+    def _is_demand_plan(self, property_id: str, service_type: str) -> bool:
+        """Return whether the service's plan is a Demand-tariff plan.
+
+        Detected via planName containing "demand" case-insensitively - Red
+        Energy's own site draws this exact distinction ("Demand Tariffs"
+        vs. "Residential Time of Use tariff"). A missing/None planName
+        returns False, never True - unknown must never be treated as
+        "yes, bill a demand charge."
+        """
+        metadata = self.get_service_metadata(property_id, service_type) or {}
+        plan_name = metadata.get("planName")
+        if not isinstance(plan_name, str):
+            return False
+        return "demand" in plan_name.lower()
+
+    # Season windows for demand-rate selection, hardcoded per Red Energy's
+    # published seasonal demand tariff structure (not derivable from any
+    # API field - the API returns all seasonal rates simultaneously with
+    # no "current season" indicator).
+    #   Summer: 1 Nov - 31 Mar (wraps the year boundary)
+    #   Non-Summer: 1 Jun - 31 Aug
+    #   Temperate: 1 Apr - 31 May, and 1 Sep - 31 Oct
+    _DEMAND_SEASON_LABELS: dict[str, frozenset[str]] = {
+        "SUMMER": frozenset({"demand summer"}),
+        "NON_SUMMER": frozenset({"demand non summer"}),
+        "TEMPERATE": frozenset({"demand temperate peak", "demand temperate"}),
+    }
+
+    @staticmethod
+    def _demand_season_for_date(on_date: date) -> str:
+        """Return which seasonal demand season label applies to on_date."""
+        month = on_date.month
+        if month in (11, 12, 1, 2, 3):
+            return "SUMMER"
+        if month in (6, 7, 8):
+            return "NON_SUMMER"
+        # Remaining months: 4, 5, 9, 10 are all TEMPERATE in full
+        return "TEMPERATE"
+
+    def _get_demand_rate(
+        self, property_id: str, service_type: str, on_date: date | None = None
+    ) -> dict[str, Any] | None:
+        """Find the seasonal demand-charge rate applicable on on_date.
+
+        Matches by normalized rate_desc against the season's label set
+        (see _DEMAND_SEASON_LABELS), mirroring cl2_inference.resolve_rate_roles's
+        matching style. Returns None - never guesses - when zero or more
+        than one rate matches the resolved season's label set.
+        """
+        if on_date is None:
+            on_date = datetime.now().date()
+
+        season = self._demand_season_for_date(on_date)
+        labels = self._DEMAND_SEASON_LABELS[season]
+
+        rates = self.get_service_rates(property_id, service_type)
+        matches = []
+        for rate in rates:
+            rate_desc = rate.get("rate_desc")
+            if not isinstance(rate_desc, str):
+                continue
+            normalized = " ".join(rate_desc.strip().lower().split())
+            if normalized in labels:
+                matches.append(rate)
+
+        if len(matches) == 1:
+            return matches[0]
+        return None
+
     def get_billing_period_service_charge(self, property_id: str, service_type: str) -> float | None:
         """Get the accumulated service charge from the billing period start
         through the latest completed usageDate, inclusive.

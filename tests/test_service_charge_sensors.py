@@ -1,7 +1,7 @@
 """Tests for the Billing Period Service Charge sensor (issue #71)."""
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -48,6 +48,30 @@ DEMAND_CHARGE_RATE = {
     "unit_step_desc": None,
 }
 
+DEMAND_CHARGE_RATE_NON_SUMMER = {
+    "rate_code": "80008279798FC",
+    "rate_desc": "Demand Non Summer",
+    "rate_incl_gst_dollars": 0.253,
+    "type": "F",
+    "rate_excl_gst_cents": 23,
+    "discounted_rate_excl_gst_in_cents": 23,
+    "discounted_rate_incl_gst_in_cents": 25.3,
+    "unit": "KW/day",
+    "unit_step_desc": None,
+}
+
+DEMAND_CHARGE_RATE_TEMPERATE = {
+    "rate_code": "80008279798FD",
+    "rate_desc": "Demand Temperate Peak",
+    "rate_incl_gst_dollars": 0.154,
+    "type": "F",
+    "rate_excl_gst_cents": 14,
+    "discounted_rate_excl_gst_in_cents": 14,
+    "discounted_rate_incl_gst_in_cents": 15.4,
+    "unit": "KW/day",
+    "unit_step_desc": None,
+}
+
 SECOND_SUPPLY_CHARGE_RATE = {
     "rate_code": "80008279798F2",
     "rate_desc": "Second Service To Property",
@@ -86,7 +110,7 @@ def coordinator(mock_hass):
     return coord
 
 
-def _set_coordinator_data(coordinator, rates, usage_entries=None, last_bill_date=None):
+def _set_coordinator_data(coordinator, rates, usage_entries=None, last_bill_date=None, plan_name=None):
     """Build coordinator.data with both the property.services (metadata/rates)
     and top-level services (usage) shapes get_service_metadata/get_service_usage expect."""
     service_metadata = {
@@ -97,6 +121,8 @@ def _set_coordinator_data(coordinator, rates, usage_entries=None, last_bill_date
     }
     if last_bill_date is not None:
         service_metadata["lastBillDate"] = last_bill_date
+    if plan_name is not None:
+        service_metadata["planName"] = plan_name
 
     services_usage = {}
     if usage_entries is not None:
@@ -173,6 +199,122 @@ class TestFindServiceChargeRate:
         rate = {**SUPPLY_CHARGE_RATE, "unit": None}
         _set_coordinator_data(coordinator, [rate])
         assert coordinator._find_service_charge_rate("2000002", SERVICE_TYPE_ELECTRICITY) is None
+
+
+class TestIsDemandPlan:
+    def test_true_when_plan_name_contains_demand(self, coordinator):
+        _set_coordinator_data(coordinator, [], plan_name="Residential Demand Solar")
+        assert coordinator._is_demand_plan("2000002", SERVICE_TYPE_ELECTRICITY) is True
+
+    def test_false_when_plan_name_has_no_demand(self, coordinator):
+        _set_coordinator_data(coordinator, [], plan_name="Residential Time of Use")
+        assert coordinator._is_demand_plan("2000002", SERVICE_TYPE_ELECTRICITY) is False
+
+    def test_false_when_plan_name_missing(self, coordinator):
+        """A missing/None planName must return False, never True - unknown
+        must never be treated as "yes, add a demand charge.\""""
+        _set_coordinator_data(coordinator, [])
+        assert coordinator._is_demand_plan("2000002", SERVICE_TYPE_ELECTRICITY) is False
+
+    def test_case_insensitive(self, coordinator):
+        _set_coordinator_data(coordinator, [], plan_name="RESIDENTIAL DEMAND SOLAR")
+        assert coordinator._is_demand_plan("2000002", SERVICE_TYPE_ELECTRICITY) is True
+
+
+class TestGetDemandRate:
+    def test_selects_summer_in_january(self, coordinator):
+        _set_coordinator_data(
+            coordinator,
+            [DEMAND_CHARGE_RATE, DEMAND_CHARGE_RATE_NON_SUMMER, DEMAND_CHARGE_RATE_TEMPERATE],
+        )
+        rate = coordinator._get_demand_rate("2000002", SERVICE_TYPE_ELECTRICITY, on_date=date(2026, 1, 15))
+        assert rate["rate_desc"] == "Demand Summer"
+
+    def test_selects_summer_in_december(self, coordinator):
+        _set_coordinator_data(
+            coordinator,
+            [DEMAND_CHARGE_RATE, DEMAND_CHARGE_RATE_NON_SUMMER, DEMAND_CHARGE_RATE_TEMPERATE],
+        )
+        rate = coordinator._get_demand_rate("2000002", SERVICE_TYPE_ELECTRICITY, on_date=date(2026, 12, 1))
+        assert rate["rate_desc"] == "Demand Summer"
+
+    def test_boundary_nov_1_is_summer(self, coordinator):
+        """Summer runs 1 Nov - 31 Mar, wrapping the year boundary - Nov 1
+        is the first day of Summer, not still Temperate."""
+        _set_coordinator_data(
+            coordinator,
+            [DEMAND_CHARGE_RATE, DEMAND_CHARGE_RATE_NON_SUMMER, DEMAND_CHARGE_RATE_TEMPERATE],
+        )
+        rate = coordinator._get_demand_rate("2000002", SERVICE_TYPE_ELECTRICITY, on_date=date(2026, 11, 1))
+        assert rate["rate_desc"] == "Demand Summer"
+
+    def test_boundary_oct_31_is_temperate(self, coordinator):
+        """The day immediately before the Nov 1 Summer boundary must still
+        resolve to Temperate, not Summer."""
+        _set_coordinator_data(
+            coordinator,
+            [DEMAND_CHARGE_RATE, DEMAND_CHARGE_RATE_NON_SUMMER, DEMAND_CHARGE_RATE_TEMPERATE],
+        )
+        rate = coordinator._get_demand_rate("2000002", SERVICE_TYPE_ELECTRICITY, on_date=date(2026, 10, 31))
+        assert rate["rate_desc"] == "Demand Temperate Peak"
+
+    def test_selects_non_summer_in_july(self, coordinator):
+        _set_coordinator_data(
+            coordinator,
+            [DEMAND_CHARGE_RATE, DEMAND_CHARGE_RATE_NON_SUMMER, DEMAND_CHARGE_RATE_TEMPERATE],
+        )
+        rate = coordinator._get_demand_rate("2000002", SERVICE_TYPE_ELECTRICITY, on_date=date(2026, 7, 15))
+        assert rate["rate_desc"] == "Demand Non Summer"
+
+    def test_selects_temperate_in_april(self, coordinator):
+        _set_coordinator_data(
+            coordinator,
+            [DEMAND_CHARGE_RATE, DEMAND_CHARGE_RATE_NON_SUMMER, DEMAND_CHARGE_RATE_TEMPERATE],
+        )
+        rate = coordinator._get_demand_rate("2000002", SERVICE_TYPE_ELECTRICITY, on_date=date(2026, 4, 15))
+        assert rate["rate_desc"] == "Demand Temperate Peak"
+
+    def test_selects_temperate_in_september(self, coordinator):
+        _set_coordinator_data(
+            coordinator,
+            [DEMAND_CHARGE_RATE, DEMAND_CHARGE_RATE_NON_SUMMER, DEMAND_CHARGE_RATE_TEMPERATE],
+        )
+        rate = coordinator._get_demand_rate("2000002", SERVICE_TYPE_ELECTRICITY, on_date=date(2026, 9, 30))
+        assert rate["rate_desc"] == "Demand Temperate Peak"
+
+    def test_returns_none_when_no_demand_rates(self, coordinator):
+        _set_coordinator_data(coordinator, [ENERGY_RATE, SUPPLY_CHARGE_RATE])
+        rate = coordinator._get_demand_rate("2000002", SERVICE_TYPE_ELECTRICITY, on_date=date(2026, 1, 15))
+        assert rate is None
+
+    def test_returns_none_when_season_label_has_zero_matches(self, coordinator):
+        """Plan only has a Summer demand rate; resolving for a Non-Summer
+        date must not fall back to guessing the Summer rate."""
+        _set_coordinator_data(coordinator, [DEMAND_CHARGE_RATE])
+        rate = coordinator._get_demand_rate("2000002", SERVICE_TYPE_ELECTRICITY, on_date=date(2026, 7, 15))
+        assert rate is None
+
+    def test_returns_none_when_season_label_ambiguous(self, coordinator):
+        """Two rates share the same normalized rate_desc for the resolved
+        season - must never guess which one applies."""
+        duplicate_summer_rate = {**DEMAND_CHARGE_RATE, "rate_code": "80008279798FE", "rate_incl_gst_dollars": 0.30}
+        _set_coordinator_data(coordinator, [DEMAND_CHARGE_RATE, duplicate_summer_rate])
+        rate = coordinator._get_demand_rate("2000002", SERVICE_TYPE_ELECTRICITY, on_date=date(2026, 1, 15))
+        assert rate is None
+
+    def test_defaults_to_today_when_on_date_omitted(self, coordinator):
+        """on_date defaults to datetime.now().date() - verify by using
+        today's actual season rather than hardcoding an assumption about
+        the current date."""
+        _set_coordinator_data(
+            coordinator,
+            [DEMAND_CHARGE_RATE, DEMAND_CHARGE_RATE_NON_SUMMER, DEMAND_CHARGE_RATE_TEMPERATE],
+        )
+        expected = coordinator._get_demand_rate(
+            "2000002", SERVICE_TYPE_ELECTRICITY, on_date=datetime.now().date()
+        )
+        actual = coordinator._get_demand_rate("2000002", SERVICE_TYPE_ELECTRICITY)
+        assert actual == expected
 
 
 class TestGetBillingPeriodServiceCharge:
