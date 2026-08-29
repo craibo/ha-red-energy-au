@@ -83,6 +83,25 @@ async def test_device_model_reflects_accounts_own_service_not_global_toggle():
 
 
 @pytest.mark.asyncio
+async def test_sw_version_explicitly_cleared_not_omitted():
+    """sw_version must be explicitly None, not just absent from kwargs -
+    async_get_or_create treats an omitted field as "leave unchanged", which
+    would leave a stale hardcoded value on devices created by older
+    versions of the integration."""
+    manager = _make_device_manager()
+
+    await manager._create_property_device(
+        "2000002",
+        _property_info("1 Example Street, Testville", SERVICE_TYPE_ELECTRICITY),
+        [SERVICE_TYPE_ELECTRICITY],
+    )
+
+    _, kwargs = manager._device_registry.async_get_or_create.call_args
+    assert "sw_version" in kwargs
+    assert kwargs["sw_version"] is None
+
+
+@pytest.mark.asyncio
 async def test_device_name_shows_address_service_and_account_number():
     """Device name must read '{address} - {service} ({accountNumber})', using
     extraShortForm for the address rather than the internal composite ID."""

@@ -72,7 +72,7 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
             update_interval=timedelta(seconds=DEFAULT_SCAN_INTERVAL),
         )
 
-    def _get_billing_period_start(self, service: dict[str, Any]) -> datetime:
+    def _get_billing_period_start(self, service: dict[str, Any], end_date: datetime | None = None) -> datetime:
         """Resolve the current billing period's start date.
 
         lastBillDate is the final day of the *previous* billing period, so
@@ -80,8 +80,15 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
         day's usage/cost is double-counted across both periods. Falls back
         to a 30-day window when lastBillDate is missing, invalid, in the
         future, or implausibly old (>90 days).
+
+        end_date defaults to now, but callers that already have their own
+        "now" snapshot (e.g. _get_usage_period_dates) should pass it in -
+        otherwise a second, independently-sampled datetime.now() here can
+        land fractionally later than the caller's, making the two disagree
+        by a few microseconds on where exactly 30 days back falls.
         """
-        end_date = datetime.now()
+        if end_date is None:
+            end_date = datetime.now()
         start_date = None
 
         last_bill_date = service.get("lastBillDate")
@@ -127,7 +134,7 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
         handling of a missing lastBillDate.
         """
         end_date = datetime.now()
-        start_date = self._get_billing_period_start(service)
+        start_date = self._get_billing_period_start(service, end_date=end_date)
 
         next_bill_date_str = service.get("nextBillDate")
         if next_bill_date_str:
