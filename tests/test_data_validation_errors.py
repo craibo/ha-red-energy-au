@@ -466,6 +466,22 @@ def test_validate_single_service_extracts_promotion_desc():
     assert result["promotionDesc"] == "Qantas Red Saver, 2 QFF Points per $1"
 
 
+def test_validate_single_service_extracts_plan_name():
+    """currentPlan.planName must surface as a flat field."""
+    raw_service = {
+        "utility": "E",
+        "consumerNumber": "3000003",
+        "status": "ON",
+        "currentPlan": {
+            "planName": "Residential Demand Solar",
+            "promotionDesc": "Qantas Red Saver, 2 QFF Points per $1",
+            "rates": [],
+        },
+    }
+    result = validate_single_service(raw_service)
+    assert result["planName"] == "Residential Demand Solar"
+
+
 def test_validate_single_service_missing_nested_fields_omitted():
     """Missing paymentTypeDetail/currentPlan must not add empty keys."""
     raw_service = {
@@ -476,6 +492,7 @@ def test_validate_single_service_missing_nested_fields_omitted():
     result = validate_single_service(raw_service)
     assert "paymentTypeDescription" not in result
     assert "promotionDesc" not in result
+    assert "planName" not in result
 
 
 def test_validate_single_service_extracts_rates():

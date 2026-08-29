@@ -306,6 +306,8 @@ def validate_single_service(data: dict[str, Any]) -> dict[str, Any]:
     current_plan = data.get("currentPlan")
     if isinstance(current_plan, dict) and current_plan.get("promotionDesc"):
         validated_service["promotionDesc"] = current_plan["promotionDesc"]
+    if isinstance(current_plan, dict) and current_plan.get("planName"):
+        validated_service["planName"] = current_plan["planName"]
 
     validated_service["rates"] = validate_rates(
         current_plan.get("rates") if isinstance(current_plan, dict) else None
