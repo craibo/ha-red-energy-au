@@ -27,7 +27,7 @@ A comprehensive Home Assistant custom integration for Red Energy (Australian ene
 
 ### Core Sensors (Per Account/Device)
 - Daily and total usage/cost tracking (kWh for electricity, MJ for gas) since last bill
-- Account metadata: NMI, meter type, energy plan, distributor, payment type, address (with lat/long for mapping), balance, arrears, bill dates
+- Account metadata: NMI, meter type, product name, plan name, distributor, payment type, address (with lat/long for mapping), balance, arrears, bill dates
 - Electricity-only concepts (solar, export usage/credit) are only created on electricity accounts, never on gas
 
 ### Advanced Analytics (Optional)
@@ -35,6 +35,8 @@ A comprehensive Home Assistant custom integration for Red Energy (Australian ene
 - Peak usage detection with date attribution  
 - Efficiency ratings (0-100%) based on usage consistency - electricity only
 - Time-of-use breakdown, max demand, and carbon emissions - electricity only
+- Projected net cost and projected charges (including demand charge for Demand-tariff plans) for the current billing cycle
+- Accrued service charge and demand charge (Demand-tariff plans) since the start of the current billing period
 
 ### Billing Period Alignment
 - Automatic alignment with Red Energy billing cycles
