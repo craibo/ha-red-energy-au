@@ -289,7 +289,7 @@ class TestBillingPeriodServiceChargeSensor:
         assert sensor.native_value is None
         assert sensor.extra_state_attributes is None
 
-    def test_last_reset_matches_last_bill_date(self, coordinator):
+    def test_last_reset_matches_billing_period_start(self, coordinator):
         _set_coordinator_data(
             coordinator,
             [SUPPLY_CHARGE_RATE],
@@ -299,10 +299,10 @@ class TestBillingPeriodServiceChargeSensor:
         sensor = RedEnergyBillingPeriodServiceChargeSensor(
             coordinator, _config_entry(), "2000002", SERVICE_TYPE_ELECTRICITY
         )
-        # last_reset must match the sibling billing-period TOTAL sensors
-        # (_get_last_bill_reset -> raw lastBillDate), not the +1-day
-        # billing_period_start used for the day-count/attribute math.
-        assert sensor.last_reset.date().isoformat() == "2025-07-25"
+        # last_reset must match billing_period_start (lastBillDate + 1 day),
+        # since lastBillDate is the last day of the *previous* period, not
+        # the first day of the current one.
+        assert sensor.last_reset.date().isoformat() == "2025-07-26"
 
     def test_last_reset_is_none_when_last_bill_date_missing(self, coordinator):
         _set_coordinator_data(

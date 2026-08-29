@@ -392,6 +392,16 @@ class TestImportExportSensors:
         assert sensor.state_class == SensorStateClass.TOTAL
         assert sensor._attr_name == "Current Period Import Usage"
 
+    def test_total_import_usage_sensor_last_reset_is_day_after_last_bill_date(self):
+        """Issue #87: lastBillDate is the previous period's last day, so
+        last_reset must be lastBillDate + 1 day to match billing_period_start."""
+        coordinator = create_mock_coordinator()
+        config_entry = create_mock_config_entry()
+
+        sensor = RedEnergyTotalImportUsageSensor(coordinator, config_entry, "prop-001", SERVICE_TYPE_ELECTRICITY)
+
+        assert sensor.last_reset.date().isoformat() == "2024-01-02"
+
     def test_total_export_usage_sensor(self):
         """Test current period export usage sensor."""
         coordinator = create_mock_coordinator()
