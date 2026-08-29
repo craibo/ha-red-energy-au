@@ -50,6 +50,7 @@ from .const import (
     SENSOR_TYPE_NMI,
     SENSOR_TYPE_PAYMENT_TYPE,
     SENSOR_TYPE_PEAK_USAGE,
+    SENSOR_TYPE_PLAN_NAME,
     SENSOR_TYPE_PRODUCT_NAME,
     SENSOR_TYPE_PROJECTED_CHARGES,
     SENSOR_TYPE_PROJECTED_NET_COST,
@@ -114,6 +115,7 @@ async def async_setup_entry(
                 RedEnergyMeterTypeSensor(coordinator, config_entry, account_id, service_type),
                 RedEnergySolarSensor(coordinator, config_entry, account_id, service_type),
                 RedEnergyProductNameSensor(coordinator, config_entry, account_id, service_type),
+                RedEnergyPlanNameSensor(coordinator, config_entry, account_id, service_type),
                 RedEnergyDistributorSensor(coordinator, config_entry, account_id, service_type),
                 RedEnergyBalanceSensor(coordinator, config_entry, account_id, service_type),
                 RedEnergyArrearsSensor(coordinator, config_entry, account_id, service_type),
@@ -812,6 +814,34 @@ class RedEnergyPaymentTypeSensor(RedEnergyBaseSensor):
             return None
 
         return metadata.get("paymentTypeDescription")
+
+
+class RedEnergyPlanNameSensor(RedEnergyBaseSensor):
+    """Red Energy plan name sensor (currentPlan.planName)."""
+
+    _requires_usage_data = False
+
+    def __init__(
+        self,
+        coordinator: RedEnergyDataCoordinator,
+        config_entry: ConfigEntry,
+        property_id: str,
+        service_type: str,
+    ) -> None:
+        """Initialize the plan name sensor."""
+        super().__init__(coordinator, config_entry, property_id, service_type, SENSOR_TYPE_PLAN_NAME)
+
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+        self._attr_icon = "mdi:file-document-outline"
+
+    @property
+    def native_value(self) -> str | None:
+        """Return the plan name."""
+        metadata = self.coordinator.get_service_metadata(self._property_id, self._service_type)
+        if not metadata:
+            return None
+
+        return metadata.get("planName")
 
 
 class RedEnergyRateSensor(RedEnergyBaseSensor):
