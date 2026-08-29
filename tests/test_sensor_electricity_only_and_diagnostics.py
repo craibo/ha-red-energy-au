@@ -8,6 +8,7 @@ import pytest
 from custom_components.red_energy.const import DOMAIN, SERVICE_TYPE_ELECTRICITY, SERVICE_TYPE_GAS
 from custom_components.red_energy.sensor import (
     RedEnergyAddressSensor,
+    RedEnergyChargeClassSensor,
     RedEnergyPaymentTypeSensor,
     RedEnergyPlanNameSensor,
     RedEnergyProductNameSensor,
@@ -165,16 +166,27 @@ def test_payment_type_sensor_returns_description():
     assert sensor.native_value == "DirectDebit Bank"
 
 
-def test_energy_plan_sensor_exposes_promotion_desc_attribute():
+def test_product_name_sensor_exposes_promotion_desc_attribute():
     coordinator = _coordinator(GAS_SERVICE_METADATA, SERVICE_TYPE_GAS)
     config_entry = MagicMock()
     config_entry.entry_id = "entry1"
 
     sensor = RedEnergyProductNameSensor(coordinator, config_entry, "2000002", SERVICE_TYPE_GAS)
 
+    assert sensor._attr_name == "Product Name"
     assert sensor.extra_state_attributes == {
         "promotion_description": "Qantas Red Saver, 2 QFF Points per $1"
     }
+
+
+def test_charge_class_sensor_name():
+    coordinator = _coordinator(GAS_SERVICE_METADATA, SERVICE_TYPE_GAS)
+    config_entry = MagicMock()
+    config_entry.entry_id = "entry1"
+
+    sensor = RedEnergyChargeClassSensor(coordinator, config_entry, "2000002", SERVICE_TYPE_GAS)
+
+    assert sensor._attr_name == "Charge Class"
 
 
 def test_plan_name_sensor_returns_plan_name():

@@ -102,12 +102,13 @@ Since electricity-only concepts (solar, export, time-of-use tariffs, demand, car
 - NMI - National Meter Identifier
 - Meter Type - Meter type (e.g. INTERVAL, BASIC)
 - Solar *(electricity only)* - Solar system indicator
-- Energy Plan - Current energy plan name (exposes the plan's `promotion_description` as an attribute)
+- Product Name - Promotional product name (exposes the plan's `promotion_description` as an attribute)
 - Distributor - Energy distributor / lines company
 - Payment Type - Payment method description (e.g. Direct Debit Bank)
 - Address - Formatted property address (exposes `latitude`/`longitude` attributes for mapping)
 - Jurisdiction - Jurisdiction (state)
-- Energy Plan Type - Charge classification (Residential/Small Business)
+- Charge Class - Charge classification (Residential/Small Business)
+- Plan Name - Named tariff plan (e.g. Residential Demand Solar)
 - Status - Service status
 
 **Billing Information:**

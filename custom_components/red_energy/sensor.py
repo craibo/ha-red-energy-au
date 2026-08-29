@@ -731,7 +731,7 @@ class RedEnergyProductNameSensor(RedEnergyBaseSensor):
         property_id: str,
         service_type: str,
     ) -> None:
-        """Initialize the energy plan sensor."""
+        """Initialize the product name sensor."""
         super().__init__(coordinator, config_entry, property_id, service_type, SENSOR_TYPE_PRODUCT_NAME)
 
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
