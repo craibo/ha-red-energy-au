@@ -339,7 +339,6 @@ def test_device_management_features():
     
     # Check for device model generation
     assert "_get_device_model" in content
-    assert "_get_software_version" in content
     
     # Check for diagnostics support
     assert "async_get_device_diagnostics" in content

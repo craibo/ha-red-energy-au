@@ -77,7 +77,11 @@ class RedEnergyDeviceManager:
             "name": device_name,
             "manufacturer": MANUFACTURER,
             "model": self._get_device_model(account_services),
-            "sw_version": self._get_software_version(),
+            # Explicitly None (not omitted) to clear the stale hardcoded
+            # "1.4.0" placeholder on existing devices - async_get_or_create
+            # treats an omitted field as UNDEFINED (leave unchanged), not
+            # None (clear it).
+            "sw_version": None,
             "configuration_url": "https://www.redenergy.com.au/login",
         }
         
@@ -121,11 +125,6 @@ class RedEnergyDeviceManager:
             return "Gas Monitor"
         else:
             return "Energy Monitor"
-
-    def _get_software_version(self) -> str:
-        """Get the integration software version."""
-        # This could be enhanced to read from manifest.json
-        return "1.4.0"
 
     async def _update_device_attributes(
         self, 
