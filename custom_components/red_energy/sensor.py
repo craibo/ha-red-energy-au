@@ -165,7 +165,6 @@ async def async_setup_entry(
                     RedEnergyShoulderExportUsageSensor(coordinator, config_entry, account_id, service_type),
                     # NEW: Demand and environmental (ADVANCED)
                     RedEnergyMaxDemandSensor(coordinator, config_entry, account_id, service_type),
-                    RedEnergyMaxDemandTimeSensor(coordinator, config_entry, account_id, service_type),
                     RedEnergyCarbonEmissionSensor(coordinator, config_entry, account_id, service_type),
                     # NEW: Service/supply charge sensor
                     RedEnergyBillingPeriodServiceChargeSensor(coordinator, config_entry, account_id, service_type),
@@ -1128,7 +1127,9 @@ class RedEnergyBalanceSensor(RedEnergyBaseSensor):
     ) -> None:
         """Initialize the balance sensor."""
         super().__init__(coordinator, config_entry, property_id, service_type, SENSOR_TYPE_BALANCE)
-        
+        # unique_id stays on "balance" for backward compatibility.
+        self._attr_name = "Account Balance"
+
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
         self._attr_device_class = SensorDeviceClass.MONETARY
         self._attr_native_unit_of_measurement = "AUD"
@@ -2083,41 +2084,6 @@ class RedEnergyMaxDemandSensor(RedEnergyBaseSensor):
             "max_demand_date": data.get("max_demand_date"),
             "period": self._get_period_description()
         }
-
-
-class RedEnergyMaxDemandTimeSensor(RedEnergyBaseSensor):
-    """Red Energy maximum demand timestamp sensor."""
-
-    _electricity_only = True
-
-    def __init__(
-        self,
-        coordinator: RedEnergyDataCoordinator,
-        config_entry: ConfigEntry,
-        property_id: str,
-        service_type: str,
-    ) -> None:
-        """Initialize the maximum demand timestamp sensor."""
-        super().__init__(coordinator, config_entry, property_id, service_type, "max_demand_interval_start")
-
-        self._attr_device_class = SensorDeviceClass.TIMESTAMP
-        self._attr_icon = "mdi:clock-alert"
-        # Rarely useful on its own (the value it timestamps - max demand -
-        # is the primary sensor) and often has no value even when usage data
-        # exists, so it's disabled by default rather than always enabled.
-        self._attr_entity_registry_enabled_default = False
-
-    @property
-    def native_value(self) -> datetime | None:
-        """Return the maximum demand timestamp."""
-        data = self.coordinator.get_max_demand_data(self._property_id, self._service_type)
-        if not data or not data.get("max_demand_time"):
-            return None
-        
-        try:
-            return datetime.fromisoformat(data["max_demand_time"])
-        except (ValueError, TypeError):
-            return None
 
 
 class RedEnergyCarbonEmissionSensor(RedEnergyBaseSensor):
