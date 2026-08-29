@@ -34,7 +34,7 @@ A comprehensive Home Assistant custom integration for Red Energy (Australian ene
 
 ### 🔧 **Configuration & Management**
 - **UI-First Setup**: Complete configuration through Home Assistant UI
-- **Flexible Polling**: Configurable update intervals (15min to 4hours)
+- **Flexible Polling**: Configurable update intervals (15min, 30min (default), 1hour, 2hours, 4hours)
 - **Service Calls**: Manual refresh, credential updates, and data export
 - **Energy Dashboard Integration**: Native Home Assistant Energy dashboard support
 
