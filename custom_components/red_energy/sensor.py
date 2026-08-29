@@ -720,7 +720,7 @@ class RedEnergySolarSensor(RedEnergyBaseSensor):
 
 
 class RedEnergyProductNameSensor(RedEnergyBaseSensor):
-    """Red Energy energy plan sensor."""
+    """Red Energy product name sensor."""
 
     _requires_usage_data = False
 
@@ -733,9 +733,10 @@ class RedEnergyProductNameSensor(RedEnergyBaseSensor):
     ) -> None:
         """Initialize the energy plan sensor."""
         super().__init__(coordinator, config_entry, property_id, service_type, SENSOR_TYPE_PRODUCT_NAME)
-        
+
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
         self._attr_icon = "mdi:package-variant"
+        self._attr_name = "Product Name"
 
     @property
     def native_value(self) -> str | None:
@@ -1345,7 +1346,7 @@ class RedEnergyJurisdictionSensor(RedEnergyBaseSensor):
 
 
 class RedEnergyChargeClassSensor(RedEnergyBaseSensor):
-    """Red Energy charge class sensor (Energy Plan Type)."""
+    """Red Energy charge class sensor."""
 
     _requires_usage_data = False
 
@@ -1361,7 +1362,7 @@ class RedEnergyChargeClassSensor(RedEnergyBaseSensor):
         
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
         self._attr_icon = "mdi:tag"
-        self._attr_name = "Energy Plan Type"
+        self._attr_name = "Charge Class"
 
     @property
     def native_value(self) -> str | None:
