@@ -121,7 +121,7 @@ Since electricity-only concepts (solar, export, time-of-use tariffs, demand, car
 One diagnostic sensor per rate on the account's actual plan (e.g. Peak, Off-Peak, Shoulder, Supply, Demand, or tiered gas usage steps), named `Rate {rate description}`. The state is the rate in dollars including GST; unit, excl-GST rate, and step description are exposed as attributes. The number of these sensors depends entirely on the plan's tariff structure.
 
 ### Advanced Sensors (Optional)
-Enabled via the "Advanced Sensors" integration option. **13 sensors for electricity accounts, 3 for gas accounts** (gas accounts only get Daily/Monthly Average and Peak Usage, which apply to total usage regardless of service):
+Enabled via the "Advanced Sensors" integration option. **12 sensors for electricity accounts, 3 for gas accounts** (gas accounts only get Daily/Monthly Average and Peak Usage, which apply to total usage regardless of service):
 
 **Statistical Analysis:**
 - Daily Average - Average daily usage
@@ -137,7 +137,6 @@ Enabled via the "Advanced Sensors" integration option. **13 sensors for electric
 
 **Demand & Environmental** *(electricity only)*:
 - Max Demand - Maximum demand (kW)
-- Max Demand Interval Start - Time of maximum demand *(disabled by default - enable manually if useful)*
 - Carbon Emission Tonne - Carbon emissions (tonnes CO₂e)
 
 ### Diagnostics Button

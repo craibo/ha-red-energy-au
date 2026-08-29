@@ -8,7 +8,6 @@ import pytest
 from custom_components.red_energy.const import DOMAIN, SERVICE_TYPE_ELECTRICITY, SERVICE_TYPE_GAS
 from custom_components.red_energy.sensor import (
     RedEnergyAddressSensor,
-    RedEnergyMaxDemandTimeSensor,
     RedEnergyPaymentTypeSensor,
     RedEnergyProductNameSensor,
     RedEnergySolarSensor,
@@ -128,34 +127,6 @@ async def test_electricity_only_sensors_created_for_electricity_account():
     await async_setup_entry(hass, config_entry, async_add_entities)
 
     assert any(isinstance(e, RedEnergySolarSensor) for e in added_entities)
-
-
-@pytest.mark.asyncio
-async def test_max_demand_time_disabled_by_default():
-    """The Max Demand Interval Start sensor must default to disabled."""
-    coordinator = _coordinator(ELECTRICITY_SERVICE_METADATA, SERVICE_TYPE_ELECTRICITY)
-    config_entry = MagicMock()
-    config_entry.entry_id = "entry1"
-    config_entry.options = {"enable_advanced_sensors": True}
-
-    hass = MagicMock()
-    hass.data = {
-        DOMAIN: {
-            "entry1": {
-                "coordinator": coordinator,
-                "selected_accounts": ["2000002"],
-                "services": [SERVICE_TYPE_ELECTRICITY],
-            }
-        }
-    }
-
-    added_entities = []
-    async_add_entities = MagicMock(side_effect=lambda entities: added_entities.extend(entities))
-
-    await async_setup_entry(hass, config_entry, async_add_entities)
-
-    max_demand_time = next(e for e in added_entities if isinstance(e, RedEnergyMaxDemandTimeSensor))
-    assert max_demand_time._attr_entity_registry_enabled_default is False
 
 
 def test_address_sensor_formats_full_address():

@@ -65,7 +65,6 @@ SENSOR_TYPE_SHOULDER_EXPORT_USAGE: Final = "shoulder_export_usage"
 
 # Breakdown sensor types - Demand and environmental (ADVANCED)
 SENSOR_TYPE_MAX_DEMAND: Final = "max_demand"
-SENSOR_TYPE_MAX_DEMAND_TIME: Final = "max_demand_interval_start"
 SENSOR_TYPE_CARBON_EMISSION: Final = "carbon_emission_tonne"
 
 # CL2 (Controlled Load 2) / TOU inference sensors - only created for
