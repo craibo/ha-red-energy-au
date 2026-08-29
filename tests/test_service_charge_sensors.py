@@ -10,6 +10,7 @@ from custom_components.red_energy.coordinator import RedEnergyDataCoordinator
 from custom_components.red_energy.const import SERVICE_TYPE_ELECTRICITY
 from custom_components.red_energy.sensor import (
     RedEnergyBillingPeriodServiceChargeSensor,
+    RedEnergyCurrentPeriodDemandChargeSensor,
 )
 
 SUPPLY_CHARGE_RATE = {
@@ -568,6 +569,124 @@ class TestBillingPeriodServiceChargeSensor:
         assert sensor.last_reset is None
 
 
+class TestCurrentPeriodDemandChargeSensor:
+    def test_native_value_and_attributes(self, coordinator):
+        _set_coordinator_data(
+            coordinator,
+            [DEMAND_CHARGE_RATE, DEMAND_CHARGE_RATE_NON_SUMMER, DEMAND_CHARGE_RATE_TEMPERATE],
+            usage_entries=[{"date": "2026-01-18", "import_usage": 10.0, "max_demand_kw": 4.608}],
+            last_bill_date="2026-01-01",
+            plan_name="Residential Demand Solar",
+        )
+        with patch("custom_components.red_energy.coordinator.datetime") as mock_dt:
+            mock_dt.now.return_value = datetime(2026, 1, 18)
+            mock_dt.strptime = datetime.strptime
+            sensor = RedEnergyCurrentPeriodDemandChargeSensor(
+                coordinator, _config_entry(), "2000002", SERVICE_TYPE_ELECTRICITY
+            )
+            assert sensor.native_value == pytest.approx(round(4.608 * 0.253 * 17, 2))
+            assert sensor.device_class == SensorDeviceClass.MONETARY
+            assert sensor.native_unit_of_measurement == "AUD"
+            assert sensor.state_class == SensorStateClass.TOTAL
+            assert sensor._attr_name == "Current Period Demand Charge"
+            assert sensor._attr_unique_id.endswith("_current_period_demand_charge")
+
+            attrs = sensor.extra_state_attributes
+        assert attrs == {
+            "max_demand_kw": 4.608,
+            "demand_rate_incl_gst": pytest.approx(0.253),
+            "demand_rate_desc": "Demand Summer",
+            "represented_day_count": 17,
+        }
+
+    def test_native_value_none_when_not_demand_plan(self, coordinator):
+        _set_coordinator_data(
+            coordinator,
+            [DEMAND_CHARGE_RATE, DEMAND_CHARGE_RATE_NON_SUMMER, DEMAND_CHARGE_RATE_TEMPERATE],
+            usage_entries=[{"date": "2026-01-18", "import_usage": 10.0, "max_demand_kw": 4.608}],
+            last_bill_date="2026-01-01",
+            plan_name="Residential Time of Use",
+        )
+        with patch("custom_components.red_energy.coordinator.datetime") as mock_dt:
+            mock_dt.now.return_value = datetime(2026, 1, 18)
+            mock_dt.strptime = datetime.strptime
+            sensor = RedEnergyCurrentPeriodDemandChargeSensor(
+                coordinator, _config_entry(), "2000002", SERVICE_TYPE_ELECTRICITY
+            )
+            assert sensor.native_value is None
+            assert sensor.extra_state_attributes is None
+
+    def test_native_value_none_when_no_resolvable_demand_rate(self, coordinator):
+        """Only a Non-Summer demand rate is present; resolving for a
+        Summer date must not fall back to guessing it."""
+        _set_coordinator_data(
+            coordinator,
+            [DEMAND_CHARGE_RATE_NON_SUMMER],
+            usage_entries=[{"date": "2026-01-18", "import_usage": 10.0, "max_demand_kw": 4.608}],
+            last_bill_date="2026-01-01",
+            plan_name="Residential Demand Solar",
+        )
+        with patch("custom_components.red_energy.coordinator.datetime") as mock_dt:
+            mock_dt.now.return_value = datetime(2026, 1, 18)
+            mock_dt.strptime = datetime.strptime
+            sensor = RedEnergyCurrentPeriodDemandChargeSensor(
+                coordinator, _config_entry(), "2000002", SERVICE_TYPE_ELECTRICITY
+            )
+            assert sensor.native_value is None
+            assert sensor.extra_state_attributes is None
+
+    def test_native_value_none_when_no_max_demand_data(self, coordinator):
+        _set_coordinator_data(
+            coordinator,
+            [DEMAND_CHARGE_RATE, DEMAND_CHARGE_RATE_NON_SUMMER, DEMAND_CHARGE_RATE_TEMPERATE],
+            usage_entries=[{"date": "2026-01-18", "import_usage": 10.0}],  # no max_demand_kw
+            last_bill_date="2026-01-01",
+            plan_name="Residential Demand Solar",
+        )
+        with patch("custom_components.red_energy.coordinator.datetime") as mock_dt:
+            mock_dt.now.return_value = datetime(2026, 1, 18)
+            mock_dt.strptime = datetime.strptime
+            sensor = RedEnergyCurrentPeriodDemandChargeSensor(
+                coordinator, _config_entry(), "2000002", SERVICE_TYPE_ELECTRICITY
+            )
+            assert sensor.native_value is None
+            assert sensor.extra_state_attributes is None
+
+    def test_electricity_only_flag(self):
+        assert RedEnergyCurrentPeriodDemandChargeSensor._electricity_only is True
+
+    def test_last_reset_matches_billing_period_start(self, coordinator):
+        _set_coordinator_data(
+            coordinator,
+            [DEMAND_CHARGE_RATE, DEMAND_CHARGE_RATE_NON_SUMMER, DEMAND_CHARGE_RATE_TEMPERATE],
+            usage_entries=[{"date": "2026-01-18", "import_usage": 10.0, "max_demand_kw": 4.608}],
+            last_bill_date="2026-01-01",
+            plan_name="Residential Demand Solar",
+        )
+        sensor = RedEnergyCurrentPeriodDemandChargeSensor(
+            coordinator, _config_entry(), "2000002", SERVICE_TYPE_ELECTRICITY
+        )
+        # last_reset must match billing_period_start (lastBillDate + 1 day),
+        # since lastBillDate is the last day of the *previous* period, not
+        # the first day of the current one.
+        assert sensor.last_reset.date().isoformat() == "2026-01-02"
+
+    def test_last_reset_is_none_when_last_bill_date_missing(self, coordinator):
+        _set_coordinator_data(
+            coordinator,
+            [DEMAND_CHARGE_RATE, DEMAND_CHARGE_RATE_NON_SUMMER, DEMAND_CHARGE_RATE_TEMPERATE],
+            usage_entries=[{"date": "2026-01-18", "import_usage": 10.0, "max_demand_kw": 4.608}],
+            plan_name="Residential Demand Solar",
+        )
+        sensor = RedEnergyCurrentPeriodDemandChargeSensor(
+            coordinator, _config_entry(), "2000002", SERVICE_TYPE_ELECTRICITY
+        )
+        # Without lastBillDate, last_reset must be None (stable), not a
+        # datetime.now()-based fallback that drifts on every poll and would
+        # reset HA's statistics accumulation each update.
+        assert sensor.last_reset is None
+
+
 from custom_components.red_energy.const import DOMAIN, CONF_ENABLE_ADVANCED_SENSORS, SERVICE_TYPE_GAS
 from custom_components.red_energy.sensor import async_setup_entry
 
@@ -669,3 +788,71 @@ async def test_service_charge_sensors_created_for_electricity_and_gas_when_advan
         e for e in added_entities if isinstance(e, RedEnergyBillingPeriodServiceChargeSensor)
     ]
     assert len(billing_charge_sensors) == 2
+
+
+@pytest.mark.asyncio
+async def test_demand_charge_sensor_not_created_when_advanced_disabled():
+    coordinator = _mock_coordinator_for_setup(
+        [DEMAND_CHARGE_RATE, DEMAND_CHARGE_RATE_NON_SUMMER, DEMAND_CHARGE_RATE_TEMPERATE]
+    )
+    config_entry = MagicMock()
+    config_entry.entry_id = "entry1"
+    config_entry.options = {}
+
+    hass = MagicMock()
+    hass.data = {
+        DOMAIN: {
+            "entry1": {
+                "coordinator": coordinator,
+                "selected_accounts": ["2000002"],
+                "services": [SERVICE_TYPE_ELECTRICITY],
+            }
+        }
+    }
+
+    added_entities = []
+    async_add_entities = MagicMock(side_effect=lambda entities: added_entities.extend(entities))
+    await async_setup_entry(hass, config_entry, async_add_entities)
+
+    demand_charge_sensors = [
+        e for e in added_entities
+        if isinstance(e, RedEnergyCurrentPeriodDemandChargeSensor)
+    ]
+    assert demand_charge_sensors == []
+
+
+@pytest.mark.asyncio
+async def test_demand_charge_sensor_created_only_for_electricity_when_advanced_enabled():
+    """Gas services must never get a demand charge sensor - only electricity
+    gets one, even when both electricity and gas are configured."""
+    coordinator = _mock_coordinator_for_setup(
+        [DEMAND_CHARGE_RATE, DEMAND_CHARGE_RATE_NON_SUMMER, DEMAND_CHARGE_RATE_TEMPERATE],
+        service_type=SERVICE_TYPE_ELECTRICITY,
+    )
+    gas_coordinator_data = coordinator.data["usage_data"]["2000002"]["property"]["services"]
+    gas_coordinator_data.append({**gas_coordinator_data[0], "type": SERVICE_TYPE_GAS})
+
+    config_entry = MagicMock()
+    config_entry.entry_id = "entry1"
+    config_entry.options = {CONF_ENABLE_ADVANCED_SENSORS: True}
+
+    hass = MagicMock()
+    hass.data = {
+        DOMAIN: {
+            "entry1": {
+                "coordinator": coordinator,
+                "selected_accounts": ["2000002"],
+                "services": [SERVICE_TYPE_ELECTRICITY, SERVICE_TYPE_GAS],
+            }
+        }
+    }
+
+    added_entities = []
+    async_add_entities = MagicMock(side_effect=lambda entities: added_entities.extend(entities))
+    await async_setup_entry(hass, config_entry, async_add_entities)
+
+    demand_charge_sensors = [
+        e for e in added_entities if isinstance(e, RedEnergyCurrentPeriodDemandChargeSensor)
+    ]
+    assert len(demand_charge_sensors) == 1
+    assert demand_charge_sensors[0]._service_type == SERVICE_TYPE_ELECTRICITY

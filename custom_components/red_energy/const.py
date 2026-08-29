@@ -100,6 +100,7 @@ SENSOR_TYPE_ADDRESS: Final = "address"
 SENSOR_TYPE_PAYMENT_TYPE: Final = "payment_type"
 SENSOR_TYPE_RATE_PREFIX: Final = "rate"
 SENSOR_TYPE_BILLING_PERIOD_SERVICE_CHARGE: Final = "billing_period_service_charge"
+SENSOR_TYPE_CURRENT_PERIOD_DEMAND_CHARGE: Final = "current_period_demand_charge"
 
 # Configuration options
 CONF_SCAN_INTERVAL: Final = "scan_interval"

@@ -39,6 +39,7 @@ from .const import (
     SENSOR_TYPE_CURRENT_PERIOD_IMPORT_COST,
     SENSOR_TYPE_CURRENT_PERIOD_IMPORT_USAGE,
     SENSOR_TYPE_CURRENT_PERIOD_NET_COST,
+    SENSOR_TYPE_CURRENT_PERIOD_DEMAND_CHARGE,
     SENSOR_TYPE_DAILY_AVERAGE,
     SENSOR_TYPE_DISTRIBUTOR,
     SENSOR_TYPE_EFFICIENCY,
@@ -170,6 +171,8 @@ async def async_setup_entry(
                     RedEnergyCarbonEmissionSensor(coordinator, config_entry, account_id, service_type),
                     # NEW: Service/supply charge sensor
                     RedEnergyBillingPeriodServiceChargeSensor(coordinator, config_entry, account_id, service_type),
+                    # NEW: Demand charge sensor (Demand-tariff plans only)
+                    RedEnergyCurrentPeriodDemandChargeSensor(coordinator, config_entry, account_id, service_type),
                     # NEW: Projected net cost (energy only, issues #75, #77)
                     RedEnergyProjectedNetCostSensor(coordinator, config_entry, account_id, service_type),
                     # NEW: Projected charges (net cost + service charge, issue #77)
@@ -990,6 +993,68 @@ class RedEnergyBillingPeriodServiceChargeSensor(RedEnergyBaseSensor):
             "service_rate_incl_gst": rate_incl_gst,
             "service_rate_excl_gst": rate_excl_gst,
             "calculation": f"service_rate_incl_gst × {represented_day_count} days",
+        }
+
+
+class RedEnergyCurrentPeriodDemandChargeSensor(RedEnergyBaseSensor):
+    """Red Energy current period demand charge sensor.
+
+    Represents the accumulated demand charge from the start of the
+    current billing period through the latest completed usageDate,
+    inclusive, for Demand-tariff electricity plans (see
+    coordinator._is_demand_plan). Unavailable for non-Demand plans, when
+    no seasonal demand rate resolves for today, or when max demand data
+    is unavailable. Gas services never have demand charges
+    (_electricity_only), matching RedEnergyMaxDemandSensor's gating.
+    """
+
+    _electricity_only = True
+
+    def __init__(
+        self,
+        coordinator: RedEnergyDataCoordinator,
+        config_entry: ConfigEntry,
+        property_id: str,
+        service_type: str,
+    ) -> None:
+        """Initialize the current period demand charge sensor."""
+        super().__init__(
+            coordinator, config_entry, property_id, service_type, SENSOR_TYPE_CURRENT_PERIOD_DEMAND_CHARGE
+        )
+        self._attr_name = "Current Period Demand Charge"
+
+        self._attr_device_class = SensorDeviceClass.MONETARY
+        self._attr_native_unit_of_measurement = "AUD"
+        self._attr_state_class = SensorStateClass.TOTAL
+        self._attr_icon = "mdi:transmission-tower-import"
+
+    def _billing_period_start_date(self) -> datetime | None:
+        service_metadata = self.coordinator.get_service_metadata(self._property_id, self._service_type) or {}
+        return self.coordinator._get_billing_period_start(service_metadata)
+
+    @property
+    def last_reset(self) -> datetime | None:
+        """Return the billing period start date so HA statistics reset correctly."""
+        return self._get_last_bill_reset()
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the accumulated billing period demand charge, GST-inclusive."""
+        result = self.coordinator.get_billing_period_demand_charge(self._property_id, self._service_type)
+        return round(result["demand_charge"], 2) if result is not None else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Return the max demand, rate basis, and day count for the demand charge."""
+        result = self.coordinator.get_billing_period_demand_charge(self._property_id, self._service_type)
+        if result is None:
+            return None
+
+        return {
+            "max_demand_kw": result["max_demand_kw"],
+            "demand_rate_incl_gst": result["demand_rate_incl_gst"],
+            "demand_rate_desc": result["demand_rate_desc"],
+            "represented_day_count": result["represented_day_count"],
         }
 
 
