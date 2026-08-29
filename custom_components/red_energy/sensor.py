@@ -1028,10 +1028,6 @@ class RedEnergyCurrentPeriodDemandChargeSensor(RedEnergyBaseSensor):
         self._attr_state_class = SensorStateClass.TOTAL
         self._attr_icon = "mdi:transmission-tower-import"
 
-    def _billing_period_start_date(self) -> datetime | None:
-        service_metadata = self.coordinator.get_service_metadata(self._property_id, self._service_type) or {}
-        return self.coordinator._get_billing_period_start(service_metadata)
-
     @property
     def last_reset(self) -> datetime | None:
         """Return the billing period start date so HA statistics reset correctly."""
