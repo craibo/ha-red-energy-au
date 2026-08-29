@@ -39,6 +39,7 @@ from .const import (
     SENSOR_TYPE_CURRENT_PERIOD_IMPORT_COST,
     SENSOR_TYPE_CURRENT_PERIOD_IMPORT_USAGE,
     SENSOR_TYPE_CURRENT_PERIOD_NET_COST,
+    SENSOR_TYPE_CURRENT_PERIOD_DEMAND_CHARGE,
     SENSOR_TYPE_DAILY_AVERAGE,
     SENSOR_TYPE_DISTRIBUTOR,
     SENSOR_TYPE_EFFICIENCY,
@@ -170,6 +171,8 @@ async def async_setup_entry(
                     RedEnergyCarbonEmissionSensor(coordinator, config_entry, account_id, service_type),
                     # NEW: Service/supply charge sensor
                     RedEnergyBillingPeriodServiceChargeSensor(coordinator, config_entry, account_id, service_type),
+                    # NEW: Demand charge sensor (Demand-tariff plans only)
+                    RedEnergyCurrentPeriodDemandChargeSensor(coordinator, config_entry, account_id, service_type),
                     # NEW: Projected net cost (energy only, issues #75, #77)
                     RedEnergyProjectedNetCostSensor(coordinator, config_entry, account_id, service_type),
                     # NEW: Projected charges (net cost + service charge, issue #77)
@@ -993,6 +996,64 @@ class RedEnergyBillingPeriodServiceChargeSensor(RedEnergyBaseSensor):
         }
 
 
+class RedEnergyCurrentPeriodDemandChargeSensor(RedEnergyBaseSensor):
+    """Red Energy current period demand charge sensor.
+
+    Represents the accumulated demand charge from the start of the
+    current billing period through the latest completed usageDate,
+    inclusive, for Demand-tariff electricity plans (see
+    coordinator._is_demand_plan). Unavailable for non-Demand plans, when
+    no seasonal demand rate resolves for today, or when max demand data
+    is unavailable. Gas services never have demand charges
+    (_electricity_only), matching RedEnergyMaxDemandSensor's gating.
+    """
+
+    _electricity_only = True
+
+    def __init__(
+        self,
+        coordinator: RedEnergyDataCoordinator,
+        config_entry: ConfigEntry,
+        property_id: str,
+        service_type: str,
+    ) -> None:
+        """Initialize the current period demand charge sensor."""
+        super().__init__(
+            coordinator, config_entry, property_id, service_type, SENSOR_TYPE_CURRENT_PERIOD_DEMAND_CHARGE
+        )
+        self._attr_name = "Current Period Demand Charge"
+
+        self._attr_device_class = SensorDeviceClass.MONETARY
+        self._attr_native_unit_of_measurement = "AUD"
+        self._attr_state_class = SensorStateClass.TOTAL
+        self._attr_icon = "mdi:transmission-tower-import"
+
+    @property
+    def last_reset(self) -> datetime | None:
+        """Return the billing period start date so HA statistics reset correctly."""
+        return self._get_last_bill_reset()
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the accumulated billing period demand charge, GST-inclusive."""
+        result = self.coordinator.get_billing_period_demand_charge(self._property_id, self._service_type)
+        return round(result["demand_charge"], 2) if result is not None else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Return the max demand, rate basis, and day count for the demand charge."""
+        result = self.coordinator.get_billing_period_demand_charge(self._property_id, self._service_type)
+        if result is None:
+            return None
+
+        return {
+            "max_demand_kw": result["max_demand_kw"],
+            "demand_rate_incl_gst": result["demand_rate_incl_gst"],
+            "demand_rate_desc": result["demand_rate_desc"],
+            "represented_day_count": result["represented_day_count"],
+        }
+
+
 class RedEnergyProjectedNetCostSensor(RedEnergyBaseSensor):
     """Red Energy projected net cost sensor (issues #75, #77).
 
@@ -1053,10 +1114,12 @@ class RedEnergyProjectedChargesSensor(RedEnergyBaseSensor):
 
     Projected net energy cost (see RedEnergyProjectedNetCostSensor) plus
     the daily service/supply charge projected across the full billing
-    cycle, giving a fuller bill estimate. Unavailable when the plan has no
-    daily service-charge rate, or when the underlying net-cost projection
-    itself is unavailable (see coordinator.get_estimated_current_period_charges).
-    Both components are GST-inclusive.
+    cycle, giving a fuller bill estimate. For Demand-tariff plans with a
+    resolvable seasonal demand rate, the projected demand charge is added
+    as a third term (see coordinator.get_estimated_current_period_charges).
+    Unavailable when the plan has no daily service-charge rate, or when the
+    underlying net-cost projection itself is unavailable. All components
+    are GST-inclusive.
     """
 
     def __init__(
@@ -1087,7 +1150,7 @@ class RedEnergyProjectedChargesSensor(RedEnergyBaseSensor):
         if result is None:
             return None
 
-        return {
+        attributes = {
             "estimated_net_cost": round(result["estimated_net_cost"], 2),
             "estimated_service_charge": round(result["estimated_service_charge"], 2),
             "days_in_cycle": result["days_in_cycle"],
@@ -1095,6 +1158,12 @@ class RedEnergyProjectedChargesSensor(RedEnergyBaseSensor):
             "estimation_method": "linear",
             "gst_basis": "inclusive",
         }
+
+        if "estimated_demand_charge" in result:
+            attributes["estimated_demand_charge"] = round(result["estimated_demand_charge"], 2)
+            attributes["demand_rate_incl_gst"] = result["demand_rate_incl_gst"]
+
+        return attributes
 
 
 class RedEnergyAddressSensor(RedEnergyBaseSensor):

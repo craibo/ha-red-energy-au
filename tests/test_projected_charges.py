@@ -87,6 +87,7 @@ def _set_coordinator_data(
     last_bill_date=None,
     next_bill_date=None,
     rates=None,
+    plan_name=None,
 ):
     """Build coordinator.data with both the property.services (metadata)
     and top-level services (usage) shapes get_service_metadata/get_service_usage
@@ -103,6 +104,8 @@ def _set_coordinator_data(
         service_metadata["lastBillDate"] = last_bill_date
     if next_bill_date is not None:
         service_metadata["nextBillDate"] = next_bill_date
+    if plan_name is not None:
+        service_metadata["planName"] = plan_name
 
     services_usage = {}
     if usage_entries is not None:
@@ -130,8 +133,48 @@ def _set_coordinator_data(
     }
 
 
-def _entry(date, import_cost, export_credit=0.0):
-    return {"date": date, "import_usage": 10.0, "import_cost": import_cost, "export_credit": export_credit}
+def _entry(date, import_cost, export_credit=0.0, max_demand_kw=None):
+    entry = {"date": date, "import_usage": 10.0, "import_cost": import_cost, "export_credit": export_credit}
+    if max_demand_kw is not None:
+        entry["max_demand_kw"] = max_demand_kw
+    return entry
+
+
+DEMAND_CHARGE_RATE = {
+    "rate_code": "80008279798FB",
+    "rate_desc": "Demand Summer",
+    "rate_incl_gst_dollars": 0.253,
+    "type": "F",
+    "rate_excl_gst_cents": 23,
+    "discounted_rate_excl_gst_in_cents": 23,
+    "discounted_rate_incl_gst_in_cents": 25.3,
+    "unit": "KW/day",
+    "unit_step_desc": None,
+}
+
+DEMAND_CHARGE_RATE_NON_SUMMER = {
+    "rate_code": "80008279798FC",
+    "rate_desc": "Demand Non Summer",
+    "rate_incl_gst_dollars": 0.253,
+    "type": "F",
+    "rate_excl_gst_cents": 23,
+    "discounted_rate_excl_gst_in_cents": 23,
+    "discounted_rate_incl_gst_in_cents": 25.3,
+    "unit": "KW/day",
+    "unit_step_desc": None,
+}
+
+DEMAND_CHARGE_RATE_TEMPERATE = {
+    "rate_code": "80008279798FD",
+    "rate_desc": "Demand Temperate Peak",
+    "rate_incl_gst_dollars": 0.154,
+    "type": "F",
+    "rate_excl_gst_cents": 14,
+    "discounted_rate_excl_gst_in_cents": 14,
+    "discounted_rate_incl_gst_in_cents": 15.4,
+    "unit": "KW/day",
+    "unit_step_desc": None,
+}
 
 
 class TestGetProjectedCharges:
@@ -301,6 +344,101 @@ class TestGetEstimatedCurrentPeriodCharges:
         )
         assert coordinator.get_estimated_current_period_charges("2000002", SERVICE_TYPE_ELECTRICITY) is None
 
+    def test_includes_demand_charge_for_demand_plan(self, coordinator):
+        """On a Demand plan with a resolvable seasonal rate and max demand
+        data, a third term - the demand charge extrapolated across the
+        full cycle - is added into estimated_charges."""
+        _set_coordinator_data(
+            coordinator,
+            usage_entries=[_entry("2026-01-18", 35.0, max_demand_kw=4.608)],
+            last_bill_date="2026-01-01",
+            next_bill_date="2026-01-31",
+            rates=[SUPPLY_CHARGE_RATE, DEMAND_CHARGE_RATE, DEMAND_CHARGE_RATE_NON_SUMMER, DEMAND_CHARGE_RATE_TEMPERATE],
+            plan_name="Residential Demand Solar",
+        )
+        with patch("custom_components.red_energy.coordinator.datetime") as mock_dt:
+            mock_dt.now.return_value = datetime(2026, 1, 18)
+            mock_dt.strptime = datetime.strptime
+            result = coordinator.get_estimated_current_period_charges("2000002", SERVICE_TYPE_ELECTRICITY)
+
+        assert result is not None
+        # billing_period_start = 2026-01-02, days_in_cycle = Jan 2..Jan 31 (nextBillDate, exclusive) = 29 days
+        assert result["days_in_cycle"] == 29
+        expected_demand_charge = 4.608 * 0.253 * 29
+        assert result["estimated_demand_charge"] == pytest.approx(expected_demand_charge)
+        assert result["demand_rate_incl_gst"] == pytest.approx(0.253)
+        assert result["estimated_charges"] == pytest.approx(
+            result["estimated_net_cost"] + result["estimated_service_charge"] + result["estimated_demand_charge"]
+        )
+
+    def test_omits_demand_charge_for_non_demand_plan(self, coordinator):
+        """Non-Demand-plan accounts (e.g. Time of Use) must be byte-for-byte
+        unaffected - no estimated_demand_charge/demand_rate_incl_gst keys,
+        and estimated_charges unchanged from the pre-Task-2 calculation."""
+        _set_coordinator_data(
+            coordinator,
+            usage_entries=[_entry("2025-08-01", 35.0)],
+            last_bill_date="2025-07-25",
+            next_bill_date="2025-08-22",
+            rates=[SUPPLY_CHARGE_RATE],
+            plan_name="Residential Time of Use",
+        )
+        result = coordinator.get_estimated_current_period_charges("2000002", SERVICE_TYPE_ELECTRICITY)
+
+        net_cost_to_date = 35.0 * GST_MULTIPLIER
+        expected_net_projection = net_cost_to_date / 7 * 27
+        expected_service_charge = SUPPLY_CHARGE_RATE["rate_incl_gst_dollars"] * 27
+
+        assert result is not None
+        assert "estimated_demand_charge" not in result
+        assert "demand_rate_incl_gst" not in result
+        assert result["estimated_charges"] == pytest.approx(expected_net_projection + expected_service_charge)
+
+    def test_omits_demand_charge_when_no_resolvable_demand_rate(self, coordinator):
+        """Demand plan, but the demand rates present don't unambiguously
+        resolve for the current season - the demand-charge term must be
+        omitted entirely, not guessed, and estimated_charges must not
+        return None because of it."""
+        _set_coordinator_data(
+            coordinator,
+            usage_entries=[_entry("2026-01-18", 35.0, max_demand_kw=4.608)],
+            last_bill_date="2026-01-01",
+            next_bill_date="2026-01-31",
+            # Only a Non-Summer demand rate is present; on_date resolves to
+            # Summer, so _get_demand_rate returns None (zero matches).
+            rates=[SUPPLY_CHARGE_RATE, DEMAND_CHARGE_RATE_NON_SUMMER],
+            plan_name="Residential Demand Solar",
+        )
+        with patch("custom_components.red_energy.coordinator.datetime") as mock_dt:
+            mock_dt.now.return_value = datetime(2026, 1, 18)
+            mock_dt.strptime = datetime.strptime
+            result = coordinator.get_estimated_current_period_charges("2000002", SERVICE_TYPE_ELECTRICITY)
+
+        assert result is not None
+        assert "estimated_demand_charge" not in result
+        assert "demand_rate_incl_gst" not in result
+
+    def test_omits_demand_charge_when_no_max_demand_data(self, coordinator):
+        """Demand plan with a resolvable rate but no usage entry carries
+        max_demand_kw - the demand-charge term must be omitted, not raise
+        or return None for the whole estimate."""
+        _set_coordinator_data(
+            coordinator,
+            usage_entries=[_entry("2026-01-18", 35.0)],  # no max_demand_kw
+            last_bill_date="2026-01-01",
+            next_bill_date="2026-01-31",
+            rates=[SUPPLY_CHARGE_RATE, DEMAND_CHARGE_RATE, DEMAND_CHARGE_RATE_NON_SUMMER, DEMAND_CHARGE_RATE_TEMPERATE],
+            plan_name="Residential Demand Solar",
+        )
+        with patch("custom_components.red_energy.coordinator.datetime") as mock_dt:
+            mock_dt.now.return_value = datetime(2026, 1, 18)
+            mock_dt.strptime = datetime.strptime
+            result = coordinator.get_estimated_current_period_charges("2000002", SERVICE_TYPE_ELECTRICITY)
+
+        assert result is not None
+        assert "estimated_demand_charge" not in result
+        assert "demand_rate_incl_gst" not in result
+
 
 from homeassistant.components.sensor import SensorDeviceClass
 
@@ -389,6 +527,57 @@ class TestProjectedChargesSensor:
         )
         assert sensor.native_value is None
         assert sensor.extra_state_attributes is None
+
+    def test_attributes_include_demand_charge_for_demand_plan(self, coordinator):
+        """On a Demand plan with a resolvable seasonal rate and max demand
+        data, the projected demand charge and its rate are surfaced as
+        extra_state_attributes alongside the existing keys."""
+        _set_coordinator_data(
+            coordinator,
+            usage_entries=[_entry("2026-01-18", 35.0, max_demand_kw=4.608)],
+            last_bill_date="2026-01-01",
+            next_bill_date="2026-01-31",
+            rates=[SUPPLY_CHARGE_RATE, DEMAND_CHARGE_RATE, DEMAND_CHARGE_RATE_NON_SUMMER, DEMAND_CHARGE_RATE_TEMPERATE],
+            plan_name="Residential Demand Solar",
+        )
+        sensor = RedEnergyProjectedChargesSensor(
+            coordinator, _config_entry(), "2000002", SERVICE_TYPE_ELECTRICITY
+        )
+
+        with patch("custom_components.red_energy.coordinator.datetime") as mock_dt:
+            mock_dt.now.return_value = datetime(2026, 1, 18)
+            mock_dt.strptime = datetime.strptime
+            attrs = sensor.extra_state_attributes
+
+        expected_demand_charge = 4.608 * 0.253 * 29
+        assert attrs["estimated_demand_charge"] == pytest.approx(round(expected_demand_charge, 2))
+        assert attrs["demand_rate_incl_gst"] == pytest.approx(0.253)
+        # existing keys must still be present and unaffected
+        assert attrs["days_in_cycle"] == 29
+        assert attrs["gst_basis"] == "inclusive"
+
+    def test_attributes_omit_demand_charge_for_non_demand_plan(self, coordinator):
+        """Non-Demand-plan accounts (e.g. Time of Use) must not expose the
+        demand-charge attributes at all - the keys must be absent, not
+        present with a None value."""
+        _set_coordinator_data(
+            coordinator,
+            usage_entries=[_entry("2025-08-01", 35.0)],
+            last_bill_date="2025-07-25",
+            next_bill_date="2025-08-22",
+            rates=[SUPPLY_CHARGE_RATE],
+            plan_name="Residential Time of Use",
+        )
+        sensor = RedEnergyProjectedChargesSensor(
+            coordinator, _config_entry(), "2000002", SERVICE_TYPE_ELECTRICITY
+        )
+
+        attrs = sensor.extra_state_attributes
+        assert "estimated_demand_charge" not in attrs
+        assert "demand_rate_incl_gst" not in attrs
+        # existing keys unaffected
+        assert attrs["days_in_cycle"] == 27
+        assert attrs["gst_basis"] == "inclusive"
 
 
 def _mock_coordinator_for_setup(service_type=SERVICE_TYPE_ELECTRICITY, property_id="2000002"):

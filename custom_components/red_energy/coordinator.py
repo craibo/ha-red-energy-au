@@ -668,6 +668,75 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
             None,
         )
 
+    def _is_demand_plan(self, property_id: str, service_type: str) -> bool:
+        """Return whether the service's plan is a Demand-tariff plan.
+
+        Detected via planName containing "demand" case-insensitively - Red
+        Energy's own site draws this exact distinction ("Demand Tariffs"
+        vs. "Residential Time of Use tariff"). A missing/None planName
+        returns False, never True - unknown must never be treated as
+        "yes, bill a demand charge."
+        """
+        metadata = self.get_service_metadata(property_id, service_type) or {}
+        plan_name = metadata.get("planName")
+        if not isinstance(plan_name, str):
+            return False
+        return "demand" in plan_name.lower()
+
+    # Season windows for demand-rate selection, hardcoded per Red Energy's
+    # published seasonal demand tariff structure (not derivable from any
+    # API field - the API returns all seasonal rates simultaneously with
+    # no "current season" indicator).
+    #   Summer: 1 Nov - 31 Mar (wraps the year boundary)
+    #   Non-Summer: 1 Jun - 31 Aug
+    #   Temperate: 1 Apr - 31 May, and 1 Sep - 31 Oct
+    _DEMAND_SEASON_LABELS: dict[str, frozenset[str]] = {
+        "SUMMER": frozenset({"demand summer"}),
+        "NON_SUMMER": frozenset({"demand non summer"}),
+        "TEMPERATE": frozenset({"demand temperate peak", "demand temperate"}),
+    }
+
+    @staticmethod
+    def _demand_season_for_date(on_date: date) -> str:
+        """Return which seasonal demand season label applies to on_date."""
+        month = on_date.month
+        if month in (11, 12, 1, 2, 3):
+            return "SUMMER"
+        if month in (6, 7, 8):
+            return "NON_SUMMER"
+        # Remaining months: 4, 5, 9, 10 are all TEMPERATE in full
+        return "TEMPERATE"
+
+    def _get_demand_rate(
+        self, property_id: str, service_type: str, on_date: date | None = None
+    ) -> dict[str, Any] | None:
+        """Find the seasonal demand-charge rate applicable on on_date.
+
+        Matches by normalized rate_desc against the season's label set
+        (see _DEMAND_SEASON_LABELS), mirroring cl2_inference.resolve_rate_roles's
+        matching style. Returns None - never guesses - when zero or more
+        than one rate matches the resolved season's label set.
+        """
+        if on_date is None:
+            on_date = datetime.now().date()
+
+        season = self._demand_season_for_date(on_date)
+        labels = self._DEMAND_SEASON_LABELS[season]
+
+        rates = self.get_service_rates(property_id, service_type)
+        matches = []
+        for rate in rates:
+            rate_desc = rate.get("rate_desc")
+            if not isinstance(rate_desc, str):
+                continue
+            normalized = " ".join(rate_desc.strip().lower().split())
+            if normalized in labels:
+                matches.append(rate)
+
+        if len(matches) == 1:
+            return matches[0]
+        return None
+
     def get_billing_period_service_charge(self, property_id: str, service_type: str) -> float | None:
         """Get the accumulated service charge from the billing period start
         through the latest completed usageDate, inclusive.
@@ -697,6 +766,57 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
 
         represented_day_count = (billing_period_end - billing_period_start).days + 1
         return rate["rate_incl_gst_dollars"] * represented_day_count
+
+    def get_billing_period_demand_charge(self, property_id: str, service_type: str) -> dict[str, Any] | None:
+        """Get the accumulated demand charge from the billing period start
+        through the latest completed usageDate, inclusive.
+
+        Returns None when the plan isn't a Demand plan (see
+        _is_demand_plan), when there's no resolvable seasonal demand rate
+        for today (see _get_demand_rate), or when max demand data is
+        unavailable for the period. The demand charge is
+        max_demand_kw * demand_rate_incl_gst, accrued per represented day
+        - mirroring get_billing_period_service_charge's day-count
+        convention (latest completed usageDate as period end, not
+        datetime.now(), so an unconfirmed day is never counted).
+        """
+        if not self._is_demand_plan(property_id, service_type):
+            return None
+
+        demand_rate = self._get_demand_rate(property_id, service_type)
+        if demand_rate is None:
+            return None
+
+        max_demand_data = self.get_max_demand_data(property_id, service_type)
+        if max_demand_data is None:
+            return None
+        max_demand_kw = max_demand_data["max_demand_kw"]
+
+        latest_usage_date_str = self.get_latest_usage_date(property_id, service_type)
+        if not latest_usage_date_str:
+            return None
+
+        try:
+            billing_period_end = datetime.strptime(latest_usage_date_str, "%Y-%m-%d").date()
+        except (ValueError, TypeError):
+            return None
+
+        service_metadata = self.get_service_metadata(property_id, service_type) or {}
+        billing_period_start = self._get_billing_period_start(service_metadata).date()
+
+        if billing_period_end < billing_period_start:
+            return None
+
+        represented_day_count = (billing_period_end - billing_period_start).days + 1
+        demand_rate_incl_gst = demand_rate["rate_incl_gst_dollars"]
+
+        return {
+            "demand_charge": max_demand_kw * demand_rate_incl_gst * represented_day_count,
+            "max_demand_kw": max_demand_kw,
+            "demand_rate_incl_gst": demand_rate_incl_gst,
+            "demand_rate_desc": demand_rate["rate_desc"],
+            "represented_day_count": represented_day_count,
+        }
 
     def get_projected_charges(self, property_id: str, service_type: str) -> dict[str, Any] | None:
         """Estimate the current billing cycle's total charge, GST-inclusive.
@@ -782,13 +902,34 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
 
             estimated_charges = projected_net_cost + (service_charge_rate * days_in_cycle)
 
-        Both terms are GST-inclusive (get_projected_charges computes its
+        For Demand-tariff plans (see _is_demand_plan), a third term is
+        added - the projected demand charge, using the account's current
+        max observed demand extrapolated across the full billing cycle
+        at the seasonally-resolved demand rate (see _get_demand_rate):
+
+            + (max_demand_kw * demand_rate_incl_gst * days_in_cycle)
+
+        This mirrors Red Energy's own bill structure (see
+        redenergy.com.au/energy-billing/demand-tariffs.html): usage +
+        supply charges + a demand charge based on highest 30-minute demand
+        in the billing period. Extrapolating today's max observed demand
+        across the remaining cycle is an approximation - actual demand
+        could still increase before the cycle ends - but it's the same
+        linear-extrapolation approach already used for the energy-cost
+        projection, and is far closer to Red Energy's own figure than
+        omitting the term entirely (previously a ~$35 undercount on a
+        live account).
+
+        All terms are GST-inclusive (get_projected_charges computes its
         own GST-inclusive net_cost_to_date; rate_incl_gst_dollars already
         is), so no further GST adjustment is needed here.
 
         Returns None when there's no daily service-charge rate (some plans
         don't have one) or when the underlying net-cost projection itself
-        is unavailable.
+        is unavailable. The demand-charge term is additive and optional -
+        its absence (non-Demand plan, or no resolvable demand rate/max
+        demand data) never causes this method to return None; the result
+        simply omits "estimated_demand_charge"/"demand_rate_incl_gst".
         """
         rate = self._find_service_charge_rate(property_id, service_type)
         if rate is None:
@@ -800,13 +941,28 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
 
         estimated_service_charge = rate["rate_incl_gst_dollars"] * projection["days_in_cycle"]
 
-        return {
+        result = {
             "estimated_charges": projection["projected_charges"] + estimated_service_charge,
             "estimated_net_cost": projection["projected_charges"],
             "estimated_service_charge": estimated_service_charge,
             "days_in_cycle": projection["days_in_cycle"],
             "service_rate_incl_gst": rate["rate_incl_gst_dollars"],
         }
+
+        if self._is_demand_plan(property_id, service_type):
+            demand_rate = self._get_demand_rate(property_id, service_type)
+            max_demand_data = self.get_max_demand_data(property_id, service_type)
+            if demand_rate is not None and max_demand_data is not None:
+                estimated_demand_charge = (
+                    max_demand_data["max_demand_kw"]
+                    * demand_rate["rate_incl_gst_dollars"]
+                    * projection["days_in_cycle"]
+                )
+                result["estimated_charges"] += estimated_demand_charge
+                result["estimated_demand_charge"] = estimated_demand_charge
+                result["demand_rate_incl_gst"] = demand_rate["rate_incl_gst_dollars"]
+
+        return result
 
     def get_cl2_inference(self, property_id: str, service_type: str) -> dict[str, Any] | None:
         """Aggregate CL2/TOU inference across a service's usage period.
