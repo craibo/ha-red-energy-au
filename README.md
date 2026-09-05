@@ -6,7 +6,7 @@
 [![hacs][hacsbadge]][hacs]
 [![Integration Usage](https://img.shields.io/badge/dynamic/json?color=41BDF5&style=for-the-badge&logo=home-assistant&label=usage&suffix=%20installs&cacheSeconds=15600&url=https://analytics.home-assistant.io/custom_integrations.json&query=$.red_energy.total)](https://analytics.home-assistant.io/)
 
-A comprehensive Home Assistant custom integration for Red Energy (Australian energy provider) that provides real-time energy monitoring and advanced analytics.
+A comprehensive Home Assistant custom integration for Red Energy (Australian energy provider) that tracks daily energy usage and provides advanced analytics.
 
 ---
 
@@ -20,17 +20,18 @@ A comprehensive Home Assistant custom integration for Red Energy (Australian ene
 ## Features
 
 ### 🏠 **Core Energy Monitoring**
-- **Real-time Usage Tracking**: Daily electricity and gas consumption
+- **Energy Usage Tracking**: Daily electricity and gas consumption data from Red Energy
 - **Cost Analysis**: Total costs and daily spending tracking
 - **Multi-Account Support**: Monitor every account on your Red Energy login, each as its own device - including split accounts where electricity and gas are billed separately
 - **Dual Service Support**: Electricity and gas monitored automatically, with electricity-only sensors (solar, export, time-of-use, demand, emissions) correctly omitted from gas accounts
 - **Tariff Rate Visibility**: A diagnostic sensor per contracted rate on your actual plan (peak/off-peak/shoulder/supply/demand/tiered steps)
 
 ### 📊 **Advanced Analytics** (Optional)
-- **Daily & Monthly Averages**: Statistical analysis of usage patterns
-- **Peak Usage Detection**: Identify highest consumption periods with date attribution
-- **Efficiency Ratings**: 0-100% efficiency scoring based on usage consistency
-- **Usage Pattern Analysis**: Coefficient of variation calculations for optimization
+- **Daily & Monthly Averages**: Statistical analysis of current billing-period usage
+- **Highest Net Usage Day Detection**: Identify the highest single-day net usage with date attribution
+- **Usage Consistency Score**: 0-100 score based on day-to-day usage variation (not energy efficiency)
+- **Usage Pattern Analysis**: Coefficient of variation calculations for spotting irregular usage
+- **CL2/TOU Reconstruction** *(where supported)*: Separates inferred Controlled Load usage from combined Peak/Shoulder/Off-Peak interval data
 
 ### 🔧 **Configuration & Management**
 - **UI-First Setup**: Complete configuration through Home Assistant UI
@@ -122,25 +123,50 @@ Since electricity-only concepts (solar, export, time-of-use tariffs, demand, car
 One diagnostic sensor per rate on the account's actual plan (e.g. Peak, Off-Peak, Shoulder, Supply, Demand, or tiered gas usage steps), named `Rate {rate description}`. The state is the rate in dollars including GST; unit, excl-GST rate, and step description are exposed as attributes. The number of these sensors depends entirely on the plan's tariff structure.
 
 ### Advanced Sensors (Optional)
-Enabled via the "Advanced Sensors" integration option. **16 sensors for electricity accounts, 6 for gas accounts** (gas accounts get Daily/Monthly Average, Peak Usage, Current Period Service Charge, Projected Net Cost, and Projected Charges - the rest are electricity-only, marked below):
+Enabled via the "Advanced Sensors" integration option. **16 sensors for electricity accounts, 6 for gas accounts** (gas accounts get Daily/Monthly Average, Highest Net Usage Day, Current Period Service Charge, Projected Net Cost, and Projected Charges - the rest are electricity-only, marked below). This count does **not** include the CL2/TOU Reconstruction sensors described further below, which are conditional and not present on every electricity account.
 
 **Statistical Analysis:**
-- Daily Average - Average daily usage
-- Monthly Average - Projected monthly usage (billing period-adjusted)
-- Peak Usage - Highest single-day usage with date
-- Efficiency *(electricity only)* - Usage consistency efficiency rating (0-100%)
+- Daily Average - Arithmetic mean of the available daily usage records in the *current billing period*. Early in a new billing period this may be based on only a small number of days
+- Monthly Average - Current billing-period usage normalised to a nominal 30.44-day month (`current period total usage / current period days × 30.44`). This is derived from the current billing period, not an average of historical months
+- Highest Net Usage Day - Highest single-day net usage recorded in the analysed period, with the date it occurred. This is distinct from TOU Peak-period consumption and from maximum electrical demand
+- Efficiency *(electricity only)* - Daily usage consistency score (0-100) based on the coefficient of variation of daily consumption. A higher value means more consistent day-to-day usage, not lower consumption or greater energy efficiency
 - Current Period Service Charge - Accumulated daily service/supply charge from the start of the current billing period to the latest completed usage day (AUD)
-- Projected Net Cost - Estimated net energy cost (import minus export credit) for the full billing cycle, extrapolated from usage to date. GST-inclusive; not Red Energy's own figure
-- Projected Charges - Projected Net Cost plus the daily service/supply charge projected across the full cycle, for a fuller bill estimate; for Demand-tariff plans this also includes the projected demand charge. GST-inclusive; not Red Energy's own figure
+- Projected Net Cost - Estimated net energy cost (import minus export credit) for the full billing cycle, extrapolated from usage to date. GST-inclusive; an estimate, not Red Energy's own figure
+- Projected Charges - Projected Net Cost plus the daily service/supply charge projected across the full cycle, for a fuller bill estimate; for Demand-tariff plans this also includes the projected demand charge. GST-inclusive; an estimate, not Red Energy's own figure
 
 **Time-of-Use Breakdown** *(electricity only - gas has no ToU tariff)*:
-- Peak/Offpeak/Shoulder Import Usage
+- Peak/Offpeak/Shoulder Import Usage - combined TOU-labelled usage as supplied by Red Energy (see [CL2/TOU Reconstruction](#cl2--tou-reconstruction-optional-conditional) below if your plan has a resolvable Controlled Load rate)
 - Peak/Offpeak/Shoulder Export Usage
 
 **Demand & Environmental** *(electricity only)*:
 - Max Demand - Maximum demand (kW)
-- Current Period Demand Charge - Accumulated demand charge from the start of the current billing period to the latest completed usage day, for Demand-tariff plans. GST-inclusive; not Red Energy's own figure
+- Current Period Demand Charge - Accumulated demand charge from the start of the current billing period to the latest completed usage day, for Demand-tariff plans. GST-inclusive; an estimate, not Red Energy's own figure
 - Carbon Emission Tonne - Carbon emissions (tonnes CO₂e)
+
+### CL2 / TOU Reconstruction (Optional, Conditional)
+
+Red Energy's own usage presentation does not expose Controlled Load (CL2) as a separate energy component. At the API level, each half-hourly interval provides a single combined consumption value that mixes general-supply TOU energy with any CL2 usage occurring during that interval, labelled with whichever TOU period (Peak/Shoulder/Off-Peak) applies.
+
+Where the integration can unambiguously resolve the account's Peak, Shoulder, Off-Peak, and CL2 rates from its plan, it uses each interval's energy, cost, and those rates to separate out the inferred CL2 component. This produces six additional sensors, created **only** when all four rate roles resolve unambiguously - most accounts have no Controlled Load and will never see these entities:
+
+- CL2 Inferred Energy - Estimated CL2 energy separated from the combined interval consumption
+- Corrected Peak Import - Peak-period general-supply import with inferred CL2 energy removed
+- Corrected Shoulder Import - Shoulder-period general-supply import with inferred CL2 energy removed
+- Corrected Off-Peak Import - Off-Peak-period general-supply import with inferred CL2 energy removed
+- CL2 Inferred Cost - Calculated cost of the inferred CL2 component
+- Reconstructed Import Cost - Reconstructed total import cost, used to reconcile the separated TOU + CL2 components against Red Energy's own interval cost
+
+CL2 is **not** assumed to occur only during Off-Peak periods - it is inferred from whichever Peak, Shoulder, or Off-Peak interval it actually falls in.
+
+**Choosing which TOU sensor set to use:** the original Peak/Shoulder/Off-Peak sensors above represent the *combined* TOU-labelled usage as supplied by Red Energy, and remain useful for direct comparison with the Red Energy app and for backwards compatibility. Because that combined usage can already include CL2 energy, do **not** add CL2 Inferred Energy to the original Peak/Shoulder/Off-Peak totals when building a separated tariff breakdown - this double-counts the CL2 component. For a separated breakdown, use:
+
+> **Corrected Peak + Corrected Shoulder + Corrected Off-Peak + CL2 Inferred Energy**
+
+These reconstructed values are calculations derived by the integration from Red Energy's interval data - they are not additional meter readings.
+
+**Limitations:**
+- The calculation uses the account's *current* plan rates for every interval in the queried period, because historical tariff-rate data isn't available from the API. A tariff-rate change partway through the analysed period will therefore skew reconstruction for the days before the change
+- Individual intervals are excluded from inference when their pricing can't be reliably resolved (e.g. an unknown tariff, or rates that can't be distinguished from one another); the integration tracks accepted/rejected interval counts and rejection reasons internally for diagnostic purposes
 
 ### Diagnostics Button
 Each device has its own **Refresh metadata** button. Pressing it on any device triggers a full metadata + usage refresh for every account on the config entry (not just that one device) - it's duplicated per device purely so the action is reachable no matter which device you're viewing.
@@ -151,23 +177,22 @@ Each device has its own **Refresh metadata** button. Pressing it on any device t
 
 The integration automatically aligns with your Red Energy billing cycle by using the `lastBillDate` from your account:
 
-- **Usage Period**: `lastBillDate` to current date
+- **Billing Period Start**: `lastBillDate` represents the *final day of the previous* billing period, so the current billing period begins on the calendar day following it (`lastBillDate + 1 day`)
+- **Usage Data Availability**: The billing-period calculation window may extend beyond the latest daily usage Red Energy has actually published, since usage data is normally published retrospectively (see [Data Update Limitations](#important-data-update-limitations) above)
 - **Updates**: Automatically adjusts each billing cycle
-- **Alignment**: Matches your actual Red Energy bill for easy comparison
 
 ### Benefits of Billing Period Tracking
 
-- **Accurate Cost Projections**: Monthly averages reflect your actual billing cycle
-- **Bill Comparison**: Sensor totals directly match your Red Energy bill amounts
+- **Bill Comparison**: Current-period sensors are aligned to the Red Energy billing period to facilitate close comparison with Red Energy billing data. Integration-calculated projections are estimates and may differ from the final Red Energy invoice
 - **Flexible Billing**: Works with all billing frequencies (monthly, quarterly, etc.)
-- **Real-time Progress**: Track current bill period costs as they accumulate
+- **Current Period Tracking**: Track available usage and calculated charges for the current billing period as they accumulate
 
 ### Fallback Behavior
 
-If `lastBillDate` is unavailable (new accounts or API issues):
-- Automatically falls back to 30-day rolling period
-- Continues to provide accurate usage data
-- Returns to billing period tracking once data is available
+If `lastBillDate` is unavailable (new accounts or API issues), the integration uses a **30-day fallback calculation window** instead of the true billing period:
+- Automatically falls back to a rolling 30-day window
+- This fallback window is not necessarily your actual Red Energy billing period
+- Returns to billing period tracking once `lastBillDate` is available
 
 ### Viewing Your Current Period
 
@@ -254,7 +279,7 @@ pytest tests/ -v
 - Monitor daily energy costs and usage patterns
 - Set up automated alerts for high usage periods
 - Optimize energy consumption with time-of-use data
-- Track efficiency improvements over time
+- Track usage consistency over time
 
 ### For Property Managers
 - Monitor multiple properties from a single interface

@@ -4,7 +4,7 @@
 [![hacs](https://img.shields.io/badge/HACS-Custom-41BDF5.svg?style=for-the-badge)](https://github.com/hacs/integration)
 [![Integration Usage](https://img.shields.io/badge/dynamic/json?color=41BDF5&style=for-the-badge&logo=home-assistant&label=usage&suffix=%20installs&cacheSeconds=15600&url=https://analytics.home-assistant.io/custom_integrations.json&query=$.red_energy.total)](https://analytics.home-assistant.io/)
 
-A comprehensive Home Assistant custom integration for Red Energy (Australian energy provider) that provides real-time energy monitoring and advanced analytics.
+A comprehensive Home Assistant custom integration for Red Energy (Australian energy provider) that tracks daily energy usage and provides advanced analytics.
 
 ---
 
@@ -17,9 +17,9 @@ A comprehensive Home Assistant custom integration for Red Energy (Australian ene
 
 ## Key Features
 
-- **Real-time Energy Monitoring**: Track daily electricity and gas usage with cost analysis
+- **Daily Energy Usage Tracking**: Daily electricity and gas usage data from Red Energy, with cost analysis
 - **Multi-Account Support**: Every account on your Red Energy login gets its own device - including split accounts where electricity and gas are billed separately at the same address
-- **Advanced Analytics**: Daily/monthly averages, peak usage detection, and efficiency ratings
+- **Advanced Analytics**: Daily/monthly averages, highest net usage day detection, and usage consistency scoring
 - **Tariff Rate Visibility**: A diagnostic sensor per rate on your actual plan (peak/off-peak/shoulder/supply/demand)
 - **Energy Dashboard Integration**: Native Home Assistant Energy dashboard support
 
@@ -31,18 +31,19 @@ A comprehensive Home Assistant custom integration for Red Energy (Australian ene
 - Electricity-only concepts (solar, export usage/credit) are only created on electricity accounts, never on gas
 
 ### Advanced Analytics (Optional)
-- Daily and monthly usage averages (billing period-adjusted)
-- Peak usage detection with date attribution  
-- Efficiency ratings (0-100%) based on usage consistency - electricity only
+- Daily Average (current billing-period mean) and Monthly Average (current-period usage normalised to a 30.44-day month) - not historical averages
+- Highest Net Usage Day detection with date attribution - distinct from TOU Peak consumption or maximum demand
+- Usage consistency score (0-100) based on day-to-day variation in usage - electricity only, not an energy-efficiency measure
 - Time-of-use breakdown, max demand, and carbon emissions - electricity only
-- Projected net cost and projected charges (including demand charge for Demand-tariff plans) for the current billing cycle
+- Projected net cost and projected charges (including demand charge for Demand-tariff plans) for the current billing cycle - estimates, not Red Energy's own figures
 - Accrued service charge and demand charge (Demand-tariff plans) since the start of the current billing period
+- CL2/TOU reconstruction (6 additional sensors, electricity only, conditional on plan tariff structure) - separates inferred Controlled Load usage from combined TOU interval data; see README for details
 
 ### Billing Period Alignment
 - Automatic alignment with Red Energy billing cycles
-- Usage tracking from last bill date to current date
-- Direct comparison with actual Red Energy bills
-- Automatic fallback to 30-day period if needed
+- Current billing period starts the day after `lastBillDate` (which marks the end of the *previous* period)
+- Current-period sensors are aligned for close comparison with Red Energy billing data; projections are estimates, not guaranteed to match your invoice
+- Automatic fallback to a 30-day calculation window if billing metadata is unavailable
 
 ### Service Calls
 - Manual data refresh
@@ -77,7 +78,7 @@ A comprehensive Home Assistant custom integration for Red Energy (Australian ene
 - Monitor daily energy costs and identify high-usage periods
 - Set up automated alerts for budget management
 - Optimize energy consumption with time-of-use insights
-- Track efficiency improvements over time
+- Track usage consistency over time
 
 ### For Property Managers  
 - Monitor multiple properties from a single interface
