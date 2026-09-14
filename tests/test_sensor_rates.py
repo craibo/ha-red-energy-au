@@ -29,11 +29,11 @@ ELECTRICITY_RATES = [
     {
         "rate_code": "80008279798GP",
         "rate_desc": "Solar",
-        "rate_incl_gst_dollars": -0.04,
+        "rate_incl_gst_dollars": 0.04,
         "type": "PR",
-        "rate_excl_gst_cents": -3.6364,
-        "discounted_rate_excl_gst_in_cents": -3.6364,
-        "discounted_rate_incl_gst_in_cents": -4,
+        "rate_excl_gst_cents": 3.6364,
+        "discounted_rate_excl_gst_in_cents": 3.6364,
+        "discounted_rate_incl_gst_in_cents": 4,
         "unit": "kWh",
         "unit_step_desc": None,
     },
@@ -270,7 +270,10 @@ def test_rate_sensor_falls_back_to_plain_aud_when_unit_missing():
     assert sensor.native_unit_of_measurement == "AUD"
 
 
-def test_rate_sensor_handles_negative_solar_value():
+def test_rate_sensor_reports_positive_solar_value():
+    """The Solar rate is a credit and is normalized to positive by
+    validate_rates() before reaching this sensor - see
+    https://github.com/craibo/ha-red-energy-au/issues/93."""
     coordinator = _coordinator(ELECTRICITY_SERVICE_METADATA, SERVICE_TYPE_ELECTRICITY)
     config_entry = MagicMock()
     config_entry.entry_id = "entry1"
@@ -279,7 +282,7 @@ def test_rate_sensor_handles_negative_solar_value():
         coordinator, config_entry, "2000002", SERVICE_TYPE_ELECTRICITY, ELECTRICITY_RATES[1]
     )
 
-    assert sensor.native_value == pytest.approx(-0.04)
+    assert sensor.native_value == pytest.approx(0.04)
 
 
 def test_rate_sensor_returns_none_when_rate_no_longer_present():

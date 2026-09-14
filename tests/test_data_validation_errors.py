@@ -540,7 +540,10 @@ def test_validate_single_service_no_rates_defaults_to_empty_list():
 
 
 def test_validate_rates_handles_negative_solar_rate():
-    """Solar feed-in rates are negative (a credit) - must not be rejected."""
+    """Solar feed-in rates arrive negative (a credit) from Red Energy's API,
+    but must be normalized to positive - matching export_credit elsewhere
+    in the integration and what the Energy Dashboard's compensation field
+    expects. See https://github.com/craibo/ha-red-energy-au/issues/93."""
     raw_rates = [
         {
             "rateCode": "80008279798GP",
@@ -556,7 +559,32 @@ def test_validate_rates_handles_negative_solar_rate():
     ]
     result = validate_rates(raw_rates)
     assert len(result) == 1
-    assert result[0]["rate_incl_gst_dollars"] == pytest.approx(-0.04)
+    assert result[0]["rate_incl_gst_dollars"] == pytest.approx(0.04)
+    assert result[0]["rate_excl_gst_cents"] == pytest.approx(3.6364)
+    assert result[0]["discounted_rate_excl_gst_in_cents"] == pytest.approx(3.6364)
+    assert result[0]["discounted_rate_incl_gst_in_cents"] == pytest.approx(4)
+
+
+def test_validate_rates_leaves_non_solar_rates_untouched():
+    """Only the Solar rate_desc gets sign-normalized - other rates (which
+    are never negative in practice) must pass through unchanged."""
+    raw_rates = [
+        {
+            "rateCode": "80008279798P",
+            "rateDesc": "Peak",
+            "type": "PR",
+            "rateExclGstCents": 24.55,
+            "rateInclGstCents": 27.005,
+            "discountedRateExclGstInCents": 24.55,
+            "discountedRateInclGstInCents": 27.005,
+            "unit": "kWh",
+            "unitStepDesc": None,
+        },
+    ]
+    result = validate_rates(raw_rates)
+    assert len(result) == 1
+    assert result[0]["rate_incl_gst_dollars"] == pytest.approx(0.27005)
+    assert result[0]["rate_excl_gst_cents"] == pytest.approx(24.55)
 
 
 def test_validate_rates_handles_duplicate_rate_code_tiered_steps():

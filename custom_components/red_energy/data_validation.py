@@ -316,12 +316,27 @@ def validate_single_service(data: dict[str, Any]) -> dict[str, Any]:
     return validated_service
 
 
+def _as_positive_if_numeric(value: Any) -> Any:
+    """Return abs(value) if value is numeric, otherwise return it unchanged."""
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return abs(value)
+    return value
+
+
 def validate_rates(data: Any) -> list[dict[str, Any]]:
     """Validate a currentPlan.rates list.
 
     rateCode is not unique per service - tiered/step rates (e.g. gas Anytime
     Step1..Step5) repeat the same rateCode and are only distinguished by
     rateDesc, so both fields are required and preserved as-is.
+
+    Red Energy represents the Solar (feed-in) rate as a negative cents value
+    since it's a credit rather than a charge. Every other consumer of a rate
+    value in this integration (e.g. export_credit in api.py) treats a solar
+    credit as positive, and Home Assistant's Energy Dashboard "Return to
+    grid" compensation field expects a positive rate too - so the Solar
+    rate's monetary fields are normalized to positive here, matching that
+    convention. See https://github.com/craibo/ha-red-energy-au/issues/93.
     """
     if not isinstance(data, list):
         return []
@@ -344,14 +359,26 @@ def validate_rates(data: Any) -> list[dict[str, Any]]:
             _LOGGER.warning("Skipping rate %s with invalid rateInclGstCents: %s", rate_code, err)
             continue
 
+        is_solar_rate = str(rate_desc).strip().lower() == "solar"
+        rate_incl_gst_dollars = round(rate_incl_gst_cents / 100, 5)
+        rate_excl_gst_cents = rate.get("rateExclGstCents")
+        discounted_rate_excl_gst_in_cents = rate.get("discountedRateExclGstInCents")
+        discounted_rate_incl_gst_in_cents = rate.get("discountedRateInclGstInCents")
+
+        if is_solar_rate:
+            rate_incl_gst_dollars = abs(rate_incl_gst_dollars)
+            rate_excl_gst_cents = _as_positive_if_numeric(rate_excl_gst_cents)
+            discounted_rate_excl_gst_in_cents = _as_positive_if_numeric(discounted_rate_excl_gst_in_cents)
+            discounted_rate_incl_gst_in_cents = _as_positive_if_numeric(discounted_rate_incl_gst_in_cents)
+
         validated_rates.append({
             "rate_code": str(rate_code),
             "rate_desc": str(rate_desc),
-            "rate_incl_gst_dollars": round(rate_incl_gst_cents / 100, 5),
+            "rate_incl_gst_dollars": rate_incl_gst_dollars,
             "type": rate.get("type"),
-            "rate_excl_gst_cents": rate.get("rateExclGstCents"),
-            "discounted_rate_excl_gst_in_cents": rate.get("discountedRateExclGstInCents"),
-            "discounted_rate_incl_gst_in_cents": rate.get("discountedRateInclGstInCents"),
+            "rate_excl_gst_cents": rate_excl_gst_cents,
+            "discounted_rate_excl_gst_in_cents": discounted_rate_excl_gst_in_cents,
+            "discounted_rate_incl_gst_in_cents": discounted_rate_incl_gst_in_cents,
             "unit": rate.get("unit"),
             "unit_step_desc": rate.get("unitStepDesc"),
         })
