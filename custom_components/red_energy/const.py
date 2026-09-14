@@ -14,6 +14,15 @@ CLIENT_ID: Final = "0oa1apu62kkqeet4C3l7"
 DEFAULT_NAME: Final = "Red Energy"
 DEFAULT_SCAN_INTERVAL: Final = 1800
 
+# A transient network failure (DNS blip, connection reset, timeout) during a
+# poll shouldn't have to wait a full DEFAULT_SCAN_INTERVAL for the next
+# attempt - retry a few times with a short delay within the same update
+# cycle before giving up. Deliberately narrow: this does not cover auth
+# failures or a closed client session (e.g. HA shutting down mid-poll),
+# which a same-cycle retry can't fix anyway.
+UPDATE_RETRY_ATTEMPTS: Final = 3
+UPDATE_RETRY_DELAY_SECONDS: Final = 5
+
 # Device information
 MANUFACTURER: Final = "Red Energy"
 

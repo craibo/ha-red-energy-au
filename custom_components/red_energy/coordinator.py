@@ -25,7 +25,11 @@ from .const import (
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
     GST_MULTIPLIER,
+    UPDATE_RETRY_ATTEMPTS,
+    UPDATE_RETRY_DELAY_SECONDS,
 )
+
+import aiohttp
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -152,7 +156,34 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
         return start_date, end_date
 
     async def _async_update_data(self) -> dict[str, Any]:
-        """Fetch data from Red Energy API."""
+        """Fetch data from Red Energy API, retrying transient network errors.
+
+        HA's DataUpdateCoordinator has no backoff of its own - a failed poll
+        just waits the full update_interval (30 min) before trying again. A
+        DNS blip or connection reset is often gone within seconds, so retry
+        those a few times within this same cycle first. Deliberately not
+        retried here: auth failures/API errors (surfaced as RedEnergyAPIError
+        via _async_update_data_once, not raised as aiohttp/timeout errors)
+        and a closed aiohttp session (RuntimeError, e.g. HA shutting down
+        mid-poll) - neither would succeed on an immediate retry.
+        """
+        for attempt in range(1, UPDATE_RETRY_ATTEMPTS + 1):
+            try:
+                return await self._async_update_data_once()
+            except (aiohttp.ClientError, TimeoutError) as err:
+                if attempt >= UPDATE_RETRY_ATTEMPTS:
+                    raise
+                _LOGGER.warning(
+                    "Transient error fetching red_energy data (attempt %d/%d): %s - retrying in %ds",
+                    attempt, UPDATE_RETRY_ATTEMPTS, err, UPDATE_RETRY_DELAY_SECONDS,
+                )
+                await asyncio.sleep(UPDATE_RETRY_DELAY_SECONDS)
+
+        # Unreachable: the loop above always returns or raises.
+        raise UpdateFailed("Exhausted update retries")
+
+    async def _async_update_data_once(self) -> dict[str, Any]:
+        """Fetch data from Red Energy API (single attempt, no retry)."""
         try:
             # Ensure we're authenticated
             if not self.api._access_token:
@@ -348,6 +379,11 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
         except RedEnergyAPIError as err:
             _LOGGER.error("API error during update: %s", err)
             raise UpdateFailed(f"API error: {err}") from err
+        except (aiohttp.ClientError, TimeoutError):
+            # Let the caller (_async_update_data) see the original transient
+            # error and decide whether to retry, rather than wrapping it in
+            # UpdateFailed here.
+            raise
         except Exception as err:
             _LOGGER.exception("Unexpected error during update")
             raise UpdateFailed(f"Unexpected error: {err}") from err
