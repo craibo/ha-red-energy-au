@@ -10,7 +10,6 @@ def test_stage4_files_exist():
     
     stage4_files = [
         "services.py",
-        "energy.py",
     ]
     
     for file in stage4_files:
@@ -34,23 +33,6 @@ def test_services_file_structure():
     assert "async_refresh_data" in content
     assert "async_update_credentials" in content
     assert "async_export_data" in content
-
-
-def test_energy_integration_structure():
-    """Test that energy.py has required classes."""
-    energy_path = os.path.join(
-        os.path.dirname(os.path.dirname(__file__)),
-        "custom_components", "red_energy", "energy.py"
-    )
-    
-    with open(energy_path, 'r') as f:
-        content = f.read()
-    
-    # Check for energy platform classes
-    assert "RedEnergyEnergyPlatform" in content
-    assert "async_get_config_flow_energy_sources" in content
-    assert "get_energy_usage_sensors" in content
-    assert "get_energy_cost_sensors" in content
 
 
 def test_advanced_sensor_classes():
@@ -161,16 +143,15 @@ def test_stage4_file_count():
     
     python_files = [f for f in os.listdir(integration_path) if f.endswith('.py')]
     
-    # Expected files for Stage 4 (added services.py and energy.py)
+    # Expected files for Stage 4 (added services.py)
     expected_files = [
         "__init__.py",
         "api.py",
-        "config_flow.py", 
+        "config_flow.py",
         "const.py",
         "coordinator.py",
         "data_validation.py",
         "diagnostics.py",
-        "energy.py",
         "sensor.py",
         "services.py",
     ]

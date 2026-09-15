@@ -163,8 +163,9 @@ Production enhancements loaded by `__init__.py` at setup time:
 - `data_validation.py` — validates and transforms all API responses before coordinator stores them
 - `services.py` — implements `red_energy.refresh_data`, `red_energy.update_credentials`, `red_energy.export_data`
 - `button.py` — exposes refresh/export/credential-update actions as HA button entities
-- `energy.py` — registers sensors with the HA Energy Dashboard
 - `diagnostics.py` — provides debug data for HA diagnostics download
+
+Energy Dashboard compatibility comes from sensors declaring `state_class: total`/`device_class: energy` in `sensor.py` — there is no separate `EnergyPlatform` integration file (a prior `energy.py` was removed; it was dead code that also triggered a blocking `import_module` warning at HA startup, since HA auto-imports any `<domain>/energy.py` module regardless of whether it's used).
 
 ## Testing
 
