@@ -442,7 +442,6 @@ def test_integration_file_count():
         "coordinator.py",
         "data_validation.py",
         "diagnostics.py",
-        "energy.py",
         "sensor.py",
         "services.py",
     ]
