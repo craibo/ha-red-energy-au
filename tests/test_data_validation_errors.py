@@ -7,6 +7,8 @@ from custom_components.red_energy.data_validation import (
     validate_properties_data,
     validate_single_service,
     validate_rates,
+    validate_billed_usage,
+    validate_meter_reading,
     DataValidationError
 )
 
@@ -637,3 +639,140 @@ def test_validate_rates_handles_non_list_input():
     assert validate_rates(None) == []
     assert validate_rates("not-a-list") == []
     assert validate_rates({}) == []
+
+
+def _billed_period(from_date, to_date, **overrides):
+    period = {
+        "fromDate": from_date,
+        "toDate": to_date,
+        "consumptionMj": 3600.0,
+        "consumptionKwh": 1000.0,
+        "totalChargesDollar": 220.0,
+        "isPricingReliable": True,
+    }
+    period.update(overrides)
+    return period
+
+
+def test_validate_billed_usage_normalizes_single_period():
+    result = validate_billed_usage([_billed_period("2026-01-01", "2026-03-31")])
+
+    assert result == {
+        "from_date": "2026-01-01",
+        "to_date": "2026-03-31",
+        "days": 90,
+        "consumption_mj": 3600.0,
+        "consumption_kwh": 1000.0,
+        "total_charges_dollar": 220.0,
+        "is_pricing_reliable": True,
+    }
+
+
+def test_validate_billed_usage_picks_latest_period_by_to_date_not_position():
+    result = validate_billed_usage([
+        _billed_period("2026-04-01", "2026-06-30", consumptionMj=1800.0),
+        _billed_period("2026-01-01", "2026-03-31", consumptionMj=3600.0),
+    ])
+
+    assert result["to_date"] == "2026-06-30"
+    assert result["consumption_mj"] == 1800.0
+
+
+def test_validate_billed_usage_empty_list_returns_none():
+    assert validate_billed_usage([]) is None
+
+
+def test_validate_billed_usage_non_list_raises():
+    with pytest.raises(DataValidationError):
+        validate_billed_usage({"fromDate": "2026-01-01"})
+
+
+def test_validate_billed_usage_skips_malformed_periods_but_keeps_valid_ones():
+    result = validate_billed_usage([
+        "not a dict",
+        {"toDate": "2026-09-30"},                          # missing fromDate
+        _billed_period("garbage", "2026-09-30"),           # unparseable date
+        _billed_period("2026-09-30", "2026-07-01"),        # toDate before fromDate
+        _billed_period("2026-01-01", "2026-03-31"),
+    ])
+
+    assert result["from_date"] == "2026-01-01"
+    assert result["to_date"] == "2026-03-31"
+
+
+def test_validate_billed_usage_only_malformed_periods_returns_none():
+    assert validate_billed_usage([{"toDate": "2026-09-30"}]) is None
+
+
+def test_validate_billed_usage_non_numeric_values_become_none():
+    result = validate_billed_usage([
+        _billed_period("2026-01-01", "2026-03-31", consumptionMj="n/a", totalChargesDollar=None),
+    ])
+
+    assert result["consumption_mj"] is None
+    assert result["total_charges_dollar"] is None
+    assert result["consumption_kwh"] == 1000.0
+
+
+def _bill(consumer_number, from_date, to_date, previous_read=1000, current_read=1091, **overrides):
+    bill = {
+        "consumerNumber": consumer_number,
+        "fromDate": from_date,
+        "toDate": to_date,
+        "estimated": False,
+        "meterReadings": [{
+            "meterNumber": "MTR0001",
+            "readingDate": to_date,
+            "registers": [
+                {"registerId": "1", "previousRead": previous_read, "currentRead": current_read, "readType": "R"},
+            ],
+        }],
+    }
+    bill.update(overrides)
+    return bill
+
+
+def test_validate_meter_reading_uses_latest_bill_for_consumer_matching_int_to_str():
+    result = validate_meter_reading(
+        [
+            _bill(4000004, "2025-10-01", "2025-12-31", previous_read=900, current_read=1000),
+            _bill(4000004, "2026-01-01", "2026-03-31"),
+            _bill(5000005, "2026-04-01", "2026-06-30", previous_read=1, current_read=2),
+        ],
+        "4000004",
+    )
+
+    assert result == {
+        "meter_number": "MTR0001",
+        "reading_date": "2026-03-31",
+        "previous_read": 1000.0,
+        "current_read": 1091.0,
+        "read_type": "R",
+        "estimated": False,
+        "from_date": "2026-01-01",
+        "to_date": "2026-03-31",
+    }
+
+
+def test_validate_meter_reading_no_bill_for_consumer_returns_none():
+    assert validate_meter_reading([_bill(5000005, "2026-01-01", "2026-03-31")], "4000004") is None
+
+
+def test_validate_meter_reading_latest_bill_without_register_returns_none():
+    bills = [_bill(4000004, "2026-01-01", "2026-03-31", meterReadings=[])]
+
+    assert validate_meter_reading(bills, "4000004") is None
+
+
+def test_validate_meter_reading_skips_bills_with_bad_dates():
+    result = validate_meter_reading(
+        [_bill(4000004, "2026-01-01", "garbage"), _bill(4000004, "2026-01-01", "2026-03-31")],
+        "4000004",
+    )
+
+    assert result["to_date"] == "2026-03-31"
+
+
+def test_validate_meter_reading_non_list_raises():
+    with pytest.raises(DataValidationError):
+        validate_meter_reading({"bills": []}, "4000004")

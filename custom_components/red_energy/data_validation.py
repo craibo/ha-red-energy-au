@@ -560,6 +560,104 @@ def validate_usage_entry(data: dict[str, Any]) -> dict[str, Any]:
     return validated_data
 
 
+def _as_optional_float(value: Any) -> float | None:
+    """Return value as a float, or None if it isn't a real number."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return float(value)
+
+
+def validate_billed_usage(data: Any) -> dict[str, Any] | None:
+    """Validate /usage/billed data and return its most recent billed period.
+
+    The endpoint returns one summary per bill. Only the latest period (by
+    toDate) is kept. fromDate and toDate are both inclusive. Malformed
+    periods are skipped rather than failing the whole response. Returns
+    None when there are no valid periods (e.g. no bill issued yet).
+    """
+    if not isinstance(data, list):
+        raise DataValidationError(f"Billed usage data must be a list, got {type(data).__name__}")
+
+    periods = []
+    for entry in data:
+        if not isinstance(entry, dict):
+            _LOGGER.warning("Skipping non-dict billed usage period: %s", entry)
+            continue
+        try:
+            from_date = datetime.strptime(entry["fromDate"], "%Y-%m-%d").date()
+            to_date = datetime.strptime(entry["toDate"], "%Y-%m-%d").date()
+        except (KeyError, TypeError, ValueError):
+            _LOGGER.warning("Skipping billed usage period with invalid dates: %s", entry)
+            continue
+        if to_date < from_date:
+            _LOGGER.warning("Skipping billed usage period ending before it starts: %s", entry)
+            continue
+        periods.append((from_date, to_date, entry))
+
+    if not periods:
+        return None
+
+    from_date, to_date, latest = max(periods, key=lambda period: period[1])
+    return {
+        "from_date": from_date.isoformat(),
+        "to_date": to_date.isoformat(),
+        "days": (to_date - from_date).days + 1,
+        "consumption_mj": _as_optional_float(latest.get("consumptionMj")),
+        "consumption_kwh": _as_optional_float(latest.get("consumptionKwh")),
+        "total_charges_dollar": _as_optional_float(latest.get("totalChargesDollar")),
+        "is_pricing_reliable": latest.get("isPricingReliable"),
+    }
+
+
+def validate_meter_reading(bills: Any, consumer_number: str) -> dict[str, Any] | None:
+    """Return the meter register read from a consumer's latest bill in /bills.
+
+    /bills returns every bill on the login, with consumerNumber as an int
+    (services hold it as a string), so matching compares strings. Only the
+    first meter's first register is used - gas meters have one. Returns
+    None when the consumer has no bill or its latest bill has no register.
+    """
+    if not isinstance(bills, list):
+        raise DataValidationError(f"Bills data must be a list, got {type(bills).__name__}")
+
+    consumer_bills = []
+    for bill in bills:
+        if not isinstance(bill, dict) or str(bill.get("consumerNumber")) != str(consumer_number):
+            continue
+        try:
+            to_date = datetime.strptime(bill["toDate"], "%Y-%m-%d").date()
+        except (KeyError, TypeError, ValueError):
+            _LOGGER.warning("Skipping bill with invalid toDate for consumer %s", consumer_number)
+            continue
+        consumer_bills.append((to_date, bill))
+
+    if not consumer_bills:
+        return None
+
+    _, latest = max(consumer_bills, key=lambda item: item[0])
+    meter_readings = latest.get("meterReadings") or []
+    if not meter_readings or not isinstance(meter_readings[0], dict):
+        return None
+    meter = meter_readings[0]
+    registers = meter.get("registers") or []
+    if not registers or not isinstance(registers[0], dict):
+        return None
+    if len(meter_readings) > 1 or len(registers) > 1:
+        _LOGGER.debug("Bill for consumer %s has multiple meters/registers - using the first", consumer_number)
+    register = registers[0]
+
+    return {
+        "meter_number": meter.get("meterNumber"),
+        "reading_date": meter.get("readingDate"),
+        "previous_read": _as_optional_float(register.get("previousRead")),
+        "current_read": _as_optional_float(register.get("currentRead")),
+        "read_type": register.get("readType"),
+        "estimated": latest.get("estimated"),
+        "from_date": latest.get("fromDate"),
+        "to_date": latest.get("toDate"),
+    }
+
+
 def sanitize_sensor_name(name: str) -> str:
     """Sanitize a name for use as a sensor name."""
     if not name:
