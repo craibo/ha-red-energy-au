@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Is
 
-A Home Assistant custom integration for Red Energy (Australian energy provider) that polls a private API for electricity and gas usage data. Deployed via HACS. Current version: 1.7.7.
+A Home Assistant custom integration for Red Energy (Australian energy provider) that polls a private API for electricity and gas usage data. Deployed via HACS. Current version: 1.22.0.
 
 ## Branch Workflow
 
@@ -86,6 +86,8 @@ Base URL: `https://selfservice.services.retail.energy/v1`
 - `GET /customers/current` — customer info
 - `GET /properties` — property/account list
 - `GET /usage/interval?consumerNumber=X&fromDate=Y&toDate=Z` — daily summaries with 48 half-hourly intervals per day
+- `GET /usage/billed?consumerNumber=X&fromDate=Y&toDate=Z` — one summary per billed period (`consumptionMj`, `consumptionKwh`, `totalChargesDollar`, ...). Used instead of `/usage/interval` for gas and BASIC meters (`coordinator.service_has_interval_usage`), which 400 on the interval endpoint. Only the latest period is kept (`data_validation.validate_billed_usage`).
+- `GET /bills` — every bill on the login (no parameters). Gas services take `meterReadings[0].registers[0]` `previousRead`/`currentRead` (m³) from the consumer's latest bill (`data_validation.validate_meter_reading`). `consumerNumber` is an int in this response.
 
 ### API Field Mappings
 
@@ -135,8 +137,10 @@ The `/usage/interval` endpoint returns an **array of daily summaries**, each wit
 
 Two tiers of sensors per service (electricity or gas) per property:
 
-- **Core sensors** (25 for electricity, 20 for gas, always created): daily/total import/export usage and cost, account metadata, billing dates, plan name
-- **Advanced sensors** (16 for electricity, 6 for gas, optional toggle): time-of-use breakdown (peak/offpeak/shoulder), peak demand, carbon emissions, service/demand charge accrual, projected net cost/charges
+- **Core sensors** (25 for interval electricity, 20 for gas, always created): daily/total import/export usage and cost, account metadata, billing dates, plan name
+- **Advanced sensors** (16 for interval electricity, none for gas/BASIC, optional toggle): time-of-use breakdown (peak/offpeak/shoulder), peak demand, carbon emissions, service/demand charge accrual, projected net cost/charges
+
+Gas and BASIC meters don't get the interval usage sensors (`_requires_usage_data = True`); they get three billed-period sensors instead (Billed Gas/Electricity Usage, Billed Average Daily Usage, Billed Average Daily Cost), fed from `/usage/billed`. Gas also gets Previous Read and Current Read, fed from `/bills`.
 
 Unique IDs follow the pattern: `{domain}_{entry_id}_{property_id}_{service_type}_{sensor_type}`
 

@@ -429,6 +429,63 @@ class RedEnergyAPI:
                 
                 # Transform API response to expected format
                 return self._transform_usage_data(raw_data, consumer_number, from_date, to_date)
+
+    async def get_billed_usage(
+        self,
+        consumer_number: str,
+        from_date: datetime,
+        to_date: datetime
+    ) -> list[dict[str, Any]]:
+        """Get billed-period usage summaries.
+
+        Gas and BASIC/manual-read meters have no half-hourly interval data
+        (/usage/interval 400s for them), so their usage is only available
+        per billing period. Returns one summary per bill in the date range.
+        """
+        await self._ensure_valid_token()
+
+        url = f"{self.BASE_API_URL}/usage/billed"
+        params = {
+            'consumerNumber': consumer_number,
+            'fromDate': from_date.strftime('%Y-%m-%d'),
+            'toDate': to_date.strftime('%Y-%m-%d')
+        }
+        headers = {'Authorization': f'Bearer {self._access_token}'}
+
+        async with asyncio.timeout(API_TIMEOUT):
+            async with self._session.get(url, headers=headers, params=params) as response:
+                if response.status == 400:
+                    try:
+                        error_data = await response.json()
+                        error_message = error_data.get('message', 'Bad Request')
+                    except Exception:
+                        error_message = 'Bad Request'
+                    raise RedEnergyAPIError(
+                        f"Billed usage request rejected for consumer {consumer_number}: {error_message}"
+                    )
+
+                response.raise_for_status()
+                raw_data = await response.json()
+                _LOGGER.debug("Raw /usage/billed response for consumer %s: %s", consumer_number, raw_data)
+                return raw_data
+
+    async def get_bills(self) -> list[dict[str, Any]]:
+        """Get every bill on the login (all accounts, full history).
+
+        Used for the meter register reads on gas bills, which
+        /usage/billed doesn't include.
+        """
+        await self._ensure_valid_token()
+
+        url = f"{self.BASE_API_URL}/bills"
+        headers = {'Authorization': f'Bearer {self._access_token}'}
+
+        async with asyncio.timeout(API_TIMEOUT):
+            async with self._session.get(url, headers=headers) as response:
+                response.raise_for_status()
+                raw_data = await response.json()
+                _LOGGER.debug("Raw /bills response: %s", raw_data)
+                return raw_data
     
     async def _ensure_valid_token(self) -> None:
         """Ensure we have a valid access token."""

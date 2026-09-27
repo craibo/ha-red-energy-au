@@ -11,7 +11,7 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import ATTR_LATITUDE, ATTR_LONGITUDE, UnitOfEnergy
+from homeassistant.const import ATTR_LATITUDE, ATTR_LONGITUDE, UnitOfEnergy, UnitOfVolume
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity import EntityCategory
@@ -40,6 +40,11 @@ from .const import (
     SENSOR_TYPE_CURRENT_PERIOD_IMPORT_USAGE,
     SENSOR_TYPE_CURRENT_PERIOD_NET_COST,
     SENSOR_TYPE_CURRENT_PERIOD_DEMAND_CHARGE,
+    SENSOR_TYPE_BILLED_USAGE,
+    SENSOR_TYPE_BILLED_AVERAGE_DAILY_USAGE,
+    SENSOR_TYPE_BILLED_AVERAGE_DAILY_COST,
+    SENSOR_TYPE_PREVIOUS_READ,
+    SENSOR_TYPE_CURRENT_READ,
     SENSOR_TYPE_DAILY_AVERAGE,
     SENSOR_TYPE_DISTRIBUTOR,
     SENSOR_TYPE_EFFICIENCY,
@@ -63,7 +68,7 @@ from .const import (
     SERVICE_TYPE_GAS,
 )
 from .cl2_inference import resolve_rate_roles
-from .coordinator import RedEnergyDataCoordinator
+from .coordinator import RedEnergyDataCoordinator, service_has_interval_usage
 
 if TYPE_CHECKING:
     pass
@@ -103,11 +108,9 @@ async def async_setup_entry(
                 )
                 continue
 
-            # BASIC/manual-read meters never produce interval usage data (Red
-            # Energy's API 400s on every request for them), so usage-dependent
-            # sensors are created disabled by default rather than sitting
-            # enabled and permanently "Unknown".
-            is_basic_meter = service_metadata.get("meterType") == "BASIC"
+            # Gas and BASIC/manual-read meters have no interval usage - their
+            # usage comes per billing period from /usage/billed instead.
+            has_interval_usage = service_has_interval_usage(service_metadata)
 
             # Core sensors (always created)
             service_entities = [
@@ -199,10 +202,24 @@ async def async_setup_entry(
                         RedEnergyReconstructedImportCostSensor(coordinator, config_entry, account_id, service_type),
                     ])
 
-            if is_basic_meter:
-                for entity in service_entities:
-                    if entity._requires_usage_data:
-                        entity._attr_entity_registry_enabled_default = False
+            # Interval usage sensors would be permanently Unknown for these
+            # meters, so they're replaced by the billed-period sensors. Any
+            # left in the registry from older versions are removed by the
+            # stale-entity cleanup below.
+            if not has_interval_usage:
+                service_entities = [
+                    entity for entity in service_entities if not entity._requires_usage_data
+                ]
+                service_entities.extend([
+                    RedEnergyBilledUsageSensor(coordinator, config_entry, account_id, service_type),
+                    RedEnergyBilledAverageDailyUsageSensor(coordinator, config_entry, account_id, service_type),
+                    RedEnergyBilledAverageDailyCostSensor(coordinator, config_entry, account_id, service_type),
+                ])
+                if service_type == SERVICE_TYPE_GAS:
+                    service_entities.extend([
+                        RedEnergyPreviousReadSensor(coordinator, config_entry, account_id, service_type),
+                        RedEnergyCurrentReadSensor(coordinator, config_entry, account_id, service_type),
+                    ])
 
             # Solar, export, time-of-use breakdown, demand, carbon emission,
             # and efficiency have no equivalent for gas - drop them entirely
@@ -1486,6 +1503,244 @@ class RedEnergyStatusSensor(RedEnergyBaseSensor):
             return "Active" if is_active else "Inactive"
         
         return None
+
+
+class RedEnergyBilledSensor(RedEnergyBaseSensor):
+    """Base for sensors reporting the latest billed period of a gas/BASIC meter.
+
+    These meters have no interval usage, so they don't need usage_data -
+    only the billed period from /usage/billed.
+    """
+
+    _requires_usage_data = False
+
+    def _billed_usage(self) -> dict[str, Any] | None:
+        return self.coordinator.get_billed_usage(self._property_id, self._service_type)
+
+    def _billed_usage_value(self, billed: dict[str, Any]) -> float | None:
+        """Return the period's usage in this service's native unit."""
+        if self._service_type == SERVICE_TYPE_GAS:
+            return billed.get("consumption_mj")
+        return billed.get("consumption_kwh")
+
+    def _billed_usage_unit(self) -> str:
+        if self._service_type == SERVICE_TYPE_GAS:
+            return UnitOfEnergy.MEGA_JOULE
+        return UnitOfEnergy.KILO_WATT_HOUR
+
+    @staticmethod
+    def _billed_daily_average(total: float | None, billed: dict[str, Any]) -> float | None:
+        if total is None or not billed.get("days"):
+            return None
+        return round(total / billed["days"], 2)
+
+    def _billed_period_attributes(self) -> dict[str, Any] | None:
+        billed = self._billed_usage()
+        if not billed:
+            return None
+        return {
+            "from_date": billed["from_date"],
+            "to_date": billed["to_date"],
+            "days": billed["days"],
+        }
+
+
+class RedEnergyBilledUsageSensor(RedEnergyBilledSensor):
+    """Usage for the latest billed period (MJ for gas, kWh for BASIC electricity)."""
+
+    def __init__(
+        self,
+        coordinator: RedEnergyDataCoordinator,
+        config_entry: ConfigEntry,
+        property_id: str,
+        service_type: str,
+    ) -> None:
+        """Initialize the billed usage sensor."""
+        super().__init__(coordinator, config_entry, property_id, service_type, SENSOR_TYPE_BILLED_USAGE)
+
+        service_label = "Gas" if service_type == SERVICE_TYPE_GAS else "Electricity"
+        self._attr_name = f"Billed {service_label} Usage"
+        self._attr_device_class = SensorDeviceClass.ENERGY
+        self._attr_state_class = SensorStateClass.TOTAL
+        self._attr_native_unit_of_measurement = self._billed_usage_unit()
+
+    @property
+    def last_reset(self) -> datetime | None:
+        """Return the billed period start so each new bill starts a new statistics cycle."""
+        billed = self._billed_usage()
+        if not billed:
+            return None
+        return dt_util.as_utc(datetime.strptime(billed["from_date"], "%Y-%m-%d"))
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the latest billed period's usage."""
+        billed = self._billed_usage()
+        if not billed:
+            return None
+        return self._billed_usage_value(billed)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Return the billed period and pricing reliability."""
+        attributes = self._billed_period_attributes()
+        if attributes is None:
+            return None
+        billed = self._billed_usage()
+        attributes["is_pricing_reliable"] = billed.get("is_pricing_reliable")
+        if self._service_type == SERVICE_TYPE_GAS:
+            attributes["consumption_kwh"] = billed.get("consumption_kwh")
+        return attributes
+
+
+class RedEnergyBilledAverageDailyUsageSensor(RedEnergyBilledSensor):
+    """Average daily usage over the latest billed period."""
+
+    def __init__(
+        self,
+        coordinator: RedEnergyDataCoordinator,
+        config_entry: ConfigEntry,
+        property_id: str,
+        service_type: str,
+    ) -> None:
+        """Initialize the billed average daily usage sensor."""
+        super().__init__(coordinator, config_entry, property_id, service_type, SENSOR_TYPE_BILLED_AVERAGE_DAILY_USAGE)
+
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_native_unit_of_measurement = f"{self._billed_usage_unit()}/d"
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the billed period's usage divided by its length in days."""
+        billed = self._billed_usage()
+        if not billed:
+            return None
+        return self._billed_daily_average(self._billed_usage_value(billed), billed)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Return the billed period."""
+        return self._billed_period_attributes()
+
+
+class RedEnergyBilledAverageDailyCostSensor(RedEnergyBilledSensor):
+    """Average daily total charges (GST-inclusive) over the latest billed period."""
+
+    def __init__(
+        self,
+        coordinator: RedEnergyDataCoordinator,
+        config_entry: ConfigEntry,
+        property_id: str,
+        service_type: str,
+    ) -> None:
+        """Initialize the billed average daily cost sensor."""
+        super().__init__(coordinator, config_entry, property_id, service_type, SENSOR_TYPE_BILLED_AVERAGE_DAILY_COST)
+
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_native_unit_of_measurement = "AUD/d"
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the billed period's total charges divided by its length in days."""
+        billed = self._billed_usage()
+        if not billed:
+            return None
+        return self._billed_daily_average(billed.get("total_charges_dollar"), billed)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Return the billed period and GST basis."""
+        attributes = self._billed_period_attributes()
+        if attributes is None:
+            return None
+        attributes["gst_basis"] = "inclusive"
+        return attributes
+
+
+class RedEnergyMeterReadSensor(RedEnergyBaseSensor):
+    """Base for the meter register reads on the latest gas bill.
+
+    The API gives no unit; reads are m3 - consumptionMj divided by the read
+    difference is ~39.5 MJ/m3, the heating value of natural gas.
+    """
+
+    _requires_usage_data = False
+    _read_key: str
+
+    def __init__(
+        self,
+        coordinator: RedEnergyDataCoordinator,
+        config_entry: ConfigEntry,
+        property_id: str,
+        service_type: str,
+        sensor_type: str,
+    ) -> None:
+        """Initialize the meter read sensor."""
+        super().__init__(coordinator, config_entry, property_id, service_type, sensor_type)
+
+        self._attr_device_class = SensorDeviceClass.GAS
+        self._attr_native_unit_of_measurement = UnitOfVolume.CUBIC_METERS
+
+    def _meter_reading(self) -> dict[str, Any] | None:
+        return self.coordinator.get_meter_reading(self._property_id, self._service_type)
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the meter register read."""
+        reading = self._meter_reading()
+        if not reading:
+            return None
+        return reading.get(self._read_key)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Return the meter and bill period the read belongs to."""
+        reading = self._meter_reading()
+        if not reading:
+            return None
+        return {
+            "meter_number": reading.get("meter_number"),
+            "reading_date": reading.get("reading_date"),
+            "read_type": reading.get("read_type"),
+            "estimated": reading.get("estimated"),
+            "from_date": reading.get("from_date"),
+            "to_date": reading.get("to_date"),
+        }
+
+
+class RedEnergyPreviousReadSensor(RedEnergyMeterReadSensor):
+    """Meter read at the start of the latest gas bill period."""
+
+    _read_key = "previous_read"
+
+    def __init__(
+        self,
+        coordinator: RedEnergyDataCoordinator,
+        config_entry: ConfigEntry,
+        property_id: str,
+        service_type: str,
+    ) -> None:
+        """Initialize the previous read sensor."""
+        super().__init__(coordinator, config_entry, property_id, service_type, SENSOR_TYPE_PREVIOUS_READ)
+
+
+class RedEnergyCurrentReadSensor(RedEnergyMeterReadSensor):
+    """Meter read at the end of the latest gas bill period."""
+
+    _read_key = "current_read"
+
+    def __init__(
+        self,
+        coordinator: RedEnergyDataCoordinator,
+        config_entry: ConfigEntry,
+        property_id: str,
+        service_type: str,
+    ) -> None:
+        """Initialize the current read sensor."""
+        super().__init__(coordinator, config_entry, property_id, service_type, SENSOR_TYPE_CURRENT_READ)
+
+        # A cumulative meter register, so it can be an Energy Dashboard gas source
+        self._attr_state_class = SensorStateClass.TOTAL_INCREASING
 
 
 class RedEnergyDailyImportUsageSensor(RedEnergyBaseSensor):

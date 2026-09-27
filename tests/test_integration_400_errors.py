@@ -8,6 +8,30 @@ from custom_components.red_energy.api import RedEnergyAPIError
 
 RECENT_BILL_DATE = (datetime.now() - timedelta(days=14)).strftime("%Y-%m-%d")
 
+BILLED_PERIOD = {
+    "fromDate": "2026-01-01",
+    "toDate": "2026-03-31",
+    "consumptionMj": 3600.0,
+    "consumptionKwh": 1000.0,
+    "totalChargesDollar": 220.0,
+}
+
+
+def _billed_usage_via(coordinator):
+    """Route gas fetches through each test's per-consumer usage rules.
+
+    Gas meters use /usage/billed, not /usage/interval. Each test decides
+    per consumer (in its get_usage_data side effect) whether a fetch fails;
+    a failing gas fetch raises the RedEnergyAPIError get_billed_usage
+    raises for a 400.
+    """
+    async def get_billed_usage(consumer_number, start_date, end_date):
+        result = coordinator.api.get_usage_data.side_effect(consumer_number, start_date, end_date)
+        if isinstance(result, dict) and result.get("error"):
+            raise RedEnergyAPIError(result["error_message"])
+        return [BILLED_PERIOD]
+    return get_billed_usage
+
 
 @pytest.fixture
 def mock_hass():
@@ -35,6 +59,8 @@ def coordinator_with_multiple_properties(mock_hass):
     # Mock the API
     coordinator.api = AsyncMock()
     coordinator.api._access_token = "test_token"
+    coordinator.api.get_billed_usage = AsyncMock(side_effect=_billed_usage_via(coordinator))
+    coordinator.api.get_bills = AsyncMock(return_value=[])
     
     # Mock properties with multiple services
     coordinator._properties = [
@@ -161,10 +187,9 @@ async def test_integration_mixed_success_failure_scenario(coordinator_with_multi
     
     # Verify error warnings were logged
     assert "API returned error for electricity service (consumer elec1)" in caplog.text
-    assert "API returned error for gas service (consumer gas2)" in caplog.text
+    assert "Failed to fetch/validate gas usage for property prop2" in caplog.text
     
     # Verify success messages were logged
-    assert "Successfully fetched gas usage for property prop1" in caplog.text
     assert "Successfully fetched electricity usage for property prop2" in caplog.text
     assert "Successfully fetched electricity usage for property prop3" in caplog.text
 
@@ -225,7 +250,7 @@ async def test_integration_all_services_fail_for_one_property(coordinator_with_m
     
     # Verify error warnings were logged for property 1
     assert "API returned error for electricity service (consumer elec1)" in caplog.text
-    assert "API returned error for gas service (consumer gas1)" in caplog.text
+    assert "Failed to fetch/validate gas usage for property prop1" in caplog.text
     assert "Property 1 services unavailable" in caplog.text
 
 
@@ -341,7 +366,9 @@ async def test_integration_graceful_degradation_with_minimal_data(coordinator_wi
     
     # Verify multiple error warnings were logged
     error_warnings = [record for record in caplog.records if "API returned error" in record.message]
-    assert len(error_warnings) == 4  # 4 of 5 services failed (elec3 succeeds)
+    assert len(error_warnings) == 2  # elec1 and elec2 interval fetches failed
+    billed_errors = [record for record in caplog.records if "Failed to fetch/validate gas usage" in record.message]
+    assert len(billed_errors) == 2  # gas1 and gas2 billed fetches failed
 
 
 @pytest.mark.asyncio
@@ -393,7 +420,8 @@ async def test_integration_logging_levels_and_debug_info(coordinator_with_multip
     # Verify warning logs for errors
     warning_logs = [record for record in caplog.records if record.levelno == logging.WARNING]
     assert any("API returned error for electricity service (consumer elec1)" in record.message for record in warning_logs)
-    assert any("API returned error for gas service (consumer gas2)" in record.message for record in warning_logs)
+    error_logs = [record for record in caplog.records if record.levelno == logging.ERROR]
+    assert any("Failed to fetch/validate gas usage for property prop2" in record.message for record in error_logs)
     
     # Verify info logs for successful operations
     info_logs = [record for record in caplog.records if record.levelno == logging.INFO]
