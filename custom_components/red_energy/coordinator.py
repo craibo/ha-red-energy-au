@@ -15,16 +15,20 @@ from .api import RedEnergyAPI, RedEnergyAPIError, RedEnergyAuthError
 from .cl2_inference import infer_cl2_interval, resolve_rate_roles
 from .data_validation import (
     DataValidationError,
+    validate_billed_usage,
     validate_customer_data,
+    validate_meter_reading,
     validate_properties_data,
     validate_usage_data,
 )
 from .error_recovery import RedEnergyErrorRecoverySystem, ErrorType
 from .performance import PerformanceMonitor, DataProcessor
 from .const import (
+    BILLED_USAGE_LOOKBACK_DAYS,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
     GST_MULTIPLIER,
+    SERVICE_TYPE_GAS,
     UPDATE_RETRY_ATTEMPTS,
     UPDATE_RETRY_DELAY_SECONDS,
 )
@@ -32,6 +36,15 @@ from .const import (
 import aiohttp
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def service_has_interval_usage(service: dict[str, Any]) -> bool:
+    """Return whether a service has half-hourly interval usage.
+
+    Gas and BASIC/manual-read meters don't - /usage/interval 400s for them,
+    and their usage is only available per billing period via /usage/billed.
+    """
+    return service.get("type") != SERVICE_TYPE_GAS and service.get("meterType") != "BASIC"
 
 
 class RedEnergyDataCoordinator(DataUpdateCoordinator):
@@ -258,9 +271,15 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
                         _LOGGER.debug("    Service %s is inactive - SKIPPING", service_type)
                         continue
                     
-                    _LOGGER.debug("    Service %s MATCHED - fetching usage data", service_type)
+                    _LOGGER.debug("    Service %s MATCHED - fetching usage", service_type)
                     
                     try:
+                        if not service_has_interval_usage(service):
+                            billed_entry = await self._fetch_billed_service_usage(service)
+                            if billed_entry:
+                                property_usage[service_type] = billed_entry
+                            continue
+
                         start_date, end_date = self._get_usage_period_dates(service)
                         
                         _LOGGER.debug("    Calling API get_usage_data: consumer=%s, from=%s, to=%s",
@@ -483,6 +502,44 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
             )
             raise
     
+    async def _fetch_billed_service_usage(self, service: dict[str, Any]) -> dict[str, Any] | None:
+        """Fetch the latest billed period for a gas/BASIC service.
+
+        Returns the coordinator service entry, or None if no bill has been
+        issued yet. Raises RedEnergyAPIError/DataValidationError on failure.
+        """
+        consumer_number = service.get("consumer_number")
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=BILLED_USAGE_LOOKBACK_DAYS)
+
+        raw_billed = await self.api.get_billed_usage(consumer_number, start_date, end_date)
+        billed_usage = validate_billed_usage(raw_billed)
+        if billed_usage is None:
+            _LOGGER.info("No billed usage periods yet for consumer %s", consumer_number)
+            return None
+
+        entry = {
+            "consumer_number": consumer_number,
+            "billed_usage": billed_usage,
+            "last_updated": end_date.isoformat(),
+        }
+        if service.get("type") == SERVICE_TYPE_GAS:
+            entry["meter_reading"] = await self._fetch_meter_reading(consumer_number)
+        return entry
+
+    async def _fetch_meter_reading(self, consumer_number: str) -> dict[str, Any] | None:
+        """Fetch the meter register read from the consumer's latest bill.
+
+        Best-effort: a /bills failure only loses the reads, so it's logged
+        and None is returned rather than failing the billed usage.
+        """
+        try:
+            bills = await self.api.get_bills()
+            return validate_meter_reading(bills, consumer_number)
+        except (RedEnergyAPIError, DataValidationError, aiohttp.ClientError, asyncio.TimeoutError) as err:
+            _LOGGER.warning("Failed to fetch meter reads for consumer %s: %s", consumer_number, err)
+            return None
+
     async def _fetch_property_usage(self, property_data: dict[str, Any]) -> dict[str, Any] | None:
         """Fetch usage data for a single property."""
         property_id = property_data.get("id")
@@ -500,6 +557,12 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
                 continue
             
             try:
+                if not service_has_interval_usage(service):
+                    billed_entry = await self._fetch_billed_service_usage(service)
+                    if billed_entry:
+                        property_usage[service_type] = billed_entry
+                    continue
+
                 start_date, end_date = self._get_usage_period_dates(service)
                 
                 raw_usage = await self.api.get_usage_data(
@@ -631,6 +694,22 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
             return None
         
         return property_data.get("services", {}).get(service_type)
+
+    def get_billed_usage(self, property_id: str, service_type: str) -> dict[str, Any] | None:
+        """Get the latest billed period for a gas/BASIC property and service."""
+        service_data = self.get_service_usage(property_id, service_type)
+        if not service_data:
+            return None
+
+        return service_data.get("billed_usage")
+
+    def get_meter_reading(self, property_id: str, service_type: str) -> dict[str, Any] | None:
+        """Get the latest bill's meter register read for a gas property and service."""
+        service_data = self.get_service_usage(property_id, service_type)
+        if not service_data:
+            return None
+
+        return service_data.get("meter_reading")
 
     def get_latest_usage(self, property_id: str, service_type: str) -> float | None:
         """Get the most recent usage value for a property and service."""

@@ -23,6 +23,10 @@ DEFAULT_SCAN_INTERVAL: Final = 1800
 UPDATE_RETRY_ATTEMPTS: Final = 3
 UPDATE_RETRY_DELAY_SECONDS: Final = 5
 
+# How far back to request /usage/billed. Only the latest billed period is
+# used; 400 days covers quarterly billing plus late-issued bills.
+BILLED_USAGE_LOOKBACK_DAYS: Final = 400
+
 # Device information
 MANUFACTURER: Final = "Red Energy"
 
