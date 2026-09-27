@@ -641,7 +641,8 @@ async def test_projected_sensors_not_created_when_advanced_disabled():
 
 
 @pytest.mark.asyncio
-async def test_projected_sensors_created_for_electricity_and_gas_when_advanced_enabled():
+async def test_projected_sensors_created_for_electricity_not_gas_when_advanced_enabled():
+    """Gas meters have no interval usage to project from, so no projected sensors."""
     coordinator = _mock_coordinator_for_setup(service_type=SERVICE_TYPE_ELECTRICITY)
     gas_coordinator_data = coordinator.data["usage_data"]["2000002"]["property"]["services"]
     gas_coordinator_data.append({**gas_coordinator_data[0], "type": SERVICE_TYPE_GAS})
@@ -671,5 +672,5 @@ async def test_projected_sensors_created_for_electricity_and_gas_when_advanced_e
     charges_sensors = [
         e for e in added_entities if isinstance(e, RedEnergyProjectedChargesSensor)
     ]
-    assert len(net_cost_sensors) == 2
-    assert len(charges_sensors) == 2
+    assert [e._service_type for e in net_cost_sensors] == [SERVICE_TYPE_ELECTRICITY]
+    assert [e._service_type for e in charges_sensors] == [SERVICE_TYPE_ELECTRICITY]

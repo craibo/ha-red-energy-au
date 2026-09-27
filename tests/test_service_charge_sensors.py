@@ -760,7 +760,8 @@ async def test_service_charge_sensors_not_created_when_advanced_disabled():
 
 
 @pytest.mark.asyncio
-async def test_service_charge_sensors_created_for_electricity_and_gas_when_advanced_enabled():
+async def test_service_charge_sensor_created_for_electricity_not_gas_when_advanced_enabled():
+    """Gas meters have no interval usage, so no accrued service charge sensor."""
     coordinator = _mock_coordinator_for_setup([SUPPLY_CHARGE_RATE], service_type=SERVICE_TYPE_ELECTRICITY)
     gas_coordinator_data = coordinator.data["usage_data"]["2000002"]["property"]["services"]
     gas_coordinator_data.append({**gas_coordinator_data[0], "type": SERVICE_TYPE_GAS})
@@ -787,7 +788,7 @@ async def test_service_charge_sensors_created_for_electricity_and_gas_when_advan
     billing_charge_sensors = [
         e for e in added_entities if isinstance(e, RedEnergyBillingPeriodServiceChargeSensor)
     ]
-    assert len(billing_charge_sensors) == 2
+    assert [e._service_type for e in billing_charge_sensors] == [SERVICE_TYPE_ELECTRICITY]
 
 
 @pytest.mark.asyncio

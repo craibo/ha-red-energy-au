@@ -115,6 +115,15 @@ SENSOR_TYPE_RATE_PREFIX: Final = "rate"
 SENSOR_TYPE_BILLING_PERIOD_SERVICE_CHARGE: Final = "billing_period_service_charge"
 SENSOR_TYPE_CURRENT_PERIOD_DEMAND_CHARGE: Final = "current_period_demand_charge"
 
+# Latest billed period for gas/BASIC meters (from /usage/billed)
+SENSOR_TYPE_BILLED_USAGE: Final = "billed_usage"
+SENSOR_TYPE_BILLED_AVERAGE_DAILY_USAGE: Final = "billed_average_daily_usage"
+SENSOR_TYPE_BILLED_AVERAGE_DAILY_COST: Final = "billed_average_daily_cost"
+
+# Meter register reads from the latest gas bill (from /bills)
+SENSOR_TYPE_PREVIOUS_READ: Final = "previous_read"
+SENSOR_TYPE_CURRENT_READ: Final = "current_read"
+
 # Configuration options
 CONF_SCAN_INTERVAL: Final = "scan_interval"
 CONF_ENABLE_ADVANCED_SENSORS: Final = "enable_advanced_sensors"
