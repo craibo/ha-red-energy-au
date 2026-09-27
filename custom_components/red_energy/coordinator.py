@@ -536,7 +536,7 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
         try:
             bills = await self.api.get_bills()
             return validate_meter_reading(bills, consumer_number)
-        except (RedEnergyAPIError, DataValidationError, aiohttp.ClientError, asyncio.TimeoutError) as err:
+        except Exception as err:  # noqa: BLE001 - optional reads must never fail the update
             _LOGGER.warning("Failed to fetch meter reads for consumer %s: %s", consumer_number, err)
             return None
 

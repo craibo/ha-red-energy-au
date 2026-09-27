@@ -188,8 +188,10 @@ async def test_gas_service_stores_meter_reading(coordinator):
     [
         AsyncMock(return_value=[]),
         AsyncMock(side_effect=aiohttp.ClientError("bills down")),
+        AsyncMock(side_effect=ValueError("not JSON")),
+        AsyncMock(return_value=[{**BILL, "meterReadings": {"meterNumber": "MTR0001"}}]),
     ],
-    ids=["no-bill-for-consumer", "bills-request-fails"],
+    ids=["no-bill-for-consumer", "bills-request-fails", "bills-not-json", "bills-malformed"],
 )
 async def test_missing_meter_reading_keeps_billed_usage(coordinator, bills_mock):
     coordinator.api.get_bills = bills_mock

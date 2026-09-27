@@ -635,12 +635,12 @@ def validate_meter_reading(bills: Any, consumer_number: str) -> dict[str, Any] |
         return None
 
     _, latest = max(consumer_bills, key=lambda item: item[0])
-    meter_readings = latest.get("meterReadings") or []
-    if not meter_readings or not isinstance(meter_readings[0], dict):
+    meter_readings = latest.get("meterReadings")
+    if not isinstance(meter_readings, list) or not meter_readings or not isinstance(meter_readings[0], dict):
         return None
     meter = meter_readings[0]
-    registers = meter.get("registers") or []
-    if not registers or not isinstance(registers[0], dict):
+    registers = meter.get("registers")
+    if not isinstance(registers, list) or not registers or not isinstance(registers[0], dict):
         return None
     if len(meter_readings) > 1 or len(registers) > 1:
         _LOGGER.debug("Bill for consumer %s has multiple meters/registers - using the first", consumer_number)

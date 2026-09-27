@@ -776,3 +776,18 @@ def test_validate_meter_reading_skips_bills_with_bad_dates():
 def test_validate_meter_reading_non_list_raises():
     with pytest.raises(DataValidationError):
         validate_meter_reading({"bills": []}, "4000004")
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"meterReadings": {"meterNumber": "MTR0001"}},
+        {"meterReadings": 5},
+        {"meterReadings": [{"meterNumber": "MTR0001", "registers": {"registerId": "1"}}]},
+    ],
+    ids=["meter-readings-dict", "meter-readings-int", "registers-dict"],
+)
+def test_validate_meter_reading_non_list_shapes_return_none(overrides):
+    bills = [_bill(4000004, "2026-01-01", "2026-03-31", **overrides)]
+
+    assert validate_meter_reading(bills, "4000004") is None
