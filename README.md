@@ -86,7 +86,7 @@ Red Energy bills electricity and gas as **separate accounts**, even at the same 
 Since electricity-only concepts (solar, export, time-of-use tariffs, demand, carbon emissions) don't apply to gas, those sensors are only created on electricity accounts - a gas-only account won't get a permanently meaningless "Solar" entity, for example.
 
 ### Core Sensors (Always Available)
-**25 sensors for electricity accounts, 20 for gas accounts** (gas accounts skip the 5 electricity-only ones marked below):
+**25 sensors for interval electricity accounts, 20 for gas accounts** (gas accounts skip the 5 electricity-only ones and the 5 interval Usage & Cost sensors, and get the 5 Billed Usage sensors below instead):
 
 **Usage & Cost Tracking:**
 - Daily Import Usage - Daily imported energy (kWh/MJ)
@@ -98,6 +98,15 @@ Since electricity-only concepts (solar, export, time-of-use tariffs, demand, car
 - Current Period Import Cost - Import cost since last bill, GST-exclusive (AUD)
 - Current Period Export Credit *(electricity only)* - Export credit since last bill (AUD)
 - Current Period Net Cost - Net cost (GST-exclusive import minus export credit) since last bill (AUD)
+
+**Billed Usage** *(gas and BASIC/manual-read meters only)*:
+
+Gas and BASIC meters are read manually, so Red Energy has no daily or half-hourly data for them - usage is only known once a bill is issued. These sensors show the **most recent billed period** and change only when a new bill arrives. The period's `from_date`, `to_date` and `days` are exposed as attributes.
+- Billed Gas Usage *(Billed Electricity Usage on BASIC electricity meters)* - Usage for the latest billed period (MJ for gas, kWh for electricity). Can be added to the Energy Dashboard, but each bill's usage is recorded at the time the bill arrives, not spread across the period
+- Billed Average Daily Usage - Billed usage divided by the number of days in the period (MJ/d or kWh/d)
+- Billed Average Daily Cost - The bill's total charges, GST-inclusive, divided by the number of days in the period (AUD/d)
+- Previous Read *(gas only)* - Meter register reading at the start of the latest billed period (m³)
+- Current Read *(gas only)* - Meter register reading at the end of the latest billed period (m³). This is a cumulative meter total, so it can be the Energy Dashboard gas source instead of Billed Gas Usage - add one or the other, not both
 
 **Account & Service Information:**
 - NMI - National Meter Identifier
@@ -123,7 +132,7 @@ Since electricity-only concepts (solar, export, time-of-use tariffs, demand, car
 One diagnostic sensor per rate on the account's actual plan (e.g. Peak, Off-Peak, Shoulder, Supply, Demand, or tiered gas usage steps), named `Rate {rate description}`. The state is the rate in dollars including GST; unit, excl-GST rate, and step description are exposed as attributes. The number of these sensors depends entirely on the plan's tariff structure.
 
 ### Advanced Sensors (Optional)
-Enabled via the "Advanced Sensors" integration option. **16 sensors for electricity accounts, 6 for gas accounts** (gas accounts get Daily/Monthly Average, Highest Net Usage Day, Current Period Service Charge, Projected Net Cost, and Projected Charges - the rest are electricity-only, marked below). This count does **not** include the CL2/TOU Reconstruction sensors described further below, which are conditional and not present on every electricity account.
+Enabled via the "Advanced Sensors" integration option. **16 sensors for interval electricity accounts, none for gas or BASIC-meter accounts** (they all need daily interval usage, which those meters don't have). This count does **not** include the CL2/TOU Reconstruction sensors described further below, which are conditional and not present on every electricity account.
 
 **Statistical Analysis:**
 - Daily Average - Arithmetic mean of the available daily usage records in the *current billing period*. Early in a new billing period this may be based on only a small number of days
