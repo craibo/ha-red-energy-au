@@ -74,7 +74,7 @@ def coordinator():
         {"id": "2000002", "name": "Gas", "services": [_service("gas", "gas-1", "BASIC")]},
     ]
     coordinator._customer_data = {"id": "customer1", "name": "Test Customer"}
-    coordinator._last_metadata_refresh_date = datetime.now(timezone.utc).date()
+    coordinator._async_refresh_metadata = AsyncMock()
     coordinator.api.get_usage_data = AsyncMock(return_value=INTERVAL_USAGE)
     coordinator.api.get_billed_usage = AsyncMock(return_value=[BILLED_PERIOD])
     coordinator.api.get_bills = AsyncMock(return_value=[BILL])

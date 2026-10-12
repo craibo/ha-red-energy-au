@@ -117,8 +117,8 @@ def coordinator_with_multiple_properties(mock_hass):
     # Mock customer data
     coordinator._customer_data = {"id": "customer1", "name": "Test Customer"}
     # Prevent _async_update_data from triggering a metadata refresh (which would
-    # hit the AsyncMock'd get_customer_data/get_properties and fail validation).
-    coordinator._last_metadata_refresh_date = datetime.now(timezone.utc).date()
+    # hit the AsyncMock get_customer_data/get_properties and fail validation).
+    coordinator._async_refresh_metadata = AsyncMock()
 
     return coordinator
 
