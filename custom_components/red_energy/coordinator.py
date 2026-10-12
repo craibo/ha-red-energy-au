@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime, timedelta, timezone, date
+from datetime import datetime, timedelta, date
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
@@ -78,8 +78,6 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
 
         self._customer_data: dict[str, Any] | None = None
         self._properties: list[dict[str, Any]] = []
-        # Track last calendar day we refreshed metadata (customer/properties)
-        self._last_metadata_refresh_date: date | None = None
 
         super().__init__(
             hass,
@@ -203,9 +201,11 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
                 _LOGGER.info("Authenticating with Red Energy API")
                 await self.api.authenticate(self.username, self.password)
             
-            # Refresh metadata (customer/properties) once per calendar day or on first run
-            if self._should_refresh_metadata_today() or not self._customer_data:
-                await self._async_refresh_metadata()
+            # Refresh metadata (customer/properties) on every poll. It carries
+            # lastBillDate/nextBillDate/balance, so caching it would leave a
+            # newly issued bill (and the usage window derived from its dates)
+            # stale until the next refresh.
+            await self._async_refresh_metadata()
             
             # Log selected accounts configuration
             _LOGGER.debug("=" * 80)
@@ -407,15 +407,8 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
             _LOGGER.exception("Unexpected error during update")
             raise UpdateFailed(f"Unexpected error: {err}") from err
     
-    def _should_refresh_metadata_today(self) -> bool:
-        """Return True if we haven't refreshed metadata today (calendar day)."""
-        today = datetime.now(timezone.utc).date()
-        if self._last_metadata_refresh_date is None:
-            return True
-        return self._last_metadata_refresh_date != today
-    
     async def _async_refresh_metadata(self) -> None:
-        """Refresh customer and properties metadata and update last refresh date."""
+        """Refresh customer and properties metadata."""
         _LOGGER.info("Refreshing Red Energy metadata (customer and properties)")
         raw_customer_data = await self.api.get_customer_data()
         _LOGGER.debug("=" * 80)
@@ -440,11 +433,9 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
             _LOGGER.debug("  - Property ID: %s, Name: %s, Services: %s", 
                         prop.get("id"), prop.get("name"), 
                         [s.get("type") for s in prop.get("services", [])])
-        self._last_metadata_refresh_date = datetime.now(timezone.utc).date()
 
     async def async_refresh_metadata_and_usage(self) -> None:
-        """Manually trigger metadata refresh and then request full data refresh."""
-        await self._async_refresh_metadata()
+        """Manually trigger a full data refresh (metadata is re-fetched on every poll)."""
         await self.async_request_refresh()
     
     async def _bulk_update_data(self) -> dict[str, Any]:

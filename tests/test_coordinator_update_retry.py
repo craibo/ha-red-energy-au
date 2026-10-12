@@ -145,7 +145,7 @@ async def test_async_update_data_once_propagates_client_error_unwrapped(coordina
     as-is (not wrapped in UpdateFailed), so the retry loop in
     _async_update_data can recognize and retry them."""
     coordinator._customer_data = {"id": "customer1"}
-    coordinator._last_metadata_refresh_date = datetime.now(timezone.utc).date()
+    coordinator._async_refresh_metadata = AsyncMock()
     coordinator._properties = [
         {
             "id": "prop1",
