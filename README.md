@@ -165,6 +165,8 @@ Where the integration can unambiguously resolve the account's Peak, Shoulder, Of
 - CL2 Inferred Cost - Calculated cost of the inferred CL2 component
 - Reconstructed Import Cost - Reconstructed total import cost, used to reconcile the separated TOU + CL2 components against Red Energy's own interval cost
 
+A plan whose only controlled-load rate is labelled **CL1** (e.g. on Ausgrid) is treated the same way: that rate fills the CL2 role, and the sensors keep their CL2 names. If a plan lists both a CL1 and a CL2 rate, the CL2 rate is used.
+
 CL2 is **not** assumed to occur only during Off-Peak periods - it is inferred from whichever Peak, Shoulder, or Off-Peak interval it actually falls in.
 
 **Choosing which TOU sensor set to use:** the original Peak/Shoulder/Off-Peak sensors above represent the *combined* TOU-labelled usage as supplied by Red Energy, and remain useful for direct comparison with the Red Energy app and for backwards compatibility. Because that combined usage can already include CL2 energy, do **not** add CL2 Inferred Energy to the original Peak/Shoulder/Off-Peak totals when building a separated tariff breakdown - this double-counts the CL2 component. For a separated breakdown, use:

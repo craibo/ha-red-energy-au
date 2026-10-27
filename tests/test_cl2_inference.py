@@ -195,6 +195,37 @@ def test_cl2_label_variants_all_resolve(cl2_label):
     assert "CL2" not in result["unresolved_roles"]
 
 
+@pytest.mark.parametrize("cl1_label", ["CL1", "cl1", "Controlled Load 1"])
+def test_cl1_label_fills_cl2_role_when_no_cl2_rate(cl1_label):
+    """A plan whose only controlled-load rate is labelled CL1 (e.g. Ausgrid
+    Time of Use Solar) resolves all four roles."""
+    rates = [
+        _rate("Peak", 0.48235),
+        _rate("Shoulder", 0.32505),
+        _rate("Off Peak", 0.24178),
+        _rate(cl1_label, 0.15862),
+        _rate("Solar", 0.04),
+    ]
+    result = resolve_rate_roles(rates)
+    assert result["cl2_rate_incl_gst"] == pytest.approx(0.15862)
+    assert result["unresolved_roles"] == []
+
+
+def test_cl2_rate_wins_over_cl1_rate():
+    """A plan listing both keeps using its CL2 rate, as before CL1 support."""
+    rates = [_rate("CL1", 0.15862), _rate("CL2", 0.18425)]
+    result = resolve_rate_roles(rates)
+    assert result["cl2_rate_incl_gst"] == pytest.approx(0.18425)
+    assert "CL2" not in result["unresolved_roles"]
+
+
+def test_cl2_role_unresolved_when_multiple_cl1_rates():
+    rates = [_rate("CL1", 0.15862), _rate("Controlled Load 1", 0.14000)]
+    result = resolve_rate_roles(rates)
+    assert result["cl2_rate_incl_gst"] is None
+    assert "CL2" in result["unresolved_roles"]
+
+
 def test_peak_does_not_false_match_offpeak():
     """"Peak" must not match as a substring of "Off-peak" or vice versa -
     each role's label set must be distinguishing, not just substring checks."""
