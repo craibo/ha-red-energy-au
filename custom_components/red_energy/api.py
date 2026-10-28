@@ -7,6 +7,8 @@ import logging
 import secrets
 import string
 import uuid
+from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any
 from urllib.parse import urlencode, parse_qs, urlparse
@@ -25,6 +27,27 @@ class RedEnergyAPIError(Exception):
 
 class RedEnergyAuthError(RedEnergyAPIError):
     """Red Energy authentication exception."""
+
+
+class RedEnergyCallbackError(RedEnergyAuthError):
+    """The browser sign-in callback URL pasted by the user was unusable.
+
+    reason is "invalid" (not a matching au.com.redenergy://callback URL) or
+    "expired" (Okta rejected the code - usually pasted too late).
+    """
+
+    def __init__(self, message: str, reason: str) -> None:
+        super().__init__(message)
+        self.reason = reason
+
+
+@dataclass(frozen=True)
+class BrowserLogin:
+    """One pending browser sign-in attempt (issue #103)."""
+
+    auth_url: str
+    code_verifier: str
+    state: str
 
 
 class RedEnergyAPI:
@@ -53,6 +76,7 @@ class RedEnergyAPI:
         self._token_expires: datetime | None = None
         self._logged_entry_mapping: bool = False
         self._auth_lock = asyncio.Lock()
+        self._refresh_token_listener: Callable[[str], None] | None = None
 
     async def authenticate(self, username: str, password: str) -> bool:
         """Authenticate with Red Energy using Okta session token and OAuth2 PKCE flow.
@@ -282,7 +306,7 @@ class RedEnergyAPI:
                 _LOGGER.debug("Token exchange successful, received tokens with expires_in: %s", tokens.get('expires_in'))
                 
                 self._access_token = tokens['access_token']
-                self._refresh_token = tokens.get('refresh_token')
+                self._set_refresh_token(tokens.get('refresh_token'))
                 expires_in = tokens.get('expires_in', 3600)
                 self._token_expires = datetime.now() + timedelta(seconds=expires_in)
     
@@ -298,7 +322,100 @@ class RedEnergyAPI:
         except Exception as err:
             _LOGGER.error("Unexpected error during credential test for user %s: %s", username, err, exc_info=True)
             return False
-    
+
+    @property
+    def refresh_token(self) -> str | None:
+        """Current OAuth2 refresh token, if any."""
+        return self._refresh_token
+
+    def set_refresh_token_listener(self, listener: Callable[[str], None] | None) -> None:
+        """Register a callback for when Okta issues a new refresh token, so
+        browser sign-in entries can persist rotated tokens."""
+        self._refresh_token_listener = listener
+
+    def _set_refresh_token(self, refresh_token: str | None) -> None:
+        changed = refresh_token is not None and refresh_token != self._refresh_token
+        self._refresh_token = refresh_token
+        if changed and self._refresh_token_listener is not None:
+            self._refresh_token_listener(refresh_token)
+
+    async def async_create_browser_login(self) -> BrowserLogin:
+        """Build a PKCE authorization URL for signing in through Red Energy's
+        hosted Okta page (Google/Apple/Microsoft SSO or email code).
+
+        Unlike authenticate(), no sessionToken is sent, so Okta shows its
+        login page instead of redirecting immediately.
+        """
+        discovery_data = await self._get_discovery_data()
+        code_verifier = self._generate_code_verifier()
+        state = str(uuid.uuid4())
+        params = {
+            'client_id': CLIENT_ID,
+            'response_type': 'code',
+            'redirect_uri': self.REDIRECT_URI,
+            'scope': 'openid profile offline_access',
+            'code_challenge': self._generate_code_challenge(code_verifier),
+            'code_challenge_method': 'S256',
+            'state': state,
+            'nonce': str(uuid.uuid4()),
+        }
+        auth_url = f"{discovery_data['authorization_endpoint']}?{urlencode(params)}"
+        return BrowserLogin(auth_url=auth_url, code_verifier=code_verifier, state=state)
+
+    @classmethod
+    def parse_browser_callback(cls, callback_url: str, expected_state: str) -> str:
+        """Extract the authorization code from a pasted callback URL.
+
+        Never log callback_url - it contains a live authorization code.
+        """
+        text = (callback_url or "").strip()
+        if not text.startswith(cls.REDIRECT_URI):
+            raise RedEnergyCallbackError(
+                f"Callback URL must start with {cls.REDIRECT_URI}", "invalid"
+            )
+        params = parse_qs(urlparse(text).query)
+        if "error" in params:
+            error = params["error"][0]
+            description = params.get("error_description", [""])[0]
+            raise RedEnergyAuthError(f"Sign-in failed: {error} - {description}")
+        code = params.get("code", [None])[0]
+        state = params.get("state", [None])[0]
+        if not code:
+            raise RedEnergyCallbackError("Callback URL has no authorization code", "invalid")
+        if state != expected_state:
+            raise RedEnergyCallbackError(
+                "Callback URL is from a different sign-in attempt", "invalid"
+            )
+        return code
+
+    async def async_complete_browser_login(self, callback_url: str, login: BrowserLogin) -> None:
+        """Exchange a pasted callback URL's code for access/refresh tokens."""
+        code = self.parse_browser_callback(callback_url, login.state)
+        async with self._auth_lock:
+            discovery_data = await self._get_discovery_data()
+            try:
+                await self._exchange_code_for_tokens(
+                    discovery_data["token_endpoint"], code, CLIENT_ID, login.code_verifier
+                )
+            except aiohttp.ClientResponseError as err:
+                if err.status in (400, 401):
+                    raise RedEnergyCallbackError(
+                        "Sign-in code was rejected or has expired", "expired"
+                    ) from err
+                raise
+        if not self._refresh_token:
+            raise RedEnergyAuthError(
+                "Red Energy did not issue a refresh token for this sign-in"
+            )
+
+    async def authenticate_with_refresh_token(self, refresh_token: str | None) -> bool:
+        """Obtain a fresh access token from a stored refresh token (browser
+        sign-in entries have no password to fall back on)."""
+        async with self._auth_lock:
+            self._refresh_token = refresh_token
+            await self._refresh_access_token()
+        return True
+
     async def get_customer_data(self) -> dict[str, Any]:
         """Get current customer data."""
         await self._ensure_valid_token()
@@ -525,14 +642,25 @@ class RedEnergyAPI:
                 headers={'Content-Type': 'application/x-www-form-urlencoded'}
             ) as response:
                 if response.status != 200:
-                    error_data = await response.json()
-                    raise RedEnergyAuthError(f"Token refresh failed: {error_data}")
-                
+                    try:
+                        error_data = await response.json(content_type=None)
+                    except (aiohttp.ContentTypeError, ValueError):
+                        error_data = {"raw": (await response.text())[:500]}
+                    # 400/401 mean Okta rejected the refresh token itself
+                    # (expired/revoked) - only re-sign-in fixes that. Anything
+                    # else (5xx, HTML outage page) is transient and must not
+                    # force browser sign-in users through reauth.
+                    if response.status in (400, 401):
+                        raise RedEnergyAuthError(f"Token refresh rejected: {error_data}")
+                    raise RedEnergyAPIError(
+                        f"Token refresh failed with HTTP {response.status}: {error_data}"
+                    )
+
                 tokens = await response.json()
-                
+
                 self._access_token = tokens['access_token']
                 if 'refresh_token' in tokens:
-                    self._refresh_token = tokens['refresh_token']
+                    self._set_refresh_token(tokens['refresh_token'])
                 
                 expires_in = tokens.get('expires_in', 3600)
                 self._token_expires = datetime.now() + timedelta(seconds=expires_in)
