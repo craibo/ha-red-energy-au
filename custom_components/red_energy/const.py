@@ -156,13 +156,19 @@ GST_MULTIPLIER: Final = 1.10
 
 # Configuration flow
 STEP_USER: Final = "user"
+STEP_PASSWORD: Final = "password"
+STEP_BROWSER: Final = "browser"
 STEP_ACCOUNT_SELECT: Final = "account_select"
+CONF_CALLBACK_URL: Final = "callback_url"
 
 # Error messages
 ERROR_AUTH_FAILED: Final = "auth_failed"
 ERROR_CANNOT_CONNECT: Final = "cannot_connect"
 ERROR_UNKNOWN: Final = "unknown"
 ERROR_NO_ACCOUNTS: Final = "no_accounts"
+ERROR_INVALID_CALLBACK: Final = "invalid_callback"
+ERROR_CALLBACK_EXPIRED: Final = "callback_expired"
+ABORT_WRONG_ACCOUNT: Final = "wrong_account"
 
 # Data keys
 DATA_ACCOUNTS: Final = "accounts"

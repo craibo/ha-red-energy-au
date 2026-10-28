@@ -3,10 +3,25 @@
     "step": {
       "user": {
         "title": "Red Energy Setup",
+        "description": "How do you sign in to Red Energy?",
+        "menu_options": {
+          "password": "Email and password",
+          "browser": "Google, Apple, Microsoft or emailed code"
+        }
+      },
+      "password": {
+        "title": "Red Energy Setup",
         "description": "Enter your Red Energy credentials.",
         "data": {
           "username": "Username (Email)",
           "password": "Password"
+        }
+      },
+      "browser": {
+        "title": "Sign in with your browser",
+        "description": "Use a desktop browser (Chrome or Edge) - on a phone with the Red Energy app installed, the app intercepts the sign-in.\n\n1. [Open the Red Energy sign-in page]({auth_url}).\n2. On that page, press F12 to open the developer tools, select the **Network** tab and tick **Preserve log**.\n3. Sign in with Google, Apple, Microsoft or an emailed code. The page won't change afterwards.\n4. In the Network list, select the last request with status **302**. Under **Headers → Response Headers**, copy the **location** value - it starts `au.com.redenergy://callback?code=`.\n5. Paste it below **straight away** - it expires quickly.",
+        "data": {
+          "callback_url": "Callback URL (au.com.redenergy://callback?...)"
         }
       }
     },
@@ -14,10 +29,15 @@
       "auth_failed": "Invalid username or password",
       "cannot_connect": "Failed to connect to Red Energy. Check your internet connection.",
       "unknown": "Unexpected error occurred",
-      "no_accounts": "No Red Energy accounts found for this user"
+      "no_accounts": "No Red Energy accounts found for this user",
+      "invalid_callback": "That isn't the callback URL from this sign-in. Copy the full location value starting au.com.redenergy://callback?code= after signing in with the link above.",
+      "callback_expired": "That sign-in code has expired. Open the sign-in link again and paste the new callback URL straight away."
     },
     "abort": {
-      "already_configured": "Red Energy account is already configured"
+      "already_configured": "Red Energy account is already configured",
+      "cannot_connect": "Failed to connect to Red Energy. Check your internet connection.",
+      "reauth_successful": "Signed in to Red Energy again successfully",
+      "wrong_account": "You signed in as a different Red Energy customer than this integration was set up with."
     }
   },
   "options": {

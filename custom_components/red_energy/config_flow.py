@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
 from datetime import timedelta
 from typing import Any
 
+import aiohttp
 import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
@@ -14,17 +16,30 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers import config_validation as cv
 
-from .api import RedEnergyAPI, RedEnergyAPIError, RedEnergyAuthError
+from .api import (
+    BrowserLogin,
+    RedEnergyAPI,
+    RedEnergyAPIError,
+    RedEnergyAuthError,
+    RedEnergyCallbackError,
+)
 from .config_migration import CURRENT_CONFIG_VERSION
 from .data_validation import (
     build_property_display_name,
     validate_config_data,
+    validate_customer_data,
     validate_properties_data,
     DataValidationError,
 )
 from .const import (
+    ABORT_WRONG_ACCOUNT,
+    AUTH_METHOD_BROWSER,
+    AUTH_METHOD_PASSWORD,
     CLIENT_ID,
+    CONF_AUTH_METHOD,
+    CONF_CALLBACK_URL,
     CONF_ENABLE_ADVANCED_SENSORS,
+    CONF_REFRESH_TOKEN,
     CONF_SCAN_INTERVAL,
     DATA_ACCOUNTS,
     DATA_CUSTOMER_DATA,
@@ -32,12 +47,16 @@ from .const import (
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
     ERROR_AUTH_FAILED,
+    ERROR_CALLBACK_EXPIRED,
     ERROR_CANNOT_CONNECT,
+    ERROR_INVALID_CALLBACK,
     ERROR_NO_ACCOUNTS,
     ERROR_UNKNOWN,
     SCAN_INTERVAL_OPTIONS,
     SERVICE_TYPE_ELECTRICITY,
     SERVICE_TYPE_GAS,
+    STEP_BROWSER,
+    STEP_PASSWORD,
     STEP_USER,
 )
 
@@ -49,6 +68,37 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
         vol.Required(CONF_PASSWORD): str,
     }
 )
+
+STEP_BROWSER_DATA_SCHEMA = vol.Schema({vol.Required(CONF_CALLBACK_URL): str})
+
+# validate_customer_data's placeholder when the API omits an email.
+_UNKNOWN_CUSTOMER_EMAIL = "unknown@redenergy.com.au"
+
+
+async def _async_fetch_account_info(api: RedEnergyAPI) -> dict[str, Any]:
+    """Fetch and validate customer + properties for an authenticated client."""
+    raw_customer_data = await api.get_customer_data()
+    raw_properties = await api.get_properties()
+    if not raw_properties:
+        raise NoAccounts
+
+    customer_data = validate_customer_data(raw_customer_data)
+    properties = validate_properties_data(raw_properties)
+    _LOGGER.info("Validated %d properties during setup", len(properties))
+    return {
+        DATA_CUSTOMER_DATA: customer_data,
+        DATA_ACCOUNTS: properties,
+        "title": customer_data.get("name", "Red Energy Account"),
+    }
+
+
+def _browser_unique_id(customer_data: dict[str, Any]) -> str:
+    """Stable identity for a browser sign-in entry: the customer's email
+    (lower-cased by validate_customer_data), else their customer ID."""
+    email = customer_data.get("email", "")
+    if email and email != _UNKNOWN_CUSTOMER_EMAIL:
+        return email
+    return str(customer_data["id"])
 
 
 async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str, Any]:
@@ -83,27 +133,9 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
             )
             raise InvalidAuth
         
-        # Get customer data and properties
-        raw_customer_data = await api.get_customer_data()
-        raw_properties = await api.get_properties()
-        
-        if not raw_properties:
-            raise NoAccounts
-        
-        # Validate the data
-        from .data_validation import validate_customer_data, validate_properties_data
-        
-        customer_data = validate_customer_data(raw_customer_data)
-        properties = validate_properties_data(raw_properties)
-        
-        _LOGGER.info("Validated %d properties during setup", len(properties))
-        
-        # Return info that you want to store in the config entry.
-        return {
-            DATA_CUSTOMER_DATA: customer_data,
-            DATA_ACCOUNTS: properties,
-            "title": customer_data.get("name", "Red Energy Account")
-        }
+        return await _async_fetch_account_info(api)
+    except NoAccounts:
+        raise
     except RedEnergyAuthError as err:
         _LOGGER.error(
             "Red Energy authentication error for user %s: %s. "
@@ -145,17 +177,23 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     def __init__(self) -> None:
         """Initialize the config flow."""
-        self._user_data: dict[str, Any] = {}
-        self._customer_data: dict[str, Any] = {}
-        self._accounts: list[dict[str, Any]] = []
-        self._selected_accounts: list[str] = []
+        self._browser_api: RedEnergyAPI | None = None
+        self._browser_login: BrowserLogin | None = None
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
-        """Handle the initial step."""
+        """Let the user pick password or browser (SSO / email code) sign-in."""
+        return self.async_show_menu(
+            step_id=STEP_USER, menu_options=[STEP_PASSWORD, STEP_BROWSER]
+        )
+
+    async def async_step_password(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Sign in with Red Energy email and password."""
         errors: dict[str, str] = {}
-        
+
         if user_input is not None:
             try:
                 info = await validate_input(self.hass, user_input)
@@ -168,55 +206,132 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             except UnknownError:
                 errors["base"] = ERROR_UNKNOWN
             else:
-                # Store user input and validation results
-                self._user_data = user_input
-                self._customer_data = info[DATA_CUSTOMER_DATA]
-                self._accounts = info[DATA_ACCOUNTS]
-                
-                _LOGGER.info("=" * 80)
-                _LOGGER.info("CONFIG FLOW - Retrieved %d validated properties:", len(self._accounts))
-                for idx, account in enumerate(self._accounts):
-                    _LOGGER.info("  Property %d:", idx)
-                    _LOGGER.info("    - ID: %s", account.get("id"))
-                    _LOGGER.info("    - Name: %s", account.get("name"))
-                    _LOGGER.info("    - Services: %d", len(account.get("services", [])))
-                _LOGGER.info("=" * 80)
-                
-                # Check if we already have this account configured
                 await self.async_set_unique_id(user_input[CONF_USERNAME])
                 self._abort_if_unique_id_configured()
-                
-                # Auto-select all accounts - properties are already validated with IDs
-                self._selected_accounts = [account["id"] for account in self._accounts]
-                _LOGGER.info("Auto-selected %d accounts: %s", len(self._selected_accounts), self._selected_accounts)
-                
-                if not self._selected_accounts:
-                    _LOGGER.error("No valid account IDs found in properties. Raw accounts: %s", self._accounts)
-                    errors["base"] = ERROR_NO_ACCOUNTS
-                else:
-                    # Accounts are now selected individually and each only
-                    # ever bills one service, so there's nothing left for a
-                    # service-type toggle to do - always monitor both.
-                    config_data = {
-                        **self._user_data,
-                        DATA_SELECTED_ACCOUNTS: self._selected_accounts,
-                        "services": [SERVICE_TYPE_ELECTRICITY, SERVICE_TYPE_GAS],
-                    }
-
-                    title = self._customer_data.get("name", "Red Energy")
-                    if len(self._selected_accounts) > 1:
-                        title += f" ({len(self._selected_accounts)} properties)"
-
-                    return self.async_create_entry(
-                        title=title,
-                        data=config_data
-                    )
+                result = self._async_create_account_entry(
+                    info, {**user_input, CONF_AUTH_METHOD: AUTH_METHOD_PASSWORD}
+                )
+                if result is not None:
+                    return result
+                errors["base"] = ERROR_NO_ACCOUNTS
 
         return self.async_show_form(
-            step_id=STEP_USER,
+            step_id=STEP_PASSWORD,
             data_schema=STEP_USER_DATA_SCHEMA,
-            errors=errors
+            errors=errors,
         )
+
+    async def async_step_browser(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Sign in through Red Energy's hosted page in the user's browser
+        (Google/Apple/Microsoft SSO or emailed code - issue #103), then paste
+        the au.com.redenergy://callback URL it redirects to."""
+        errors: dict[str, str] = {}
+
+        if self._browser_api is None:
+            self._browser_api = RedEnergyAPI(async_get_clientsession(self.hass))
+        api = self._browser_api
+
+        if self._browser_login is None:
+            try:
+                self._browser_login = await api.async_create_browser_login()
+            except (aiohttp.ClientError, TimeoutError, RedEnergyAPIError) as err:
+                _LOGGER.error("Could not start Red Energy browser sign-in: %s", err)
+                return self.async_abort(reason=ERROR_CANNOT_CONNECT)
+
+        if user_input is not None:
+            try:
+                await api.async_complete_browser_login(
+                    user_input[CONF_CALLBACK_URL], self._browser_login
+                )
+                info = await _async_fetch_account_info(api)
+            except RedEnergyCallbackError as err:
+                errors["base"] = (
+                    ERROR_CALLBACK_EXPIRED if err.reason == "expired" else ERROR_INVALID_CALLBACK
+                )
+            except RedEnergyAuthError as err:
+                _LOGGER.error("Red Energy browser sign-in failed: %s", err)
+                errors["base"] = ERROR_AUTH_FAILED
+            except NoAccounts:
+                errors["base"] = ERROR_NO_ACCOUNTS
+            except (RedEnergyAPIError, DataValidationError, aiohttp.ClientError, TimeoutError) as err:
+                _LOGGER.error("Red Energy browser sign-in could not connect: %s", err)
+                errors["base"] = ERROR_CANNOT_CONNECT
+            except Exception:  # noqa: BLE001
+                _LOGGER.exception("Unexpected error during Red Energy browser sign-in")
+                errors["base"] = ERROR_UNKNOWN
+            else:
+                unique_id = _browser_unique_id(info[DATA_CUSTOMER_DATA])
+                await self.async_set_unique_id(unique_id)
+
+                if self.source == config_entries.SOURCE_REAUTH:
+                    self._abort_if_unique_id_mismatch(reason=ABORT_WRONG_ACCOUNT)
+                    return self.async_update_reload_and_abort(
+                        self._get_reauth_entry(),
+                        data_updates={CONF_REFRESH_TOKEN: api.refresh_token},
+                    )
+
+                self._abort_if_unique_id_configured()
+                result = self._async_create_account_entry(
+                    info,
+                    {
+                        CONF_AUTH_METHOD: AUTH_METHOD_BROWSER,
+                        CONF_USERNAME: unique_id,
+                        CONF_REFRESH_TOKEN: api.refresh_token,
+                    },
+                )
+                if result is not None:
+                    return result
+                errors["base"] = ERROR_NO_ACCOUNTS
+
+        return self.async_show_form(
+            step_id=STEP_BROWSER,
+            data_schema=STEP_BROWSER_DATA_SCHEMA,
+            errors=errors,
+            description_placeholders={"auth_url": self._browser_login.auth_url},
+        )
+
+    async def async_step_reauth(self, entry_data: Mapping[str, Any]) -> FlowResult:
+        """Saved browser sign-in expired - sign in through the browser again.
+
+        Only browser entries raise ConfigEntryAuthFailed (see coordinator),
+        so reauth always means browser sign-in.
+        """
+        return await self.async_step_browser()
+
+    def _async_create_account_entry(
+        self, info: dict[str, Any], auth_data: dict[str, Any]
+    ) -> FlowResult | None:
+        """Create the entry for every discovered account, or None if no
+        account has a usable ID."""
+        accounts = info[DATA_ACCOUNTS]
+        customer_data = info[DATA_CUSTOMER_DATA]
+        _LOGGER.info("CONFIG FLOW - Retrieved %d validated properties", len(accounts))
+        for idx, account in enumerate(accounts):
+            _LOGGER.info(
+                "  Property %d: id=%s name=%s services=%d",
+                idx, account.get("id"), account.get("name"), len(account.get("services", [])),
+            )
+
+        # Auto-select all accounts - properties are already validated with IDs
+        selected_accounts = [account["id"] for account in accounts]
+        if not selected_accounts:
+            _LOGGER.error("No valid account IDs found in properties. Raw accounts: %s", accounts)
+            return None
+
+        # Accounts are now selected individually and each only ever bills
+        # one service, so there's nothing left for a service-type toggle to
+        # do - always monitor both.
+        config_data = {
+            **auth_data,
+            DATA_SELECTED_ACCOUNTS: selected_accounts,
+            "services": [SERVICE_TYPE_ELECTRICITY, SERVICE_TYPE_GAS],
+        }
+        title = customer_data.get("name", "Red Energy")
+        if len(selected_accounts) > 1:
+            title += f" ({len(selected_accounts)} properties)"
+        return self.async_create_entry(title=title, data=config_data)
 
     @staticmethod
     @callback

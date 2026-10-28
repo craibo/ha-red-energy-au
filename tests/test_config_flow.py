@@ -51,7 +51,12 @@ async def test_form():
     flow.hass = hass
     
     result = await flow.async_step_user()
+    assert result["type"] == "menu"
+    assert result["menu_options"] == ["password", "browser"]
+
+    result = await flow.async_step_password()
     assert result["type"] == "form"
+    assert result["step_id"] == "password"
     assert result["errors"] == {}
 
 
@@ -68,7 +73,7 @@ async def test_form_auth_error():
         "custom_components.red_energy.config_flow.validate_input",
         side_effect=InvalidAuth,
     ):
-        result = await flow.async_step_user(MOCK_USER_INPUT)
+        result = await flow.async_step_password(MOCK_USER_INPUT)
 
     assert result["type"] == "form"
     assert result["errors"] == {"base": ERROR_AUTH_FAILED}
@@ -87,7 +92,7 @@ async def test_form_cannot_connect():
         "custom_components.red_energy.config_flow.validate_input",
         side_effect=CannotConnect,
     ):
-        result = await flow.async_step_user(MOCK_USER_INPUT)
+        result = await flow.async_step_password(MOCK_USER_INPUT)
 
     assert result["type"] == "form"
     assert result["errors"] == {"base": ERROR_CANNOT_CONNECT}
@@ -106,7 +111,7 @@ async def test_form_no_accounts():
         "custom_components.red_energy.config_flow.validate_input",
         side_effect=NoAccounts,
     ):
-        result = await flow.async_step_user(MOCK_USER_INPUT)
+        result = await flow.async_step_password(MOCK_USER_INPUT)
 
     assert result["type"] == "form"
     assert result["errors"] == {"base": ERROR_NO_ACCOUNTS}
@@ -139,7 +144,7 @@ async def test_successful_single_account_flow():
         # Accounts are auto-selected and both services are always requested
         # (no separate service-selection step) - the config flow creates
         # the entry directly after account discovery.
-        result = await flow.async_step_user(MOCK_USER_INPUT)
+        result = await flow.async_step_password(MOCK_USER_INPUT)
 
         flow.async_create_entry.assert_called_once()
 
@@ -170,7 +175,7 @@ async def test_successful_multi_account_flow():
         return_value=mock_validation_result,
     ):
         # Both accounts are auto-selected and the entry is created directly
-        result = await flow.async_step_user(MOCK_USER_INPUT)
+        result = await flow.async_step_password(MOCK_USER_INPUT)
 
         assert result is not None
         flow.async_create_entry.assert_called_once()
@@ -219,10 +224,26 @@ async def test_config_flow_always_requests_both_services():
         "custom_components.red_energy.config_flow.validate_input",
         return_value=mock_validation_result,
     ):
-        await flow.async_step_user(MOCK_USER_INPUT)
+        await flow.async_step_password(MOCK_USER_INPUT)
 
     _, kwargs = flow.async_create_entry.call_args
     assert set(kwargs["data"]["services"]) == {SERVICE_TYPE_ELECTRICITY, SERVICE_TYPE_GAS}
+
+
+@pytest.mark.asyncio
+async def test_validate_input_no_properties_raises_no_accounts():
+    """An empty property list must surface as no_accounts, not unknown."""
+    from custom_components.red_energy.config_flow import validate_input
+
+    api = MagicMock()
+    api.test_credentials = AsyncMock(return_value=True)
+    api.get_customer_data = AsyncMock(return_value=MOCK_CUSTOMER_DATA)
+    api.get_properties = AsyncMock(return_value=[])
+    with patch("custom_components.red_energy.config_flow.RedEnergyAPI", return_value=api), patch(
+        "custom_components.red_energy.config_flow.async_get_clientsession"
+    ):
+        with pytest.raises(NoAccounts):
+            await validate_input(AsyncMock(), MOCK_USER_INPUT)
 
 
 def test_domain_constant():
