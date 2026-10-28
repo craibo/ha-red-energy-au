@@ -112,7 +112,7 @@ class RedEnergyAPI:
             # Step 3: Generate PKCE parameters
             code_verifier = self._generate_code_verifier()
             code_challenge = self._generate_code_challenge(code_verifier)
-            _LOGGER.debug("Generated PKCE - Verifier: %s, Challenge: %s", code_verifier, code_challenge)
+            _LOGGER.debug("Generated PKCE verifier/challenge")
             
             # Step 4: Get authorization code using session token
             auth_code = await self._get_authorization_code(
@@ -188,10 +188,16 @@ class RedEnergyAPI:
                 data = await response.json()
                 status = data.get("status")
                 if status != "SUCCESS":
+                    # Not the full response: it carries a live Okta stateToken.
+                    factors = [
+                        f.get("factorType")
+                        for f in (data.get("_embedded") or {}).get("factors", [])
+                        if isinstance(f, dict)
+                    ]
                     _LOGGER.error(
-                        "Okta authentication failed - Status: %s. Full response: %s. "
+                        "Okta authentication failed - Status: %s, factors: %s. "
                         "This may indicate MFA required, account locked, or other Okta-specific issues.",
-                        status, data
+                        status, factors
                     )
                     raise RedEnergyAuthError(f"Authentication failed - Status: {status}")
                 
@@ -229,12 +235,14 @@ class RedEnergyAPI:
         # Combine all parameters like OAuth2Session.create_authorization_url() would
         all_params = {**base_params, **extra_params}
         auth_url = f"{auth_endpoint}?{urlencode(all_params)}"
-        _LOGGER.debug("Authorization URL: %s", auth_url)
+        # Never log auth_url: it carries the Okta sessionToken.
+        _LOGGER.debug("Requesting authorization code from %s", auth_endpoint)
         
         # Make request to authorization endpoint - this should redirect
         async with asyncio.timeout(API_TIMEOUT):
             async with self._session.get(auth_url, allow_redirects=False) as response:
-                _LOGGER.debug("Authorization response status: %s, headers: %s", response.status, dict(response.headers))
+                # Headers are not logged: Location carries the authorization code.
+                _LOGGER.debug("Authorization response status: %s", response.status)
                 
                 location = response.headers.get("Location", "")
                 if not location:
@@ -250,7 +258,10 @@ class RedEnergyAPI:
                 parsed_url = urlparse(location)
                 query_params = parse_qs(parsed_url.query)
                 auth_code = query_params.get("code", [None])[0]
-                _LOGGER.debug("Authorization redirect - Location: %s, Code: %s", location, auth_code)
+                _LOGGER.debug(
+                    "Authorization redirect to %s://%s, code received: %s",
+                    parsed_url.scheme, parsed_url.netloc, bool(auth_code),
+                )
                 
                 if not auth_code:
                     error = query_params.get("error", ["Unknown error"])[0]
