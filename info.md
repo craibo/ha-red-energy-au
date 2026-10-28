@@ -37,7 +37,7 @@ A comprehensive Home Assistant custom integration for Red Energy (Australian ene
 - Time-of-use breakdown, max demand, and carbon emissions - electricity only
 - Projected net cost and projected charges (including demand charge for Demand-tariff plans) for the current billing cycle - estimates, not Red Energy's own figures
 - Accrued service charge and demand charge (Demand-tariff plans) since the start of the current billing period
-- CL2/TOU reconstruction (6 additional sensors, electricity only, conditional on plan tariff structure) - separates inferred Controlled Load usage from combined TOU interval data; see README for details
+- CL2/TOU reconstruction (6 additional sensors, electricity only, conditional on plan tariff structure) - separates inferred Controlled Load usage from combined TOU interval data, using the plan's CL2 rate, or its only CL1 rate when it has no CL2 rate; see README for details
 
 ### Billing Period Alignment
 - Automatic alignment with Red Energy billing cycles

@@ -16,6 +16,11 @@ rate (Rt), and the account's CL2 rate (Rc):
 This module infers that split per interval. See issue #61 for the full
 derivation and empirical validation (~0.35% error against independently
 metered CL2 consumption) contributed by @LoznOz.
+
+"CL2" here means the plan's controlled-load rate. Some plans (e.g. on
+Ausgrid) label their only controlled-load rate "CL1"; resolve_rate_roles()
+uses it for the CL2 role when the plan has no CL2-labelled rate, and the
+formula is the same.
 """
 from __future__ import annotations
 
