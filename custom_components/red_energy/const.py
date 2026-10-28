@@ -9,6 +9,13 @@ CONF_USERNAME: Final = "username"
 CONF_PASSWORD: Final = "password"
 CONF_CLIENT_ID: Final = "client_id"
 
+# Browser sign-in (Google/Apple/Microsoft SSO or emailed code, issue #103).
+# Entries without CONF_AUTH_METHOD predate this and are password entries.
+CONF_AUTH_METHOD: Final = "auth_method"
+AUTH_METHOD_PASSWORD: Final = "password"
+AUTH_METHOD_BROWSER: Final = "browser"
+CONF_REFRESH_TOKEN: Final = "refresh_token"
+
 CLIENT_ID: Final = "0oa1apu62kkqeet4C3l7"
 
 DEFAULT_NAME: Final = "Red Energy"

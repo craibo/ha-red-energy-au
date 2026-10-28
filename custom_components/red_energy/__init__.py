@@ -11,7 +11,10 @@ from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.update_coordinator import UpdateFailed
 
 from .const import (
+    AUTH_METHOD_PASSWORD,
     CLIENT_ID,
+    CONF_AUTH_METHOD,
+    CONF_REFRESH_TOKEN,
     DATA_SELECTED_ACCOUNTS,
     DOMAIN,
     SERVICE_TYPE_ELECTRICITY,
@@ -50,7 +53,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     
     # Extract configuration
     username = entry.data[CONF_USERNAME]
-    password = entry.data[CONF_PASSWORD]
+    # Browser sign-in entries (issue #103) store a refresh token, not a password.
+    password = entry.data.get(CONF_PASSWORD, "")
+    auth_method = entry.data.get(CONF_AUTH_METHOD, AUTH_METHOD_PASSWORD)
     selected_accounts = entry.data.get(DATA_SELECTED_ACCOUNTS, [])
     services = entry.data.get("services", [SERVICE_TYPE_ELECTRICITY])
     
@@ -73,7 +78,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     
     # Create data coordinator
     coordinator = RedEnergyDataCoordinator(
-        hass, username, password, selected_accounts, services, config_entry=entry
+        hass,
+        username,
+        password,
+        selected_accounts,
+        services,
+        config_entry=entry,
+        auth_method=auth_method,
+        refresh_token=entry.data.get(CONF_REFRESH_TOKEN),
     )
     
     # Test initial data fetch
