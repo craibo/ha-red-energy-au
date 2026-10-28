@@ -54,6 +54,10 @@ class RedEnergyAPI:
     """Red Energy API client."""
     
     DISCOVERY_URL = "https://login.redenergy.com.au/oauth2/default/.well-known/openid-configuration"
+    # Discovery's authorization_endpoint, used when discovery is unreachable
+    # so the browser sign-in link can still be shown (the exchange step
+    # reports the connection error and lets the user retry).
+    AUTHORIZE_URL = "https://login.redenergy.com.au/oauth2/default/v1/authorize"
     REDIRECT_URI = "au.com.redenergy://callback"
     BASE_API_URL = "https://selfservice.services.retail.energy/v1"
     OKTA_AUTH_URL = "https://redenergy.okta.com/api/v1/authn"
@@ -357,7 +361,14 @@ class RedEnergyAPI:
         Unlike authenticate(), no sessionToken is sent, so Okta shows its
         login page instead of redirecting immediately.
         """
-        discovery_data = await self._get_discovery_data()
+        try:
+            discovery_data = await self._get_discovery_data()
+            authorization_endpoint = discovery_data["authorization_endpoint"]
+        except (aiohttp.ClientError, TimeoutError, KeyError) as err:
+            _LOGGER.warning(
+                "Okta discovery unavailable (%s) - using default authorize URL", err
+            )
+            authorization_endpoint = self.AUTHORIZE_URL
         code_verifier = self._generate_code_verifier()
         state = str(uuid.uuid4())
         params = {
@@ -370,7 +381,7 @@ class RedEnergyAPI:
             'state': state,
             'nonce': str(uuid.uuid4()),
         }
-        auth_url = f"{discovery_data['authorization_endpoint']}?{urlencode(params)}"
+        auth_url = f"{authorization_endpoint}?{urlencode(params)}"
         return BrowserLogin(auth_url=auth_url, code_verifier=code_verifier, state=state)
 
     @classmethod

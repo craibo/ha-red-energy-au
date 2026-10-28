@@ -47,6 +47,7 @@ from .const import (
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
     ERROR_AUTH_FAILED,
+    ERROR_BROWSER_SIGN_IN_FAILED,
     ERROR_CALLBACK_EXPIRED,
     ERROR_CANNOT_CONNECT,
     ERROR_INVALID_CALLBACK,
@@ -252,7 +253,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 )
             except RedEnergyAuthError as err:
                 _LOGGER.error("Red Energy browser sign-in failed: %s", err)
-                errors["base"] = ERROR_AUTH_FAILED
+                errors["base"] = ERROR_BROWSER_SIGN_IN_FAILED
             except NoAccounts:
                 errors["base"] = ERROR_NO_ACCOUNTS
             except (RedEnergyAPIError, DataValidationError, aiohttp.ClientError, TimeoutError) as err:

@@ -22,6 +22,7 @@ from custom_components.red_energy.const import (
     CONF_REFRESH_TOKEN,
     DATA_SELECTED_ACCOUNTS,
     ERROR_AUTH_FAILED,
+    ERROR_BROWSER_SIGN_IN_FAILED,
     ERROR_CALLBACK_EXPIRED,
     ERROR_INVALID_CALLBACK,
     ERROR_NO_ACCOUNTS,
@@ -131,12 +132,14 @@ async def test_browser_step_expired_code_shows_error(api):
 
 
 @pytest.mark.asyncio
-async def test_browser_step_okta_error_is_auth_failed(api):
+async def test_browser_step_okta_error_is_sign_in_failed_not_bad_password(api):
+    """A cancelled/denied SSO sign-in must not say "Invalid username or password"."""
     api.async_complete_browser_login.side_effect = RedEnergyAuthError("access_denied")
     flow = make_flow()
     await flow.async_step_browser()
     result = await flow.async_step_browser(CALLBACK)
-    assert result["errors"] == {"base": ERROR_AUTH_FAILED}
+    assert result["errors"] == {"base": ERROR_BROWSER_SIGN_IN_FAILED}
+    assert result["errors"] != {"base": ERROR_AUTH_FAILED}
 
 
 @pytest.mark.asyncio

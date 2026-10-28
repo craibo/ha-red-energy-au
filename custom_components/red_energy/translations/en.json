@@ -31,7 +31,8 @@
       "unknown": "Unexpected error occurred",
       "no_accounts": "No Red Energy accounts found for this user",
       "invalid_callback": "That isn't the callback URL from this sign-in. Copy the full location value starting au.com.redenergy://callback?code= after signing in with the link above.",
-      "callback_expired": "That sign-in code has expired. Open the sign-in link again and paste the new callback URL straight away."
+      "callback_expired": "That sign-in code has expired. Open the sign-in link again and paste the new callback URL straight away.",
+      "browser_sign_in_failed": "Red Energy sign-in didn't complete (for example it was cancelled or denied). Open the sign-in link and try again."
     },
     "abort": {
       "already_configured": "Red Energy account is already configured",

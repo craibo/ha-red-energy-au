@@ -83,6 +83,30 @@ async def test_create_browser_login_builds_pkce_authorize_url():
 
 
 @pytest.mark.asyncio
+async def test_create_browser_login_survives_discovery_failure():
+    """A network blip fetching discovery must not stop the sign-in link from
+    being shown - otherwise a reauth flow aborts and the prompt disappears."""
+    api = make_api()
+
+    async def failing_discovery():
+        raise aiohttp.ClientConnectionError("blip")
+
+    api._get_discovery_data = failing_discovery
+    login = await api.async_create_browser_login()
+
+    assert login.auth_url.startswith(RedEnergyAPI.AUTHORIZE_URL + "?")
+    q = {k: v[0] for k, v in parse_qs(urlparse(login.auth_url).query).items()}
+    assert q["state"] == login.state
+
+
+def test_fallback_authorize_url_is_under_discovery_issuer():
+    assert RedEnergyAPI.AUTHORIZE_URL == (
+        RedEnergyAPI.DISCOVERY_URL.removesuffix("/.well-known/openid-configuration")
+        + "/v1/authorize"
+    )
+
+
+@pytest.mark.asyncio
 async def test_create_browser_login_is_unique_per_call():
     api = make_api()
     a = await api.async_create_browser_login()

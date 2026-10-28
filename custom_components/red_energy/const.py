@@ -168,6 +168,7 @@ ERROR_UNKNOWN: Final = "unknown"
 ERROR_NO_ACCOUNTS: Final = "no_accounts"
 ERROR_INVALID_CALLBACK: Final = "invalid_callback"
 ERROR_CALLBACK_EXPIRED: Final = "callback_expired"
+ERROR_BROWSER_SIGN_IN_FAILED: Final = "browser_sign_in_failed"
 ABORT_WRONG_ACCOUNT: Final = "wrong_account"
 
 # Data keys
