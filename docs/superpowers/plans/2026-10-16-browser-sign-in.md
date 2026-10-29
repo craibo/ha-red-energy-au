@@ -10,6 +10,35 @@
 
 **Spec:** No separate spec doc. The design is the "Design" section below, derived from the investigation of issue #103 (https://github.com/craibo/ha-red-energy-au/issues/103).
 
+## Status (2026-10-29)
+
+**Implemented. Waiting on SSO verification before merge.**
+
+- Tasks 1–5 are done, except Task 5 Step 4 (manual end-to-end), which is partly done. Spike gate passed (see Spike Results).
+- PR: https://github.com/craibo/ha-red-energy-au/pull/105. CI is green, it merges cleanly, and nobody has reviewed it yet.
+- Pre-release `1.23.0`: https://github.com/craibo/ha-red-energy-au/releases/tag/1.23.0. The tag points at `feat/browser-sign-in` (9cdd16b), not `main`.
+- Verified by the maintainer: email/password setup still works on the pre-release.
+- Not verified: Google/Apple/Microsoft SSO. The maintainer has no Google-linked account. The issue reporter was asked to test it: https://github.com/craibo/ha-red-energy-au/issues/103#issuecomment-6483476476. No reply yet.
+- Final review: no Critical findings. Two findings were re-graded to Important and fixed in `9cdd16b`:
+  - An SSO cancel now shows `browser_sign_in_failed` instead of "Invalid username or password".
+  - The authorize URL falls back to `AUTHORIZE_URL` when discovery fails.
+- Fixed in addition to the plan:
+  - `91e9d05` stops debug logs leaking the PKCE verifier, the Okta session/state tokens and the auth code.
+
+**Next steps**
+1. Wait for the reporter's SSO result. Check that setup completes, it survives a restart without reauth, and it stays signed in for 1–2 days.
+2. If it passes, merge PR #105. Then either move the `1.23.0` tag to the merge commit or release as `1.23.1`, and publish it as a full release.
+3. If it fails, debug from their log. Likely suspect: the federated IdP redirect doesn't end at `au.com.redenergy://callback`.
+4. If there's no reply in about a week, consider merging anyway. Their sign-in becomes the first real SSO test.
+
+**Deferred minors (from final review)**
+- Token refresh in `_ensure_valid_token` runs outside `_auth_lock`.
+- If a refresh response is lost after Okta rotates the token, the old token stays in use. Okta's grace period covers this for now.
+- The coordinator's per-service `except` swallows `RedEnergyAuthError` for one cycle before reauth.
+- Password and browser entries for the same account can be duplicated, because the email case in `unique_id` differs.
+- `config_migration` assumes `CONF_PASSWORD` exists.
+- Re-pasting a spent callback shows "expired" rather than "already used".
+
 ## Design (investigation findings this plan relies on)
 
 - Red Energy's Okta org (`redenergy.okta.com` / `login.redenergy.com.au`) runs Okta Identity Engine (`"pipeline":"idx"`). Its hosted sign-in page offers Apple, Google and Microsoft IdPs and passwordless email (`"passwordlessAuth":true`).
@@ -72,7 +101,7 @@ It also records how long the code lives and whether refresh tokens rotate. It us
 - Consumes: nothing
 - Produces: recorded facts used in Task 4/5 copy, namely the capture method that works and whether refresh tokens rotate
 
-- [ ] **Step 1: Create the branch and bump the version**
+- [x] **Step 1: Create the branch and bump the version**
 
 ```bash
 cd /Users/craibo/github/ha-red-energy-au
@@ -87,7 +116,7 @@ git add custom_components/red_energy/manifest.json
 git commit -m "chore: bump version to 1.23.0"
 ```
 
-- [ ] **Step 2: Write the spike script**
+- [x] **Step 2: Write the spike script**
 
 ```python
 """Throwaway: verify browser sign-in for Red Energy's Okta client. NOT committed."""
@@ -131,7 +160,7 @@ async def main():
 asyncio.run(main())
 ```
 
-- [ ] **Step 3: Run it with a real Red Energy login (the maintainer's account; the hosted page accepts password or email-code login)**
+- [x] **Step 3: Run it with a real Red Energy login (the maintainer's account; the hosted page accepts password or email-code login)**
 
 Run: `.venv/bin/python $SCRATCH/browser_login_spike.py`
 
@@ -149,7 +178,7 @@ Expected output:
 
 Also time one deliberately slow paste (wait about 2 minutes) to see whether the code has expired (`400 invalid_grant`).
 
-- [ ] **Step 4: Record findings and decide**
+- [x] **Step 4: Record findings and decide**
 
 Append the findings to this plan under a new heading `## Spike Results`:
 - the capture method that worked (Console message vs Network tab)
@@ -182,7 +211,7 @@ Delete nothing. The scratch script is outside the repo.
   - `RedEnergyAPI.set_refresh_token_listener(listener: Callable[[str], None] | None) -> None`, called whenever a *new, different* refresh token is received
   - `_refresh_access_token` raises `RedEnergyAuthError` only for HTTP 400/401, and `RedEnergyAPIError` for any other non-200
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/test_api_browser_login.py`:
 
@@ -389,12 +418,12 @@ async def test_listener_called_only_when_refresh_token_changes():
     assert seen == ["rt-2"]
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `.venv/bin/pytest tests/test_api_browser_login.py -v`
 Expected: collection error, `ImportError: cannot import name 'BrowserLogin'`
 
-- [ ] **Step 3: Implement in `api.py`**
+- [x] **Step 3: Implement in `api.py`**
 
 Add to the imports at the top of `api.py`. Keep the existing imports; add only what's missing:
 
@@ -571,7 +600,7 @@ In `_refresh_access_token`, replace the block from `if response.status != 200:` 
 
 Keep the existing `expires_in` / `_token_expires` / debug-log lines that follow.
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `.venv/bin/pytest tests/test_api_browser_login.py -v`
 Expected: all PASS
@@ -579,7 +608,7 @@ Expected: all PASS
 Run: `.venv/bin/pytest tests -q`
 Expected: 449 + the new tests pass, 0 failures
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add custom_components/red_energy/api.py tests/test_api_browser_login.py
@@ -604,7 +633,7 @@ git commit -m "feat: add browser sign-in and refresh-token login to API client"
   - `RedEnergyDataCoordinator._async_ensure_authenticated() -> None`
   - Browser entries raise `homeassistant.exceptions.ConfigEntryAuthFailed` when the refresh token is rejected
 
-- [ ] **Step 1: Add the constants**
+- [x] **Step 1: Add the constants**
 
 In `const.py`, after `CONF_CLIENT_ID: Final = "client_id"`:
 
@@ -618,7 +647,7 @@ AUTH_METHOD_BROWSER: Final = "browser"
 CONF_REFRESH_TOKEN: Final = "refresh_token"
 ```
 
-- [ ] **Step 2: Write the failing tests**
+- [x] **Step 2: Write the failing tests**
 
 Create `tests/test_coordinator_browser_auth.py`:
 
@@ -759,12 +788,12 @@ def test_password_entry_does_not_persist_refresh_tokens():
     hass.config_entries.async_update_entry.assert_not_called()
 ```
 
-- [ ] **Step 3: Run the tests to verify they fail**
+- [x] **Step 3: Run the tests to verify they fail**
 
 Run: `.venv/bin/pytest tests/test_coordinator_browser_auth.py -v`
 Expected: FAIL with `TypeError: ... unexpected keyword argument 'auth_method'`
 
-- [ ] **Step 4: Implement in `coordinator.py`**
+- [x] **Step 4: Implement in `coordinator.py`**
 
 Imports: add `from homeassistant.core import callback` (or extend the existing `homeassistant.core` import) and `from homeassistant.exceptions import ConfigEntryAuthFailed`. Add `AUTH_METHOD_BROWSER`, `AUTH_METHOD_PASSWORD` and `CONF_REFRESH_TOKEN` to the existing `from .const import (...)` block.
 
@@ -880,7 +909,7 @@ with:
             await self._async_ensure_authenticated()
 ```
 
-- [ ] **Step 5: Implement in `__init__.py`**
+- [x] **Step 5: Implement in `__init__.py`**
 
 Extend the `.const` import:
 
@@ -921,7 +950,7 @@ Replace the coordinator construction with:
 
 Leave the `except UpdateFailed` around `async_config_entry_first_refresh()` as it is. `ConfigEntryAuthFailed` is not an `UpdateFailed`, so it propagates and HA starts reauth.
 
-- [ ] **Step 6: Run the tests to verify they pass**
+- [x] **Step 6: Run the tests to verify they pass**
 
 Run: `.venv/bin/pytest tests/test_coordinator_browser_auth.py -v`
 Expected: all PASS
@@ -929,7 +958,7 @@ Expected: all PASS
 Run: `.venv/bin/pytest tests -q`
 Expected: 0 failures. Existing coordinator tests construct without `auth_method`, so they get the password default.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add custom_components/red_energy/const.py custom_components/red_energy/coordinator.py custom_components/red_energy/__init__.py tests/test_coordinator_browser_auth.py
@@ -956,7 +985,7 @@ git commit -m "feat: authenticate browser sign-in entries with persisted refresh
   - flow steps `user` (menu), `password`, `browser`, `reauth`
   - module helper `async _async_fetch_account_info(api: RedEnergyAPI) -> dict[str, Any]` and `_browser_unique_id(customer_data: dict[str, Any]) -> str`
 
-- [ ] **Step 1: Add the constants**
+- [x] **Step 1: Add the constants**
 
 In `const.py`, replace the `# Configuration flow` and `# Error messages` blocks with:
 
@@ -978,7 +1007,7 @@ ERROR_CALLBACK_EXPIRED: Final = "callback_expired"
 ABORT_WRONG_ACCOUNT: Final = "wrong_account"
 ```
 
-- [ ] **Step 2: Move the existing password tests to the new step**
+- [x] **Step 2: Move the existing password tests to the new step**
 
 In `tests/test_config_flow.py`:
 - Every call `flow.async_step_user(MOCK_USER_INPUT)` and `flow.async_step_user(...)` that submits credentials becomes `flow.async_step_password(...)`.
@@ -1016,7 +1045,7 @@ async def test_validate_input_no_properties_raises_no_accounts():
             await validate_input(AsyncMock(), MOCK_USER_INPUT)
 ```
 
-- [ ] **Step 3: Write the failing browser-flow tests**
+- [x] **Step 3: Write the failing browser-flow tests**
 
 Create `tests/test_config_flow_browser.py`:
 
@@ -1215,12 +1244,12 @@ async def test_reauth_with_different_account_aborts(api):
     flow.async_update_reload_and_abort.assert_not_called()
 ```
 
-- [ ] **Step 4: Run the tests to verify they fail**
+- [x] **Step 4: Run the tests to verify they fail**
 
 Run: `.venv/bin/pytest tests/test_config_flow_browser.py tests/test_config_flow.py -v`
 Expected: FAIL with `ImportError` (new consts) or `AttributeError: ... async_step_browser` / `async_step_password`
 
-- [ ] **Step 5: Implement in `config_flow.py`**
+- [x] **Step 5: Implement in `config_flow.py`**
 
 Imports:
 - Add `import aiohttp` and `from collections.abc import Mapping`.
@@ -1449,7 +1478,7 @@ Replace the whole `ConfigFlow` class body (from `def __init__` through the end o
         return self.async_create_entry(title=title, data=config_data)
 ```
 
-- [ ] **Step 6: Update `translations/en.json`**
+- [x] **Step 6: Update `translations/en.json`**
 
 Replace the `"config"` object with the following. Before writing it, adjust the browser description's capture instructions to match the Task 1 spike results.
 
@@ -1499,7 +1528,7 @@ Replace the `"config"` object with the following. Before writing it, adjust the 
 
 Validate the JSON: `.venv/bin/python -c "import json;json.load(open('custom_components/red_energy/translations/en.json'))"` (no output means it's valid).
 
-- [ ] **Step 7: Run the tests to verify they pass**
+- [x] **Step 7: Run the tests to verify they pass**
 
 Run: `.venv/bin/pytest tests/test_config_flow_browser.py tests/test_config_flow.py tests/test_config_flow_basic.py -v`
 Expected: all PASS
@@ -1510,7 +1539,7 @@ Expected: 0 failures
 Run: `.venv/bin/flake8 custom_components --count --select=E9,F63,F7,F82 --show-source --statistics`
 Expected: `0`
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add custom_components/red_energy/const.py custom_components/red_energy/config_flow.py custom_components/red_energy/translations/en.json tests/test_config_flow.py tests/test_config_flow_browser.py
@@ -1529,7 +1558,7 @@ git commit -m "feat: add browser sign-in and reauth to config flow for SSO users
 - Consumes: the final flow behaviour from Tasks 2–4 and the Spike Results from Task 1
 - Produces: user and maintainer docs
 
-- [ ] **Step 1: Update `README.md`**
+- [x] **Step 1: Update `README.md`**
 
 Replace step 3 of `### Configuration` with:
 
@@ -1555,7 +1584,7 @@ If you sign in to Red Energy with Google, Apple or Microsoft, or with a code ema
 Home Assistant then stays signed in by itself. If Red Energy ends the session (for example after a long outage or a password/security change), Home Assistant shows a **Re-authenticate** notification. Repeat the steps above.
 ```
 
-- [ ] **Step 2: Update `CLAUDE.md`**
+- [x] **Step 2: Update `CLAUDE.md`**
 
 In `### Authentication`, after the numbered list and before "Okta client ID is hardcoded…", add:
 
@@ -1563,7 +1592,7 @@ In `### Authentication`, after the numbered list and before "Okta client ID is h
 **Browser sign-in (issue #103)** — for SSO/email-code users with no password. The org is Okta Identity Engine, but `CLIENT_ID` only allows `authorization_code` + `refresh_token` grants, so the IDX/interaction-code API is unavailable. Instead `async_create_browser_login()` builds a PKCE authorize URL without a `sessionToken`. The user signs in on the hosted page and pastes the `au.com.redenergy://callback?code=…` URL. `async_complete_browser_login()` exchanges it. These entries store `auth_method: "browser"` + `refresh_token` (no password). The coordinator logs in with `authenticate_with_refresh_token()`, persists rotated tokens via `set_refresh_token_listener`, and raises `ConfigEntryAuthFailed` (→ `async_step_reauth`) only when the token endpoint returns 400/401. Entries without `auth_method` are password entries, so no config migration is needed.
 ```
 
-- [ ] **Step 3: Full verification**
+- [x] **Step 3: Full verification**
 
 Run: `.venv/bin/pytest tests -q`
 Expected: 0 failures. Record the total count.
@@ -1584,14 +1613,16 @@ Install the branch build into a test HA instance (copy `custom_components/red_en
 5. Corrupt the stored `refresh_token` (stop HA, edit `.storage/core.config_entries`, start HA). A **Re-authenticate** notification appears, and completing browser sign-in restores the entry.
 6. Existing password entry: still loads and polls unchanged.
 
-- [ ] **Step 5: Commit**
+Progress (2026-10-29): only check 6 is verified. Email/password still works on the 1.23.0 pre-release. Checks 1–5 need an SSO account and are with the issue #103 reporter.
+
+- [x] **Step 5: Commit**
 
 ```bash
 git add README.md CLAUDE.md
 git commit -m "docs: document browser sign-in for SSO and email-code accounts"
 ```
 
-- [ ] **Step 6: Open the PR**
+- [x] **Step 6: Open the PR**
 
 ```bash
 git push -u origin feat/browser-sign-in
