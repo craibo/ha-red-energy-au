@@ -61,13 +61,26 @@ A comprehensive Home Assistant custom integration for Red Energy (Australian ene
 
 1. Go to **Settings** → **Devices & Services**
 2. Click **Add Integration** and search for "Red Energy"
-3. Enter your Red Energy credentials:
-   - **Username**: Your Red Energy account email address
-   - **Password**: Your Red Energy account password
+3. Choose how you sign in to Red Energy:
+   - **Email and password** — enter your Red Energy account email and password
+   - **Google, Apple, Microsoft or emailed code** — for accounts without a password (see [Browser sign-in](#browser-sign-in) below)
 4. All accounts on your Red Energy login are added automatically - electricity and gas are always both monitored (each account is billed as one service, so there's nothing to select)
 5. Use the integration's **Configure** options afterwards to choose which accounts to monitor, adjust polling interval, or enable advanced sensors
 
 ⚠️ **Important**: This integration uses the real Red Energy API. You must have valid Red Energy account credentials to use this integration.
+
+### Browser sign-in
+
+If you sign in to Red Energy with Google, Apple or Microsoft, or with a code emailed to you, there's no password for the integration to use. Choose **Google, Apple, Microsoft or emailed code** during setup instead:
+
+1. Use a desktop browser (Chrome or Edge). On a phone with the Red Energy app installed, the app intercepts the sign-in.
+2. Click the sign-in link shown in Home Assistant.
+3. On the Red Energy sign-in page, press **F12**, select the **Network** tab and tick **Preserve log**.
+4. Sign in as normal. The page won't change afterwards.
+5. In the Network list, select the last request with status **302**. Under **Headers → Response Headers**, copy the **location** value. It starts `au.com.redenergy://callback?code=`.
+6. Paste it into Home Assistant straight away. The code expires quickly; if it does, open the link again.
+
+Home Assistant then keeps itself signed in. If Red Energy ends the session (for example after a long outage or a security change on your account), Home Assistant shows a **Re-authenticate** notification. Repeat the steps above.
 
 ## Important: Data Update Limitations
 

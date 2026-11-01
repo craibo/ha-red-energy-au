@@ -9,6 +9,13 @@ CONF_USERNAME: Final = "username"
 CONF_PASSWORD: Final = "password"
 CONF_CLIENT_ID: Final = "client_id"
 
+# Browser sign-in (Google/Apple/Microsoft SSO or emailed code, issue #103).
+# Entries without CONF_AUTH_METHOD predate this and are password entries.
+CONF_AUTH_METHOD: Final = "auth_method"
+AUTH_METHOD_PASSWORD: Final = "password"
+AUTH_METHOD_BROWSER: Final = "browser"
+CONF_REFRESH_TOKEN: Final = "refresh_token"
+
 CLIENT_ID: Final = "0oa1apu62kkqeet4C3l7"
 
 DEFAULT_NAME: Final = "Red Energy"
@@ -149,13 +156,20 @@ GST_MULTIPLIER: Final = 1.10
 
 # Configuration flow
 STEP_USER: Final = "user"
+STEP_PASSWORD: Final = "password"
+STEP_BROWSER: Final = "browser"
 STEP_ACCOUNT_SELECT: Final = "account_select"
+CONF_CALLBACK_URL: Final = "callback_url"
 
 # Error messages
 ERROR_AUTH_FAILED: Final = "auth_failed"
 ERROR_CANNOT_CONNECT: Final = "cannot_connect"
 ERROR_UNKNOWN: Final = "unknown"
 ERROR_NO_ACCOUNTS: Final = "no_accounts"
+ERROR_INVALID_CALLBACK: Final = "invalid_callback"
+ERROR_CALLBACK_EXPIRED: Final = "callback_expired"
+ERROR_BROWSER_SIGN_IN_FAILED: Final = "browser_sign_in_failed"
+ABORT_WRONG_ACCOUNT: Final = "wrong_account"
 
 # Data keys
 DATA_ACCOUNTS: Final = "accounts"

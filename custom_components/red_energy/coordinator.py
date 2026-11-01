@@ -7,7 +7,8 @@ from datetime import datetime, timedelta, date
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
@@ -24,7 +25,10 @@ from .data_validation import (
 from .error_recovery import RedEnergyErrorRecoverySystem, ErrorType
 from .performance import PerformanceMonitor, DataProcessor
 from .const import (
+    AUTH_METHOD_BROWSER,
+    AUTH_METHOD_PASSWORD,
     BILLED_USAGE_LOOKBACK_DAYS,
+    CONF_REFRESH_TOKEN,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
     GST_MULTIPLIER,
@@ -58,10 +62,14 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
         selected_accounts: list[str],
         services: list[str],
         config_entry: ConfigEntry | None = None,
+        auth_method: str = AUTH_METHOD_PASSWORD,
+        refresh_token: str | None = None,
     ) -> None:
         """Initialize the coordinator."""
         self.username = username
         self.password = password
+        self.auth_method = auth_method
+        self._stored_refresh_token = refresh_token
         self.selected_accounts = selected_accounts
 
         # Initialize Stage 5 enhancements
@@ -75,6 +83,11 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
         session = async_get_clientsession(hass)
         # Use real Red Energy API
         self.api = RedEnergyAPI(session)
+        # Browser sign-in entries have no password: the refresh token is
+        # their only credential, and Okta rotates it on every refresh, so
+        # every new one must be written back to the config entry.
+        if auth_method == AUTH_METHOD_BROWSER:
+            self.api.set_refresh_token_listener(self._async_persist_refresh_token)
 
         self._customer_data: dict[str, Any] | None = None
         self._properties: list[dict[str, Any]] = []
@@ -193,13 +206,34 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
         # Unreachable: the loop above always returns or raises.
         raise UpdateFailed("Exhausted update retries")
 
+    async def _async_ensure_authenticated(self) -> None:
+        """Log in if there's no access token yet (startup, or after reset)."""
+        if self.api._access_token:
+            return
+        if self.auth_method == AUTH_METHOD_BROWSER:
+            _LOGGER.info("Authenticating with Red Energy API using saved browser sign-in")
+            await self.api.authenticate_with_refresh_token(
+                self.api.refresh_token or self._stored_refresh_token
+            )
+        else:
+            _LOGGER.info("Authenticating with Red Energy API")
+            await self.api.authenticate(self.username, self.password)
+
+    @callback
+    def _async_persist_refresh_token(self, refresh_token: str) -> None:
+        """Save a rotated refresh token so it survives a Home Assistant restart."""
+        self._stored_refresh_token = refresh_token
+        entry = self.config_entry
+        if entry is None or entry.data.get(CONF_REFRESH_TOKEN) == refresh_token:
+            return
+        self.hass.config_entries.async_update_entry(
+            entry, data={**entry.data, CONF_REFRESH_TOKEN: refresh_token}
+        )
+
     async def _async_update_data_once(self) -> dict[str, Any]:
         """Fetch data from Red Energy API (single attempt, no retry)."""
         try:
-            # Ensure we're authenticated
-            if not self.api._access_token:
-                _LOGGER.info("Authenticating with Red Energy API")
-                await self.api.authenticate(self.username, self.password)
+            await self._async_ensure_authenticated()
             
             # Refresh metadata (customer/properties) on every poll. It carries
             # lastBillDate/nextBillDate/balance, so caching it would leave a
@@ -394,6 +428,12 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
             
         except RedEnergyAuthError as err:
             _LOGGER.error("Authentication failed during update: %s", err)
+            if self.auth_method == AUTH_METHOD_BROWSER:
+                # The saved sign-in is dead and there's no password to retry
+                # with - HA starts the reauth flow (browser sign-in again).
+                raise ConfigEntryAuthFailed(
+                    "Red Energy sign-in has expired - please sign in again"
+                ) from err
             raise UpdateFailed(f"Authentication failed: {err}") from err
         except RedEnergyAPIError as err:
             _LOGGER.error("API error during update: %s", err)
@@ -442,8 +482,7 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
         """Handle bulk data updates for multiple accounts efficiently."""
         try:
             # Ensure authentication
-            if not self.api._access_token:
-                await self.api.authenticate(self.username, self.password)
+            await self._async_ensure_authenticated()
             
             # Get base data if needed
             if not self._customer_data:

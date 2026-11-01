@@ -67,6 +67,8 @@ Red Energy uses **OAuth2 PKCE via Okta** (redenergy.okta.com). The flow in `api.
 5. Exchange code → access + refresh tokens
 6. Bearer token on all API calls; auto-refresh on expiry (default 1hr)
 
+**Browser sign-in (issue #103)** — for SSO/email-code users with no password. The org is Okta Identity Engine, but `CLIENT_ID` only allows the `authorization_code` + `refresh_token` grants, so the IDX/interaction-code API is unavailable. Instead `async_create_browser_login()` builds a PKCE authorize URL without a `sessionToken`. The user signs in on the hosted page and pastes the `au.com.redenergy://callback?code=…` URL (taken from the 302 `location` header in the browser's Network tab). `async_complete_browser_login()` exchanges it. These entries store `auth_method: "browser"` + `refresh_token` (no password). Okta rotates the refresh token on every refresh, so the coordinator persists each new one via `set_refresh_token_listener`. It logs in with `authenticate_with_refresh_token()` and raises `ConfigEntryAuthFailed` (→ `async_step_reauth`) only when the token endpoint returns 400/401. Entries without `auth_method` are password entries, so no config migration is needed.
+
 Okta client ID is hardcoded in `const.py`. VPN must be disabled when authenticating. Users must capture `client_id` from the Red Energy mobile app.
 
 ### Data Flow
