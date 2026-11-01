@@ -16,6 +16,11 @@ rate (Rt), and the account's CL2 rate (Rc):
 This module infers that split per interval. See issue #61 for the full
 derivation and empirical validation (~0.35% error against independently
 metered CL2 consumption) contributed by @LoznOz.
+
+"CL2" here means the plan's controlled-load rate. Some plans (e.g. on
+Ausgrid) label their only controlled-load rate "CL1"; resolve_rate_roles()
+uses it for the CL2 role when the plan has no CL2-labelled rate, and the
+formula is the same.
 """
 from __future__ import annotations
 
@@ -122,6 +127,10 @@ _ROLE_LABELS: dict[str, frozenset[str]] = {
     "OFFPEAK": frozenset({"off peak", "off-peak", "offpeak"}),
     "SHOULDER": frozenset({"shoulder"}),
     "CL2": frozenset({"cl2", "controlled load 2", "controlled load"}),
+    # Some plans (e.g. on Ausgrid) label their only controlled-load rate
+    # "CL1". It fills the CL2 role only when no rate matches CL2's labels,
+    # so a plan listing both keeps using its CL2 rate as before.
+    "CL1": frozenset({"cl1", "controlled load 1"}),
 }
 
 
@@ -137,6 +146,8 @@ def resolve_rate_roles(rates: list[dict[str, Any]]) -> dict[str, Any]:
     a rate row to a role, so this is inherently best-effort. A role only
     resolves when exactly one rate in the list matches its label set; zero
     or multiple matches leave that role unresolved rather than guessing.
+    A plan with no CL2-labelled rate falls back to a single "CL1" rate for
+    the CL2 role.
 
     Args:
         rates: the validated rates list for one service, as returned by
@@ -174,6 +185,8 @@ def resolve_rate_roles(rates: list[dict[str, Any]]) -> dict[str, Any]:
 
     if len(matches["CL2"]) == 1:
         cl2_rate_incl_gst = matches["CL2"][0]
+    elif not matches["CL2"] and len(matches["CL1"]) == 1:
+        cl2_rate_incl_gst = matches["CL1"][0]
     else:
         unresolved_roles.append("CL2")
 
