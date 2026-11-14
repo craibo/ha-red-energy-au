@@ -1,6 +1,7 @@
 {
   "domain": "red_energy",
   "name": "Red Energy",
+  "after_dependencies": ["recorder"],
   "codeowners": ["@craibo"],
   "config_flow": true,
   "dependencies": [],

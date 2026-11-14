@@ -39,6 +39,8 @@ from .const import (
     CONF_AUTH_METHOD,
     CONF_CALLBACK_URL,
     CONF_ENABLE_ADVANCED_SENSORS,
+    CONF_IMPORT_STATISTICS,
+    DEFAULT_IMPORT_STATISTICS,
     CONF_REFRESH_TOKEN,
     CONF_SCAN_INTERVAL,
     DATA_ACCOUNTS,
@@ -431,6 +433,7 @@ class RedEnergyOptionsFlowHandler(config_entries.OptionsFlow):
         current_options = entry.options
         current_scan_interval = current_options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
         current_advanced_sensors = current_options.get(CONF_ENABLE_ADVANCED_SENSORS, False)
+        current_import_statistics = current_options.get(CONF_IMPORT_STATISTICS, DEFAULT_IMPORT_STATISTICS)
 
         # Create interval display options
         interval_options = {}
@@ -458,6 +461,7 @@ class RedEnergyOptionsFlowHandler(config_entries.OptionsFlow):
             vol.Required("accounts", default=accounts_default): cv.multi_select(account_options),
             vol.Required(CONF_SCAN_INTERVAL, default=current_scan_interval): vol.In(interval_options),
             vol.Required(CONF_ENABLE_ADVANCED_SENSORS, default=current_advanced_sensors): bool,
+            vol.Required(CONF_IMPORT_STATISTICS, default=current_import_statistics): bool,
         })
 
         # Convert current_scan_interval to minutes for display

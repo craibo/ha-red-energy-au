@@ -136,6 +136,12 @@ CONF_SCAN_INTERVAL: Final = "scan_interval"
 CONF_ENABLE_ADVANCED_SENSORS: Final = "enable_advanced_sensors"
 CONF_COST_THRESHOLDS: Final = "cost_thresholds"
 CONF_USAGE_THRESHOLDS: Final = "usage_thresholds"
+# Backdated hourly statistics for the Energy Dashboard (issue #64)
+CONF_IMPORT_STATISTICS: Final = "import_statistics"
+DEFAULT_IMPORT_STATISTICS: Final = True
+# How many days of interval usage to import the first time statistics run.
+# Red Energy already serves 90-day windows for the billing-period fetch.
+STATISTICS_BACKFILL_DAYS: Final = 90
 
 ATTR_ACCOUNT_ID: Final = "account_id"
 ATTR_SERVICE_TYPE: Final = "service_type"

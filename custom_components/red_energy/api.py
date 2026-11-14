@@ -883,11 +883,25 @@ class RedEnergyAPI:
                 if period in ("PEAK", "OFFPEAK", "SHOULDER"):
                     breakdown_available = True
 
-                # Capture per-interval pricing for CL2/TOU inference (issue #61).
+                # Capture per-interval pricing for CL2/TOU inference (issue #61)
+                # and backdated hourly statistics (issue #64).
                 consumption_dollar_incl_gst_raw = interval.get("consumptionDollarIncGst")
+                consumption_dollar_raw = interval.get("consumptionDollar")
+                generation_dollar_raw = interval.get("generationDollar")
                 intervals.append({
                     "interval_start": interval.get("intervalStart"),
                     "consumption_kwh": consumption,
+                    "generation_kwh": generation,
+                    "consumption_dollar": (
+                        float(consumption_dollar_raw)
+                        if consumption_dollar_raw is not None
+                        else None
+                    ),
+                    "generation_dollar": (
+                        float(generation_dollar_raw)
+                        if generation_dollar_raw is not None
+                        else None
+                    ),
                     "consumption_dollar_incl_gst": (
                         float(consumption_dollar_incl_gst_raw)
                         if consumption_dollar_incl_gst_raw is not None

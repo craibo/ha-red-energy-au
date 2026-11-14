@@ -65,7 +65,7 @@ A comprehensive Home Assistant custom integration for Red Energy (Australian ene
    - **Email and password** — enter your Red Energy account email and password
    - **Google, Apple, Microsoft or emailed code** — for accounts without a password (see [Browser sign-in](#browser-sign-in) below)
 4. All accounts on your Red Energy login are added automatically - electricity and gas are always both monitored (each account is billed as one service, so there's nothing to select)
-5. Use the integration's **Configure** options afterwards to choose which accounts to monitor, adjust polling interval, or enable advanced sensors
+5. Use the integration's **Configure** options afterwards to choose which accounts to monitor, adjust polling interval, enable advanced sensors, or turn off the [Energy Dashboard statistics](#energy-dashboard-integration) import
 
 ⚠️ **Important**: This integration uses the real Red Energy API. You must have valid Red Energy account credentials to use this integration.
 
@@ -254,12 +254,32 @@ data:
 
 ## Energy Dashboard Integration
 
-The integration automatically provides sensors compatible with Home Assistant's Energy Dashboard:
+Red Energy publishes usage about a day late, so the daily sensors are recorded in Home Assistant when they are polled, not when the energy was used. To get usage onto the right day and hour, the integration also imports each half-hour interval into Home Assistant's long-term statistics at the time it actually happened (two half-hours per hourly statistic). These are the recommended source for the Energy Dashboard.
+
+For each interval-metered electricity service it creates these statistics (replace `<consumer>` with the service's consumer number):
+
+| Statistic | Unit | Contents |
+|-----------|------|----------|
+| `red_energy:<consumer>_consumption` | kWh | Grid import |
+| `red_energy:<consumer>_cost` | AUD | Import cost, GST-inclusive (only if Red Energy provides per-interval pricing) |
+| `red_energy:<consumer>_generation` | kWh | Solar export (only created once there is some export) |
+| `red_energy:<consumer>_credit` | AUD | Export credit (only created once there is some export) |
+
+To use them:
 
 1. Go to **Settings** → **Dashboards** → **Energy**
-2. Click **Add Consumption**
-3. Select your Red Energy sensors from the list
-4. Configure cost tracking using the cost sensors
+2. Under **Electricity grid**, click **Add consumption** and pick **Red Energy `<consumer>` Consumption**
+3. For cost, choose **Use an entity tracking the total costs** and pick **Red Energy `<consumer>` Consumption cost**
+4. If you have solar, click **Add return** and pick **Red Energy `<consumer>` Generation**, with **Red Energy `<consumer>` Generation credit** for compensation
+
+How the import works:
+
+- The first poll backfills up to 90 days. After that each poll adds only the days that are new since the last imported hour, so re-polling never double counts.
+- Only complete days are imported: today, and any day Red Energy hasn't finished publishing, are picked up on a later poll. Expect the most recent data to be yesterday's or the day before's.
+- If Red Energy later revises a day that has already been imported, the imported figures are not updated.
+- The import can be turned off with **Import half-hourly usage into Energy Dashboard statistics** in the integration's **Configure** options.
+
+The daily and current-period sensors are unchanged and can still be used on dashboards. Don't add both those sensors and the statistics above to the Energy Dashboard, or usage will be counted twice.
 
 ## Troubleshooting
 

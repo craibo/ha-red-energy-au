@@ -49,7 +49,8 @@
         "data": {
           "accounts": "Accounts to Monitor",
           "scan_interval": "Scan Interval",
-          "enable_advanced_sensors": "Enable Advanced Sensors"
+          "enable_advanced_sensors": "Enable Advanced Sensors",
+          "import_statistics": "Import half-hourly usage into Energy Dashboard statistics"
         }
       }
     }
