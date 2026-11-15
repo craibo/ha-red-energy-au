@@ -13,15 +13,22 @@ South Australia).
 
 Each import continues from the last statistic already in the recorder: hours
 at or before it are skipped and the running ``sum`` carries on from its sum,
-so re-polling the same data never double counts. Only complete days (every
-half-hour present, usageDate before today) are imported, and import stops at
-the first incomplete day, so a day Red Energy hasn't finished publishing is
-picked up whole on a later poll rather than skipped.
+so re-polling the same data never double counts, and a write that never
+reached the recorder is simply imported again on the next poll.
+
+Only complete days (every half-hour present exactly once, usageDate before
+today) are imported, and only in an unbroken run of calendar days from the
+day after the last imported hour. Import stops at the first day that is
+missing or incomplete, so a day Red Energy hasn't finished publishing is
+picked up whole on a later poll rather than skipped. A day still missing or
+incomplete MISSING_DAY_GRACE_DAYS after it began is given up on, with a
+warning, so one day Red Energy never publishes can't stop all statistics
+after it; it stays a gap in the statistics.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta, tzinfo
+from datetime import date, datetime, time, timedelta, tzinfo
 import logging
 from typing import Any
 
@@ -42,6 +49,13 @@ NEM_TIMEZONE = "Australia/Brisbane"
 # Half-hours in a complete day: 48 in NEM time, or 46/50 on the days
 # daylight saving starts/ends if a day is ever reported in local time.
 COMPLETE_DAY_INTERVAL_COUNTS = frozenset({46, 48, 50})
+
+HALF_HOUR = timedelta(minutes=30)
+
+# How long to wait for a missing or incomplete day before skipping it and
+# importing the days after it. Red Energy normally publishes a day within a
+# day or two, so a day still absent after a week is treated as never coming.
+MISSING_DAY_GRACE_DAYS = 7
 
 STAT_CONSUMPTION = "consumption"
 STAT_GENERATION = "generation"
@@ -120,34 +134,120 @@ def parse_interval_start(value: Any) -> datetime | None:
     return parsed
 
 
-def complete_days(usage_entries: list[dict[str, Any]], today: date) -> list[dict[str, Any]]:
-    """Return the leading run of complete days, oldest first.
+def _starts_at_midnight(moment: datetime, day: date) -> bool:
+    """Return whether moment is 00:00 on day, in moment's own offset."""
+    return moment.date() == day and moment.time() == time(0)
 
-    A day is complete when its usageDate is before today (NEM time) and all
-    its half-hours (48, or 46/50 on a daylight saving change) carry a
-    parseable intervalStart. The run stops at the first
-    incomplete day so it can be imported whole once Red Energy fills it in.
+
+def day_is_complete(entry: dict[str, Any]) -> bool:
+    """Return whether a usage day has every half-hour exactly once.
+
+    Its intervalStarts must all parse, be unique and exactly 30 minutes
+    apart with no gaps, and cover the whole usageDate: the first starts at
+    midnight and the last ends at the next day's midnight, each in the offset
+    Red Energy reported for that interval. Red Energy reports NEM time
+    (+10:00), giving 48 half-hours; a day ever reported in local time across
+    a daylight saving change has a different offset at each end and 46 or 50.
     """
-    days: dict[str, dict[str, Any]] = {}
-    for entry in usage_entries:
-        if isinstance(entry, dict) and entry.get("date"):
-            days[entry["date"]] = entry
+    try:
+        usage_date = date.fromisoformat(str(entry.get("date")))
+    except ValueError:
+        return False
+    starts = []
+    for interval in entry.get("intervals") or []:
+        start = parse_interval_start(interval.get("interval_start")) if isinstance(interval, dict) else None
+        if start is None:
+            return False
+        starts.append((dt_util.as_utc(start), start))
+    if len(starts) not in COMPLETE_DAY_INTERVAL_COUNTS:
+        return False
+    starts.sort(key=lambda pair: pair[0])
+    if any(b[0] - a[0] != HALF_HOUR for a, b in zip(starts, starts[1:])):
+        return False
+    first, last = starts[0][1], starts[-1][1]
+    return _starts_at_midnight(first, usage_date) and _starts_at_midnight(
+        last + HALF_HOUR, usage_date + timedelta(days=1)
+    )
 
-    result = []
-    for day in sorted(days):
-        entry = days[day]
+
+def next_import_day(last_start: datetime) -> date:
+    """Return the usageDate (NEM time) of the hour after the last imported one."""
+    return (last_start + timedelta(hours=1)).astimezone(nem_timezone()).date()
+
+
+def _describe_days(days: list[date]) -> str:
+    if len(days) == 1:
+        return days[0].isoformat()
+    return f"{days[0].isoformat()} to {days[-1].isoformat()} ({len(days)} days)"
+
+
+def _days_before(usage_entries: list[dict[str, Any]], today: date) -> dict[date, dict[str, Any]]:
+    """Index usage entries by usageDate, keeping only days before today."""
+    days: dict[date, dict[str, Any]] = {}
+    for entry in usage_entries:
+        if not isinstance(entry, dict) or not entry.get("date"):
+            continue
         try:
-            usage_date = date.fromisoformat(day)
+            usage_date = date.fromisoformat(str(entry["date"]))
         except ValueError:
+            continue
+        if usage_date < today:
+            days[usage_date] = entry
+    return days
+
+
+def complete_days(
+    usage_entries: list[dict[str, Any]],
+    today: date,
+    next_day: date | None = None,
+    consumer_number: str = "",
+    skip_missing: bool = True,
+) -> list[dict[str, Any]]:
+    """Return the usage days to import, oldest first.
+
+    Only days before today (NEM time) count. next_day is the first day not
+    yet imported (None when nothing has been, which starts at the earliest
+    complete day). Complete days before it are returned too, so a series
+    that is behind can catch up, but they never hold up newer days.
+
+    From next_day on, days must be complete (see day_is_complete) and
+    consecutive. The run stops at the first missing or incomplete day so it
+    can be imported whole once Red Energy publishes it, instead of a later
+    day moving the last imported hour past it for good. Once that day is
+    MISSING_DAY_GRACE_DAYS old and a later complete day exists, it is skipped
+    with a warning and stays a gap in the statistics. skip_missing=False
+    never skips (used when the fetch for those days failed).
+    """
+    days = _days_before(usage_entries, today)
+    complete = sorted(day for day, entry in days.items() if day_is_complete(entry))
+    if not complete:
+        return []
+    if next_day is None:
+        next_day = complete[0]
+    complete_set = set(complete)
+
+    result = [days[day] for day in complete if day < next_day]
+    skipped: list[date] = []
+    day = next_day
+    while day <= complete[-1]:
+        if day in complete_set:
+            if skipped:
+                _LOGGER.warning(
+                    "No complete Red Energy usage for consumer %s on %s after waiting %d days - "
+                    "skipping it, so the imported statistics will have a gap there",
+                    consumer_number, _describe_days(skipped), MISSING_DAY_GRACE_DAYS,
+                )
+                skipped = []
+            result.append(days[day])
+        elif skip_missing and (today - day).days >= MISSING_DAY_GRACE_DAYS:
+            skipped.append(day)
+        else:
+            _LOGGER.debug(
+                "Usage for %s is %s - not importing it or later days yet",
+                day, "incomplete" if day in days else "missing",
+            )
             break
-        if usage_date >= today:
-            break
-        intervals = entry.get("intervals") or []
-        starts = [parse_interval_start(i.get("interval_start")) for i in intervals if isinstance(i, dict)]
-        if len(starts) not in COMPLETE_DAY_INTERVAL_COUNTS or any(s is None for s in starts):
-            _LOGGER.debug("Usage for %s is incomplete (%d intervals) - not importing it yet", day, len(starts))
-            break
-        result.append(entry)
+        day += timedelta(days=1)
     return result
 
 
@@ -214,11 +314,7 @@ def fetch_start_date(
     earliest = today - timedelta(days=backfill_days)
     if last_statistics.get(STAT_CONSUMPTION) is None:
         return earliest
-    needed = [
-        (last[0] + timedelta(hours=1)).astimezone(nem_timezone()).date()
-        for last in last_statistics.values()
-        if last is not None
-    ]
+    needed = [next_import_day(last[0]) for last in last_statistics.values() if last is not None]
     return max(earliest, min(needed))
 
 
@@ -250,12 +346,20 @@ async def async_import_statistics(
     usage_entries: list[dict[str, Any]],
     last_statistics: dict[str, tuple[datetime, float] | None],
     today: date,
+    skip_missing: bool = True,
 ) -> dict[str, int]:
-    """Import new complete hours for each series; return hours added per series."""
+    """Import new complete hours for each series; return hours added per series.
+
+    The run of days continues from consumption's last imported hour, the
+    series that is written for every imported day; any series further along
+    skips the hours it already has. skip_missing is passed to complete_days.
+    """
     from homeassistant.components.recorder.models import StatisticMeanType
     from homeassistant.components.recorder.statistics import async_add_external_statistics
 
-    days = complete_days(usage_entries, today)
+    consumption_last = last_statistics.get(STAT_CONSUMPTION)
+    next_day = None if consumption_last is None else next_import_day(consumption_last[0])
+    days = complete_days(usage_entries, today, next_day, consumer_number, skip_missing)
     imported: dict[str, int] = {}
     for series in SERIES:
         last = last_statistics.get(series.key)

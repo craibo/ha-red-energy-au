@@ -261,7 +261,7 @@ For each interval-metered electricity service it creates these statistics (repla
 | Statistic | Unit | Contents |
 |-----------|------|----------|
 | `red_energy:<consumer>_consumption` | kWh | Grid import |
-| `red_energy:<consumer>_cost` | AUD | Import cost, GST-inclusive (only if Red Energy provides per-interval pricing) |
+| `red_energy:<consumer>_cost` | AUD | Import energy charges, GST-inclusive (only if Red Energy provides per-interval pricing) - see below |
 | `red_energy:<consumer>_generation` | kWh | Solar export (only created once there is some export) |
 | `red_energy:<consumer>_credit` | AUD | Export credit (only created once there is some export) |
 
@@ -275,7 +275,10 @@ To use them:
 How the import works:
 
 - The first poll backfills up to 90 days. After that each poll adds only the days that are new since the last imported hour, so re-polling never double counts.
-- Only complete days are imported: today, and any day Red Energy hasn't finished publishing, are picked up on a later poll. Expect the most recent data to be yesterday's or the day before's.
+- Only complete days are imported: every half-hour of the day present exactly once, from midnight to midnight. Today, and any day Red Energy hasn't finished publishing, are picked up on a later poll. Expect the most recent data to be yesterday's or the day before's.
+- Days are imported in order with no gaps. If Red Energy leaves out a day, or a day is incomplete, the days after it wait until it arrives, so it is imported whole rather than skipped. If it is still missing or incomplete 7 days later, it is skipped and a warning naming the consumer number and date is logged: the statistics have a gap for that day, and the days after it are imported as normal.
+- Each poll continues from the last hour already in Home Assistant's statistics, so if Home Assistant stops before an import is saved, the next poll imports those hours again, with no gap or double counting.
+- The cost statistic is energy charges only: Red Energy's per-interval charge (`consumptionDollarIncGst`, or `consumptionDollar` plus GST), so a day's cost is that day's Daily Import Cost plus GST. It does not include daily supply charges or demand charges, so the Energy Dashboard's cost will be lower than your bill.
 - If Red Energy later revises a day that has already been imported, the imported figures are not updated.
 - The import can be turned off with **Import half-hourly usage into Energy Dashboard statistics** in the integration's **Configure** options.
 

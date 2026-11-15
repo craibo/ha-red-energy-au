@@ -501,6 +501,9 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
         # first import (backfill) or catching up after a new bill/outage
         # needs an extra request for the days before it.
         period_start = datetime.fromisoformat(service_usage["start_date"]).date()
+        # A day absent only because this fetch failed must not be skipped
+        # as one Red Energy never published - wait for the next poll instead.
+        skip_missing = True
         if needed_from < period_start:
             extra = await self.api.get_usage_data(
                 consumer_number,
@@ -510,10 +513,11 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
             if isinstance(extra, dict) and not extra.get("error"):
                 entries = validate_usage_data(extra).get("usage_data", []) + entries
             else:
+                skip_missing = False
                 _LOGGER.debug("No earlier usage available for statistics backfill of consumer %s", consumer_number)
 
         imported = await red_statistics.async_import_statistics(
-            self.hass, consumer_number, entries, last_statistics, today
+            self.hass, consumer_number, entries, last_statistics, today, skip_missing
         )
         if imported:
             _LOGGER.debug("Imported hourly statistics for consumer %s: %s", consumer_number, imported)
