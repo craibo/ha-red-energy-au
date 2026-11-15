@@ -340,14 +340,18 @@ class FakeRecorder:
         self.lose_writes = False
 
     def add(self, hass, metadata, rows):
-        if not self.lose_writes:
-            self.rows.setdefault(metadata["statistic_id"], []).extend(rows)
+        """Like the recorder, a row with an existing start replaces it."""
+        if self.lose_writes:
+            return
+        stored = {r["start"]: r for r in self.rows.get(metadata["statistic_id"], [])}
+        stored.update({r["start"]: r for r in rows})
+        self.rows[metadata["statistic_id"]] = [stored[start] for start in sorted(stored)]
 
     def last(self):
         result = {}
         for key in (STAT_CONSUMPTION, STAT_COST, STAT_GENERATION, STAT_CREDIT):
             rows = self.rows.get(statistic_id("1000001", key))
-            result[key] = (rows[-1]["start"], rows[-1]["sum"]) if rows else None
+            result[key] = (rows[-1]["start"], rows[-1]["sum"], rows[-1]["state"]) if rows else None
         return result
 
     async def poll(self, entries, today=TODAY):
@@ -413,6 +417,83 @@ class TestPollSequences:
         rows = recorder.rows[statistic_id("1000001", STAT_CONSUMPTION)]
         assert rows[24]["start"] == _end_of(date(2026, 7, 2)) + timedelta(hours=1)  # gap is a gap
         assert rows[24]["sum"] == pytest.approx(24.0 + 1.0)
+
+    @pytest.mark.asyncio
+    async def test_half_hour_offset_boundary_hour_completed_on_next_poll(self):
+        """+09:30: 14:00 UTC holds day 1's last half-hour and day 2's first.
+
+        Day 1 on one poll writes that hour with half its energy; day 2 on the
+        next must add the other half to the same row, not drop it.
+        """
+        recorder = FakeRecorder()
+        day1, day2 = date(2026, 7, 7), date(2026, 7, 8)
+        both = _days(day1, day2, offset="+09:30", kwh=1.0)
+        await recorder.poll(both[:1], today=day2)
+        boundary = datetime(2026, 7, 7, 14, tzinfo=UTC)
+        assert recorder.last()[STAT_CONSUMPTION] == (boundary, 48.0, 1.0)
+
+        imported = await recorder.poll(both, today=date(2026, 7, 9))
+        rows = recorder.rows[statistic_id("1000001", STAT_CONSUMPTION)]
+        assert rows[-1]["sum"] == pytest.approx(96.0)
+        assert imported[STAT_CONSUMPTION] == 25  # the rewritten boundary row + day 2's 24
+        by_start = {r["start"]: r for r in rows}
+        assert len(by_start) == len(rows) == 49
+        assert by_start[boundary]["state"] == pytest.approx(2.0)
+        assert by_start[boundary]["sum"] == pytest.approx(49.0)
+        assert all(r["state"] == pytest.approx(2.0) for r in rows[1:-1])
+        cost = recorder.rows[statistic_id("1000001", STAT_COST)]
+        assert cost[-1]["sum"] == pytest.approx(96 * 0.1 * 1.1)
+
+        # Re-polling the same data adds nothing, boundary hour included
+        assert await recorder.poll(both, today=date(2026, 7, 9)) == {}
+        assert recorder.rows[statistic_id("1000001", STAT_CONSUMPTION)] == rows
+
+    @pytest.mark.asyncio
+    async def test_half_hour_offset_two_polls_match_one(self):
+        both = _days(date(2026, 7, 7), date(2026, 7, 8), offset="+09:30", kwh=lambda i: 1 + i / 10)
+        split, single = FakeRecorder(), FakeRecorder()
+        await split.poll(both[:1], today=date(2026, 7, 8))
+        await split.poll(both, today=date(2026, 7, 9))
+        await single.poll(both, today=date(2026, 7, 9))
+        key = statistic_id("1000001", STAT_CONSUMPTION)
+        assert [r["start"] for r in split.rows[key]] == [r["start"] for r in single.rows[key]]
+        assert [r["state"] for r in split.rows[key]] == pytest.approx([r["state"] for r in single.rows[key]])
+        assert split.rows[key][-1]["sum"] == pytest.approx(single.rows[key][-1]["sum"])
+
+    @pytest.mark.asyncio
+    async def test_whole_hour_offset_boundary_unchanged(self):
+        """+10:00: days end on an hour, so the last stored row is never rewritten."""
+        recorder = FakeRecorder()
+        both = _days(date(2026, 7, 7), date(2026, 7, 8), kwh=1.0)
+        await recorder.poll(both[:1], today=date(2026, 7, 8))
+        last_row = dict(recorder.rows[statistic_id("1000001", STAT_CONSUMPTION)][-1])
+
+        with patch(
+            "homeassistant.components.recorder.statistics.async_add_external_statistics",
+            side_effect=recorder.add,
+        ) as add:
+            await red_statistics.async_import_statistics(
+                MagicMock(), "1000001", both, recorder.last(), date(2026, 7, 9)
+            )
+        new_rows = add.call_args_list[0].args[2]
+        assert len(new_rows) == 24
+        assert new_rows[0]["start"] == last_row["start"] + timedelta(hours=1)
+        rows = recorder.rows[statistic_id("1000001", STAT_CONSUMPTION)]
+        assert rows[23] == last_row
+        assert rows[-1]["sum"] == pytest.approx(96.0)
+        assert await recorder.poll(both, today=date(2026, 7, 9)) == {}
+
+    @pytest.mark.asyncio
+    async def test_dst_local_time_boundary_not_double_counted(self):
+        """AEDT days end at 13:00 UTC: the day after the cursor in NEM time
+        is still the stored day, and none of its hours may be re-added."""
+        recorder = FakeRecorder()
+        days = [_entry(_sydney_day(d)) for d in (date(2026, 1, 14), date(2026, 1, 15))]
+        await recorder.poll(days[:1], today=date(2026, 1, 15))
+        await recorder.poll(days, today=date(2026, 1, 16))
+        rows = recorder.rows[statistic_id("1000001", STAT_CONSUMPTION)]
+        assert len(rows) == 48 and rows[-1]["sum"] == pytest.approx(48.0)
+        assert await recorder.poll(days, today=date(2026, 1, 16)) == {}
 
     @pytest.mark.asyncio
     async def test_first_run_starts_at_earliest_complete_day(self):
@@ -503,10 +584,10 @@ class TestAsyncImport:
         entries = _days(date(2026, 7, 8), date(2026, 7, 9), gen=0.1, gen_dollar=-0.01)
         last_start = datetime(2026, 7, 8, 13, tzinfo=UTC)  # end of 8 Jul AEST
         last = {
-            STAT_CONSUMPTION: (last_start, 100.0),
-            STAT_COST: (last_start, 50.0),
-            STAT_GENERATION: (last_start, 2.0),
-            STAT_CREDIT: (last_start, 1.0),
+            STAT_CONSUMPTION: (last_start, 100.0, 1.0),
+            STAT_COST: (last_start, 50.0, 0.22),
+            STAT_GENERATION: (last_start, 2.0, 0.2),
+            STAT_CREDIT: (last_start, 1.0, 0.02),
         }
         with patch(
             "homeassistant.components.recorder.statistics.async_add_external_statistics"
@@ -527,6 +608,24 @@ class TestAsyncImport:
         with patch("homeassistant.components.recorder.statistics.get_instance", return_value=instance):
             await red_statistics.async_import_statistics(MagicMock(), "1000001", entries, last, TODAY)
         assert instance.async_import_statistics.call_count == 4
+
+    @pytest.mark.asyncio
+    async def test_last_statistics_include_state(self):
+        """The last row's state is read too, for completing a boundary hour."""
+        start = datetime(2026, 7, 7, 14, tzinfo=UTC)
+        instance = MagicMock()
+
+        async def run(func, hass, count, stat_id, convert, types):
+            assert types == {"sum", "state"}
+            if stat_id.endswith("_consumption"):
+                return {stat_id: [{"start": start.timestamp(), "sum": 48.0, "state": 1.0}]}
+            return {}
+
+        instance.async_add_executor_job = run
+        with patch("homeassistant.components.recorder.get_instance", return_value=instance):
+            last = await red_statistics.async_get_last_statistics(MagicMock(), "1000001")
+        assert last[STAT_CONSUMPTION] == (start, 48.0, 1.0)
+        assert last[STAT_COST] is None
 
     def test_statistic_id_is_valid(self):
         from homeassistant.core import valid_entity_id
@@ -551,6 +650,7 @@ def coordinator():
             services=["electricity"],
         )
     coordinator.api = AsyncMock()
+    coordinator.config_entry = MagicMock(options={"import_statistics": True})
     return coordinator
 
 
@@ -616,6 +716,21 @@ class TestCoordinatorImport:
     @pytest.mark.asyncio
     async def test_skipped_without_recorder(self, coordinator):
         coordinator.hass.config.components = set()
+        with patch.object(red_statistics, "async_get_last_statistics", AsyncMock()) as get_last:
+            await coordinator._async_import_statistics(_usage_data(datetime(2026, 7, 1)))
+        get_last.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_off_by_default(self, coordinator):
+        """Nothing touches the recorder until the option is turned on."""
+        coordinator.config_entry = MagicMock(options={})
+        with patch.object(red_statistics, "async_get_last_statistics", AsyncMock()) as get_last:
+            await coordinator._async_import_statistics(_usage_data(datetime(2026, 7, 1)))
+        get_last.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_off_without_config_entry(self, coordinator):
+        coordinator.config_entry = None
         with patch.object(red_statistics, "async_get_last_statistics", AsyncMock()) as get_last:
             await coordinator._async_import_statistics(_usage_data(datetime(2026, 7, 1)))
         get_last.assert_not_called()

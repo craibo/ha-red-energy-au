@@ -51,6 +51,9 @@
           "scan_interval": "Scan Interval",
           "enable_advanced_sensors": "Enable Advanced Sensors",
           "import_statistics": "Import half-hourly usage into Energy Dashboard statistics"
+        },
+        "data_description": {
+          "import_statistics": "Off by default. When turned on, each half-hour of usage, cost and solar export is imported into long-term statistics at the time it was used, starting with up to 90 days of history, for use in the Energy Dashboard. Leave it off if another system already records this usage."
         }
       }
     }

@@ -11,10 +11,13 @@ summed. Hours are bucketed in UTC, which keeps this correct for any offset
 Red Energy reports (+10:00 NEM time, +11:00 daylight time, +09:30/+10:30 for
 South Australia).
 
-Each import continues from the last statistic already in the recorder: hours
-at or before it are skipped and the running ``sum`` carries on from its sum,
-so re-polling the same data never double counts, and a write that never
-reached the recorder is simply imported again on the next poll.
+Each import continues from the last statistic already in the recorder:
+half-hours already in it are skipped and the running ``sum`` carries on from
+its sum, so re-polling the same data never double counts, and a write that
+never reached the recorder is simply imported again on the next poll. With a
+half-hour offset a day boundary falls mid-hour, so the last stored hour can
+hold only the earlier day's half; the later day's half-hour is then added to
+that row, which is rewritten in place (see aggregate_hourly).
 
 Only complete days (every half-hour present exactly once, usageDate before
 today) are imported, and only in an unbroken run of calendar days from the
@@ -79,6 +82,11 @@ SERIES: tuple[StatisticSeries, ...] = (
     StatisticSeries(STAT_COST, "Consumption cost", "AUD", None),
     StatisticSeries(STAT_CREDIT, "Generation credit", "AUD", None),
 )
+
+
+# A series' last stored row: (start, sum, state). state is None if the
+# recorder has none for it.
+LastStatistic = tuple[datetime, float, float | None]
 
 
 def statistic_id(consumer_number: str, key: str) -> str:
@@ -251,8 +259,32 @@ def complete_days(
     return result
 
 
-def aggregate_hourly(days: list[dict[str, Any]], key: str) -> dict[datetime, float]:
+def is_imported(start: datetime, last_start: datetime | None) -> bool:
+    """Return whether the half-hour starting at start is already in the recorder.
+
+    Imports are always whole days, so the stored data ends at a day boundary
+    inside or at the end of the last stored hour (last_start). The half-hour
+    at last_start + 30 minutes is in that row unless a day starts there (a
+    half-hour offset such as +09:30), in which case the row holds only the
+    earlier day's half and this one is still to import.
+    """
+    if last_start is None:
+        return False
+    if start <= last_start:
+        return True
+    if start == last_start + HALF_HOUR:
+        return start.time() != time(0)
+    return False
+
+
+def aggregate_hourly(
+    days: list[dict[str, Any]], key: str, last_start: datetime | None = None
+) -> dict[datetime, float]:
     """Sum half-hour values into UTC hour buckets for one series.
+
+    With last_start, only half-hours not yet imported (see is_imported) are
+    summed, so the result can include last_start's hour itself, holding just
+    the half-hour to add to that stored row.
 
     Stops at the first day missing a value for this series (e.g. no
     per-interval pricing), so no hour is ever imported with a partial total.
@@ -267,6 +299,8 @@ def aggregate_hourly(days: list[dict[str, Any]], key: str) -> dict[datetime, flo
                 return hourly
             day_values.append((start, float(value)))
         for start, value in day_values:
+            if is_imported(start, last_start):
+                continue
             hour = dt_util.as_utc(start).replace(minute=0, second=0, microsecond=0)
             hourly[hour] = hourly.get(hour, 0.0) + value
     return hourly
@@ -276,28 +310,36 @@ def build_statistics(
     hourly: dict[datetime, float],
     last_start: datetime | None,
     last_sum: float,
+    last_state: float | None = None,
 ) -> list[dict[str, Any]]:
     """Turn hourly totals into StatisticData rows continuing an existing sum.
 
-    Hours at or before last_start are already in the recorder and skipped,
-    which is what makes re-importing the same data idempotent.
+    Hours before last_start are already in the recorder and skipped, which
+    is what makes re-importing the same data idempotent. An hourly value for
+    last_start itself is the half-hour still missing from that stored row
+    (see aggregate_hourly): with the row's last_state it is added to the row,
+    rewritten with the same start so the recorder replaces it. Without
+    last_state that hour is skipped.
     """
     rows = []
     running_sum = last_sum
     for hour in sorted(hourly):
+        state = hourly[hour]
         if last_start is not None and hour <= last_start:
-            continue
+            if hour < last_start or last_state is None:
+                continue
+            state += last_state
         running_sum += hourly[hour]
         rows.append({
             "start": hour,
-            "state": round(hourly[hour], 6),
+            "state": round(state, 6),
             "sum": round(running_sum, 6),
         })
     return rows
 
 
 def fetch_start_date(
-    last_statistics: dict[str, tuple[datetime, float] | None],
+    last_statistics: dict[str, LastStatistic | None],
     today: date,
     backfill_days: int,
 ) -> date:
@@ -320,21 +362,26 @@ def fetch_start_date(
 
 async def async_get_last_statistics(
     hass: HomeAssistant, consumer_number: str
-) -> dict[str, tuple[datetime, float] | None]:
-    """Return each series' last imported (start, sum), or None if it has none."""
+) -> dict[str, LastStatistic | None]:
+    """Return each series' last imported (start, sum, state), or None if it has none."""
     from homeassistant.components.recorder import get_instance
     from homeassistant.components.recorder.statistics import get_last_statistics
 
-    result: dict[str, tuple[datetime, float] | None] = {}
+    result: dict[str, LastStatistic | None] = {}
     for series in SERIES:
         stat_id = statistic_id(consumer_number, series.key)
         last = await get_instance(hass).async_add_executor_job(
-            get_last_statistics, hass, 1, stat_id, True, {"sum"}
+            get_last_statistics, hass, 1, stat_id, True, {"sum", "state"}
         )
         rows = last.get(stat_id) or []
         if rows:
             row = rows[0]
-            result[series.key] = (dt_util.utc_from_timestamp(row["start"]), float(row.get("sum") or 0.0))
+            state = row.get("state")
+            result[series.key] = (
+                dt_util.utc_from_timestamp(row["start"]),
+                float(row.get("sum") or 0.0),
+                None if state is None else float(state),
+            )
         else:
             result[series.key] = None
     return result
@@ -344,7 +391,7 @@ async def async_import_statistics(
     hass: HomeAssistant,
     consumer_number: str,
     usage_entries: list[dict[str, Any]],
-    last_statistics: dict[str, tuple[datetime, float] | None],
+    last_statistics: dict[str, LastStatistic | None],
     today: date,
     skip_missing: bool = True,
 ) -> dict[str, int]:
@@ -363,13 +410,13 @@ async def async_import_statistics(
     imported: dict[str, int] = {}
     for series in SERIES:
         last = last_statistics.get(series.key)
-        last_start, last_sum = last if last else (None, 0.0)
-        hourly = aggregate_hourly(days, series.key)
+        last_start, last_sum, last_state = last if last else (None, 0.0, None)
+        hourly = aggregate_hourly(days, series.key, last_start)
         # Don't create an all-zero generation/credit series for accounts
         # without solar - it would just clutter the Energy Dashboard picker.
         if last is None and series.key in (STAT_GENERATION, STAT_CREDIT) and not any(hourly.values()):
             continue
-        rows = build_statistics(hourly, last_start, last_sum)
+        rows = build_statistics(hourly, last_start, last_sum, last_state)
         if not rows:
             continue
         metadata = {

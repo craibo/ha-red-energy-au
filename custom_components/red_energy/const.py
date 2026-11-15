@@ -138,7 +138,7 @@ CONF_COST_THRESHOLDS: Final = "cost_thresholds"
 CONF_USAGE_THRESHOLDS: Final = "usage_thresholds"
 # Backdated hourly statistics for the Energy Dashboard (issue #64)
 CONF_IMPORT_STATISTICS: Final = "import_statistics"
-DEFAULT_IMPORT_STATISTICS: Final = True
+DEFAULT_IMPORT_STATISTICS: Final = False
 # How many days of interval usage to import the first time statistics run.
 # Red Energy already serves 90-day windows for the billing-period fetch.
 STATISTICS_BACKFILL_DAYS: Final = 90
