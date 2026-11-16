@@ -24,15 +24,19 @@ from .data_validation import (
 )
 from .error_recovery import RedEnergyErrorRecoverySystem, ErrorType
 from .performance import PerformanceMonitor, DataProcessor
+from . import statistics as red_statistics
 from .const import (
     AUTH_METHOD_BROWSER,
     AUTH_METHOD_PASSWORD,
     BILLED_USAGE_LOOKBACK_DAYS,
+    CONF_IMPORT_STATISTICS,
     CONF_REFRESH_TOKEN,
+    DEFAULT_IMPORT_STATISTICS,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
     GST_MULTIPLIER,
     SERVICE_TYPE_GAS,
+    STATISTICS_BACKFILL_DAYS,
     UPDATE_RETRY_ATTEMPTS,
     UPDATE_RETRY_DELAY_SECONDS,
 )
@@ -419,6 +423,8 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
                 _LOGGER.error("DEBUG: string comparison test: %s", [str(sa) in available_ids for sa in self.selected_accounts])
                 raise UpdateFailed(error_msg)
             
+            await self._async_import_statistics(usage_data)
+
             return {
                 "customer": self._customer_data,
                 "properties": self._properties,
@@ -447,6 +453,75 @@ class RedEnergyDataCoordinator(DataUpdateCoordinator):
             _LOGGER.exception("Unexpected error during update")
             raise UpdateFailed(f"Unexpected error: {err}") from err
     
+    def _statistics_import_enabled(self) -> bool:
+        """Return whether backdated statistics should be imported (issue #64)."""
+        if "recorder" not in self.hass.config.components:
+            return False
+        entry = self.config_entry
+        if entry is None:
+            return DEFAULT_IMPORT_STATISTICS
+        return bool(entry.options.get(CONF_IMPORT_STATISTICS, DEFAULT_IMPORT_STATISTICS))
+
+    async def _async_import_statistics(self, usage_data: dict[str, Any]) -> None:
+        """Import half-hourly interval usage as backdated hourly statistics.
+
+        Runs after every successful poll. A failure here is logged and never
+        fails the update - the sensors don't depend on it.
+        """
+        try:
+            if not self._statistics_import_enabled():
+                return
+        except AttributeError:
+            # hass without a config (unit tests) - nothing to import into.
+            return
+
+        for property_entry in usage_data.values():
+            for service_type, service_usage in property_entry.get("services", {}).items():
+                if "usage_data" not in service_usage or not service_usage.get("consumer_number"):
+                    continue
+                try:
+                    await self._async_import_service_statistics(service_usage)
+                except Exception:  # statistics must never break polling
+                    _LOGGER.exception(
+                        "Failed to import %s statistics for consumer %s",
+                        service_type,
+                        service_usage.get("consumer_number"),
+                    )
+
+    async def _async_import_service_statistics(self, service_usage: dict[str, Any]) -> None:
+        """Import statistics for one interval-metered service."""
+        consumer_number = str(service_usage["consumer_number"])
+        entries = list(service_usage["usage_data"].get("usage_data", []))
+        today = red_statistics.nem_today()
+
+        last_statistics = await red_statistics.async_get_last_statistics(self.hass, consumer_number)
+        needed_from = red_statistics.fetch_start_date(last_statistics, today, STATISTICS_BACKFILL_DAYS)
+
+        # The billing-period fetch usually covers what's needed. Only the
+        # first import (backfill) or catching up after a new bill/outage
+        # needs an extra request for the days before it.
+        period_start = datetime.fromisoformat(service_usage["start_date"]).date()
+        # A day absent only because this fetch failed must not be skipped
+        # as one Red Energy never published - wait for the next poll instead.
+        skip_missing = True
+        if needed_from < period_start:
+            extra = await self.api.get_usage_data(
+                consumer_number,
+                datetime.combine(needed_from, datetime.min.time()),
+                datetime.combine(period_start - timedelta(days=1), datetime.min.time()),
+            )
+            if isinstance(extra, dict) and not extra.get("error"):
+                entries = validate_usage_data(extra).get("usage_data", []) + entries
+            else:
+                skip_missing = False
+                _LOGGER.debug("No earlier usage available for statistics backfill of consumer %s", consumer_number)
+
+        imported = await red_statistics.async_import_statistics(
+            self.hass, consumer_number, entries, last_statistics, today, skip_missing
+        )
+        if imported:
+            _LOGGER.debug("Imported hourly statistics for consumer %s: %s", consumer_number, imported)
+
     async def _async_refresh_metadata(self) -> None:
         """Refresh customer and properties metadata."""
         _LOGGER.info("Refreshing Red Energy metadata (customer and properties)")

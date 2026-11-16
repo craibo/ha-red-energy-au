@@ -65,7 +65,7 @@ A comprehensive Home Assistant custom integration for Red Energy (Australian ene
    - **Email and password** — enter your Red Energy account email and password
    - **Google, Apple, Microsoft or emailed code** — for accounts without a password (see [Browser sign-in](#browser-sign-in) below)
 4. All accounts on your Red Energy login are added automatically - electricity and gas are always both monitored (each account is billed as one service, so there's nothing to select)
-5. Use the integration's **Configure** options afterwards to choose which accounts to monitor, adjust polling interval, or enable advanced sensors
+5. Use the integration's **Configure** options afterwards to choose which accounts to monitor, adjust polling interval, enable advanced sensors, or turn on the [Energy Dashboard statistics](#energy-dashboard-integration) import (off by default)
 
 ⚠️ **Important**: This integration uses the real Red Energy API. You must have valid Red Energy account credentials to use this integration.
 
@@ -254,12 +254,37 @@ data:
 
 ## Energy Dashboard Integration
 
-The integration automatically provides sensors compatible with Home Assistant's Energy Dashboard:
+Red Energy publishes usage about a day late, so the daily sensors are recorded in Home Assistant when they are polled, not when the energy was used. To get usage onto the right day and hour, the integration can also import each half-hour interval into Home Assistant's long-term statistics at the time it actually happened (two half-hours per hourly statistic). These are the recommended source for the Energy Dashboard.
+
+The import is **off by default**, for new and existing installs, so nothing is written to Home Assistant's statistics until you turn it on. To turn it on, go to **Settings** → **Devices & Services** → **Red Energy** → **Configure** and tick **Import half-hourly usage into Energy Dashboard statistics**. The next poll then backfills up to 90 days. Leave it off if another energy management system already records this usage, or you'll get a second set of series for the same energy.
+
+For each interval-metered electricity service it creates these statistics (replace `<consumer>` with the service's consumer number):
+
+| Statistic | Unit | Contents |
+|-----------|------|----------|
+| `red_energy:<consumer>_consumption` | kWh | Grid import |
+| `red_energy:<consumer>_cost` | AUD | Import energy charges, GST-inclusive (only if Red Energy provides per-interval pricing) - see below |
+| `red_energy:<consumer>_generation` | kWh | Solar export (only created once there is some export) |
+| `red_energy:<consumer>_credit` | AUD | Export credit (only created once there is some export) |
+
+Once the import is on, to use them:
 
 1. Go to **Settings** → **Dashboards** → **Energy**
-2. Click **Add Consumption**
-3. Select your Red Energy sensors from the list
-4. Configure cost tracking using the cost sensors
+2. Under **Electricity grid**, click **Add consumption** and pick **Red Energy `<consumer>` Consumption**
+3. For cost, choose **Use an entity tracking the total costs** and pick **Red Energy `<consumer>` Consumption cost**
+4. If you have solar, click **Add return** and pick **Red Energy `<consumer>` Generation**, with **Red Energy `<consumer>` Generation credit** for compensation
+
+How the import works:
+
+- The first poll after turning it on backfills up to 90 days. After that each poll adds only the days that are new since the last imported hour, so re-polling never double counts.
+- Only complete days are imported: every half-hour of the day present exactly once, from midnight to midnight. Today, and any day Red Energy hasn't finished publishing, are picked up on a later poll. Expect the most recent data to be yesterday's or the day before's.
+- Days are imported in order with no gaps. If Red Energy leaves out a day, or a day is incomplete, the days after it wait until it arrives, so it is imported whole rather than skipped. If it is still missing or incomplete 7 days later, it is skipped and a warning naming the consumer number and date is logged: the statistics have a gap for that day, and the days after it are imported as normal.
+- Each poll continues from the last hour already in Home Assistant's statistics, so if Home Assistant stops before an import is saved, the next poll imports those hours again, with no gap or double counting. Where a day boundary falls mid-hour (a half-hour UTC offset such as +09:30), the hour shared by two days is completed when the second day is imported.
+- The cost statistic is energy charges only: Red Energy's per-interval charge (`consumptionDollarIncGst`, or `consumptionDollar` plus GST), so a day's cost is that day's Daily Import Cost plus GST. It does not include daily supply charges or demand charges, so the Energy Dashboard's cost will be lower than your bill.
+- If Red Energy later revises a day that has already been imported, the imported figures are not updated.
+- Turning the option off again stops further imports; statistics already imported stay in Home Assistant.
+
+The daily and current-period sensors are unchanged and can still be used on dashboards. Don't add both those sensors and the statistics above to the Energy Dashboard, or usage will be counted twice.
 
 ## Troubleshooting
 
