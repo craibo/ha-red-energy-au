@@ -1084,9 +1084,9 @@ class RedEnergyProjectedNetCostSensor(RedEnergyBaseSensor):
     to-date figure, not a forecast - "Projected" is this sensor's
     distinguisher, not "Current Period" (issue #78 already used that for
     the actual-value sensors).
-    state_class is intentionally left unset (not TOTAL/MEASUREMENT): this
-    is a forward-looking estimate that can jump around as usage patterns
-    change, not an accumulating total suitable for long-term statistics.
+    state_class is TOTAL (the only state class HA allows for the monetary
+    device class), with last_reset set to the billing period start so HA
+    statistics treat each billing cycle as a fresh total.
     """
 
     def __init__(
@@ -1101,8 +1101,13 @@ class RedEnergyProjectedNetCostSensor(RedEnergyBaseSensor):
 
         self._attr_device_class = SensorDeviceClass.MONETARY
         self._attr_native_unit_of_measurement = "AUD"
-        self._attr_state_class = None
+        self._attr_state_class = SensorStateClass.TOTAL
         self._attr_icon = "mdi:cash-clock"
+
+    @property
+    def last_reset(self) -> datetime | None:
+        """Return the billing period start date so HA statistics reset correctly."""
+        return self._get_last_bill_reset()
 
     @property
     def native_value(self) -> float | None:
@@ -1151,8 +1156,13 @@ class RedEnergyProjectedChargesSensor(RedEnergyBaseSensor):
 
         self._attr_device_class = SensorDeviceClass.MONETARY
         self._attr_native_unit_of_measurement = "AUD"
-        self._attr_state_class = None
+        self._attr_state_class = SensorStateClass.TOTAL
         self._attr_icon = "mdi:receipt-text-clock"
+
+    @property
+    def last_reset(self) -> datetime | None:
+        """Return the billing period start date so HA statistics reset correctly."""
+        return self._get_last_bill_reset()
 
     @property
     def native_value(self) -> float | None:
