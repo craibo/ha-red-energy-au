@@ -3,7 +3,7 @@
 [![GitHub Release][releases-shield]][releases]
 [![GitHub Activity][commits-shield]][commits]
 [![License][license-shield]](LICENSE)
-[![hacs][hacsbadge]][hacs]
+[![marketplace][marketplacebadge]][marketplace]
 [![Integration Usage](https://img.shields.io/badge/dynamic/json?color=41BDF5&style=for-the-badge&logo=home-assistant&label=usage&suffix=%20installs&cacheSeconds=15600&url=https://analytics.home-assistant.io/custom_integrations.json&query=$.red_energy.total)](https://analytics.home-assistant.io/)
 
 A comprehensive Home Assistant custom integration for Red Energy (Australian energy provider) that tracks daily energy usage and provides advanced analytics.
@@ -41,11 +41,17 @@ A comprehensive Home Assistant custom integration for Red Energy (Australian ene
 
 ## Quick Start
 
-### Installation via HACS (Recommended)
+### Requirements
 
-1. Install [HACS](#hacs) following the instructions [here](https://hacs.xyz/docs/setup/download)
-2. [![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=craibo&repository=ha-red-energy-au&category=integration)
-3. Press the Download button
+- Home Assistant **2026.6.0** or newer
+
+### Installation via Marketplace (Recommended)
+
+HACS is now part of Home Assistant core and is called **Marketplace**.
+
+1. In Home Assistant, go to **Settings** → **Marketplace**
+2. Search for **Red Energy**
+3. Select it and press the **Download** button
 4. Restart Home Assistant
 5. [![Open your Home Assistant instance and start setting up a new integration.](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=red_energy)
 
@@ -156,6 +162,8 @@ Enabled via the "Advanced Sensors" integration option. **16 sensors for interval
 - Projected Net Cost - Estimated net energy cost (import minus export credit) for the full billing cycle, extrapolated from usage to date. GST-inclusive; an estimate, not Red Energy's own figure
 - Projected Charges - Projected Net Cost plus the daily service/supply charge projected across the full cycle, for a fuller bill estimate; for Demand-tariff plans this also includes the projected demand charge. GST-inclusive; an estimate, not Red Energy's own figure
 
+Projected Net Cost and Projected Charges report state class **Total** (the only class Home Assistant allows for monetary sensors), with `last_reset` set to the start of the billing period so each cycle is treated as a fresh total. Because they are estimates that move as usage changes, use them for dashboards and trends, not as an actual spend figure or in the Energy Dashboard.
+
 **Time-of-Use Breakdown** *(electricity only - gas has no ToU tariff)*:
 - Peak/Offpeak/Shoulder Import Usage - combined TOU-labelled usage as supplied by Red Energy (see [CL2/TOU Reconstruction](#cl2--tou-reconstruction-optional-conditional) below if your plan has a resolvable Controlled Load rate)
 - Peak/Offpeak/Shoulder Export Usage
@@ -245,6 +253,9 @@ data:
 ```
 
 ### Update Credentials
+
+For accounts set up with an email and password. Accounts that use [Browser sign-in](#browser-sign-in) re-authenticate through the **Re-authenticate** notification instead.
+
 ```yaml
 service: red_energy.update_credentials
 data:
@@ -296,6 +307,16 @@ The daily and current-period sensors are unchanged and can still be used on dash
 **Usage sensors disabled and showing "Unknown" on a device**
 - If the account has a BASIC (manual-read) meter, Red Energy's API has no interval usage data for it - usage-dependent sensors are created disabled by default rather than sitting enabled with no value. Metadata sensors (NMI, balance, bill dates, etc.) still work normally
 
+**Projected Net Cost / Projected Charges are unavailable**
+- Both need a next bill date and usage so far in the current billing period. Projected Charges also needs a daily service/supply rate on the plan
+- They are Advanced Sensors, so enable **Advanced Sensors** under **Configure** first
+
+**Usage data looks a day old, or didn't change after a refresh**
+- Red Energy publishes usage once a day (see [Data Update Limitations](#important-data-update-limitations)), so the latest data is normally yesterday's or the day before's. A shorter polling interval won't change this
+
+**"Re-authenticate" notification appears**
+- Red Energy ended the session. Follow the steps under [Browser sign-in](#browser-sign-in), or for password accounts use the `red_energy.update_credentials` service
+
 ## Contributing
 
 1. Fork the repository
@@ -310,12 +331,20 @@ The daily and current-period sensors are unchanged and can still be used on dash
 git clone https://github.com/craibo/ha-red-energy-au.git
 cd ha-red-energy-au
 
+# Create a virtual environment (CI runs Python 3.14, matching Home Assistant's baseline)
+python3 -m venv .venv && source .venv/bin/activate
+
 # Install test dependencies
 pip install -r requirements-test.txt
 
 # Run tests
 pytest tests/ -v
+
+# Lint
+flake8 custom_components --count --select=E9,F63,F7,F82 --show-source --statistics
 ```
+
+Branch from `main`, bump the `version` in `custom_components/red_energy/manifest.json` in your first commit, and open a pull request.
 
 ## Support
 
@@ -356,8 +385,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 [commits-shield]: https://img.shields.io/github/commit-activity/y/craibo/ha-red-energy-au.svg?style=for-the-badge
 [commits]: https://github.com/craibo/ha-red-energy-au/commits/main
-[hacs]: https://github.com/hacs/integration
-[hacsbadge]: https://img.shields.io/badge/HACS-Custom-orange.svg?style=for-the-badge
+[marketplace]: https://github.com/craibo/ha-red-energy-au
+[marketplacebadge]: https://img.shields.io/badge/Marketplace-Custom-orange.svg?style=for-the-badge
 [license-shield]: https://img.shields.io/github/license/craibo/ha-red-energy-au.svg?style=for-the-badge
 [releases-shield]: https://img.shields.io/github/release/craibo/ha-red-energy-au.svg?style=for-the-badge
 [releases]: https://github.com/craibo/ha-red-energy-au/releases
