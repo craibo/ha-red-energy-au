@@ -162,6 +162,8 @@ Enabled via the "Advanced Sensors" integration option. **16 sensors for interval
 - Projected Net Cost - Estimated net energy cost (import minus export credit) for the full billing cycle, extrapolated from usage to date. GST-inclusive; an estimate, not Red Energy's own figure
 - Projected Charges - Projected Net Cost plus the daily service/supply charge projected across the full cycle, for a fuller bill estimate; for Demand-tariff plans this also includes the projected demand charge. GST-inclusive; an estimate, not Red Energy's own figure
 
+Projected Net Cost and Projected Charges report state class **Total** (the only class Home Assistant allows for monetary sensors), with `last_reset` set to the start of the billing period so each cycle is treated as a fresh total. Because they are estimates that move as usage changes, use them for dashboards and trends, not as an actual spend figure or in the Energy Dashboard.
+
 **Time-of-Use Breakdown** *(electricity only - gas has no ToU tariff)*:
 - Peak/Offpeak/Shoulder Import Usage - combined TOU-labelled usage as supplied by Red Energy (see [CL2/TOU Reconstruction](#cl2--tou-reconstruction-optional-conditional) below if your plan has a resolvable Controlled Load rate)
 - Peak/Offpeak/Shoulder Export Usage
@@ -251,6 +253,9 @@ data:
 ```
 
 ### Update Credentials
+
+For accounts set up with an email and password. Accounts that use [Browser sign-in](#browser-sign-in) re-authenticate through the **Re-authenticate** notification instead.
+
 ```yaml
 service: red_energy.update_credentials
 data:
@@ -302,6 +307,16 @@ The daily and current-period sensors are unchanged and can still be used on dash
 **Usage sensors disabled and showing "Unknown" on a device**
 - If the account has a BASIC (manual-read) meter, Red Energy's API has no interval usage data for it - usage-dependent sensors are created disabled by default rather than sitting enabled with no value. Metadata sensors (NMI, balance, bill dates, etc.) still work normally
 
+**Projected Net Cost / Projected Charges are unavailable**
+- Both need a next bill date and usage so far in the current billing period. Projected Charges also needs a daily service/supply rate on the plan
+- They are Advanced Sensors, so enable **Advanced Sensors** under **Configure** first
+
+**Usage data looks a day old, or didn't change after a refresh**
+- Red Energy publishes usage once a day (see [Data Update Limitations](#important-data-update-limitations)), so the latest data is normally yesterday's or the day before's. A shorter polling interval won't change this
+
+**"Re-authenticate" notification appears**
+- Red Energy ended the session. Follow the steps under [Browser sign-in](#browser-sign-in), or for password accounts use the `red_energy.update_credentials` service
+
 ## Contributing
 
 1. Fork the repository
@@ -316,12 +331,20 @@ The daily and current-period sensors are unchanged and can still be used on dash
 git clone https://github.com/craibo/ha-red-energy-au.git
 cd ha-red-energy-au
 
+# Create a virtual environment (CI runs Python 3.14, matching Home Assistant's baseline)
+python3 -m venv .venv && source .venv/bin/activate
+
 # Install test dependencies
 pip install -r requirements-test.txt
 
 # Run tests
 pytest tests/ -v
+
+# Lint
+flake8 custom_components --count --select=E9,F63,F7,F82 --show-source --statistics
 ```
+
+Branch from `main`, bump the `version` in `custom_components/red_energy/manifest.json` in your first commit, and open a pull request.
 
 ## Support
 
