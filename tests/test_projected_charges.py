@@ -440,7 +440,7 @@ class TestGetEstimatedCurrentPeriodCharges:
         assert "demand_rate_incl_gst" not in result
 
 
-from homeassistant.components.sensor import SensorDeviceClass
+from homeassistant.components.sensor import SensorDeviceClass, SensorStateClass
 
 
 def _config_entry():
@@ -464,7 +464,8 @@ class TestProjectedNetCostSensor:
         assert sensor.native_value == pytest.approx(net_cost_to_date / 7 * 27, abs=0.01)
         assert sensor.device_class == SensorDeviceClass.MONETARY
         assert sensor.native_unit_of_measurement == "AUD"
-        assert sensor.state_class is None
+        assert sensor.state_class == SensorStateClass.TOTAL
+        assert sensor.last_reset is not None
 
         attrs = sensor.extra_state_attributes
         assert attrs["net_cost_to_date"] == pytest.approx(net_cost_to_date)
@@ -507,7 +508,8 @@ class TestProjectedChargesSensor:
         )
         assert sensor.device_class == SensorDeviceClass.MONETARY
         assert sensor.native_unit_of_measurement == "AUD"
-        assert sensor.state_class is None
+        assert sensor.state_class == SensorStateClass.TOTAL
+        assert sensor.last_reset is not None
 
         attrs = sensor.extra_state_attributes
         assert attrs["days_in_cycle"] == 27
